@@ -1,0 +1,23 @@
+# What the public repository does not carry (Phase 79, the maintainer's ask of
+# 2026-10-27). One rule per line; a trailing slash is a folder and everything
+# under it; anything else is one file. `scripts/export-public.mjs` reads this
+# list, and besides it drops every unit test that reads the golden cartridge,
+# since that file stays here.
+#
+# The working rules and the project's history: the private repository's.
+CLAUDE.md
+docs/
+# The frozen gate and its irreplaceable fixture (CLAUDE.md, rules 1 and 2).
+tests/
+# The oracle transcribed from the legacy source, the prototypes, the sample lorebook.
+reference/
+spikes/
+fixtures/
+# The private repository's CI checks the golden fixture's hash; the public tree gets its own workflow.
+.github/
+# The export's own test: it checks this repository's private files, which the
+# public tree has none of, so it would fail the public repository's tests.
+scripts/export-public.test.ts
+# The maintainer's own words (88): the export reads this list and fails on a
+# hit, so the list itself never ships.
+scripts/private-terms.txt

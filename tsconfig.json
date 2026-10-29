@@ -1,0 +1,22 @@
+{
+    "compilerOptions": {
+        "target": "ESNext",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "lib": [
+            "ESNext",
+            "DOM"
+        ],
+        "strict": true,
+        "noEmit": true,
+        "skipLibCheck": true,
+        "allowJs": true,
+        "checkJs": true,
+        "resolveJsonModule": true
+    },
+    "include": [
+        "src",
+        "scripts",
+        "build.mjs"
+    ]
+}

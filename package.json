@@ -1,0 +1,21 @@
+{
+  "name": "adventure_time",
+  "version": "1.0.0-beta.5",
+  "private": true,
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "description": "Multihog D&D Framework reimplemented for Lumiverse/Spindle",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "build": "node build.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "esbuild": "^0.25.0",
+    "happy-dom": "^15.11.7",
+    "lumiverse-spindle-types": "^0.6.23",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.9"
+  }
+}

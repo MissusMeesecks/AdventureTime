@@ -1,0 +1,28 @@
+# The public tree's checks: what a contributor runs locally, run on every push
+# to main and on every pull request. The suite here is the unit tests that need
+# nothing but the source; the differential tests against the legacy build skip
+# without a checkout of it (see the README).
+
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  checks:
+    name: tests, types and both bundles
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run typecheck
+      - run: npm run build

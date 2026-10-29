@@ -1,0 +1,25 @@
+{
+    "version": "1.0.0-beta.5",
+    "name": "AdventureTime",
+    "identifier": "adventure_time",
+    "author": "MissusMeesecks",
+    "github": "https://github.com/MissusMeesecks/AdventureTime",
+    "homepage": "https://github.com/MissusMeesecks/AdventureTime",
+    "description": "Multihog D&D Framework reimplemented for Lumiverse: CRPG state tracker, lorebook agent, and game cartridges.",
+    "permissions": [
+        "generation",
+        "interceptor",
+        "tools",
+        "world_books",
+        "chat_mutation",
+        "images",
+        "regex_scripts",
+        "personas",
+        "characters",
+        "ui_panels",
+        "chats",
+        "image_gen"
+    ],
+    "entry_backend": "dist/backend.js",
+    "entry_frontend": "dist/frontend.js"
+}
