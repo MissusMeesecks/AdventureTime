@@ -23,6 +23,12 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # Each test file runs in its own worker with Node's default heap, which
+      # the runner sizes at about 2 GB; the panel test outgrows it and the
+      # worker dies ("Worker exited unexpectedly"), so the suite gets the
+      # same margin the private repository's workflow gives it.
       - run: npm test
+        env:
+          NODE_OPTIONS: --max-old-space-size=3072
       - run: npm run typecheck
       - run: npm run build
