@@ -175,10 +175,11 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
 
     root.classList.add('adventuretime-panel')
     root.replaceChildren()
-    // The font sizes (74e): this root is the tracker's — the tracker widget's
-    // body, the play tab, or the one classic tab — and the other two are the
-    // second box's. The class goes on the widget around a widget's body, so
-    // its head and strip scale with the cards.
+    // The font sizes (74e; three since 90): this root is the tracker's — the
+    // tracker widget's body, the play tab, or the one classic tab — the second
+    // widget is the agent's and the settings tab the settings'. The class goes
+    // on the widget around a widget's body, so its head and strip scale with
+    // the cards.
     sizeRoot(root, 'tracker')
     // The backdrops (74d): the same two boxes, marked on the same roots and
     // kept, since a root may be painted before the host attaches it.
@@ -192,7 +193,7 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
     slots.scene?.classList.add('adventuretime-panel')
     slots.scene?.replaceChildren()
     if (slots.rest) sizeRoot(slots.rest, 'settings')
-    if (slots.scene) sizeRoot(slots.scene, 'settings')
+    if (slots.scene) sizeRoot(slots.scene, 'agent')
     if (slots.rest) backdropTargets.push(backdropRoot(slots.rest, 'settings'))
     if (slots.scene) backdropTargets.push(backdropRoot(slots.scene, 'settings'))
 
@@ -662,9 +663,10 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
         }
         applyFontSizes(root.ownerDocument.body, { [box]: size })
     }
-    const fontSizeBoxes: Array<{ box: FontSizeBox; key: 'trackerFontSize' | 'settingsFontSize'; label: string; title: string }> = [
+    const fontSizeBoxes: Array<{ box: FontSizeBox; key: 'trackerFontSize' | 'agentFontSize' | 'settingsFontSize'; label: string; title: string }> = [
         { box: 'tracker', key: 'trackerFontSize', label: 'Tracker font size', title: 'The tracker widget, the play tab and the cards under the messages.' },
-        { box: 'settings', key: 'settingsFontSize', label: 'Settings font size', title: 'The map, scene and relationships widget, and the settings tab.' },
+        { box: 'agent', key: 'agentFontSize', label: 'Agent & maps font size', title: 'The second widget: the Lorebook Agent, Campaign Records and Visuals/Map box.' },
+        { box: 'settings', key: 'settingsFontSize', label: 'Settings font size', title: 'The settings tab.' },
     ]
     const fontSizeBlock = el('div', { class: 'lh-font-sizes' })
     for (const { box, key, label, title } of fontSizeBoxes) {
@@ -698,7 +700,7 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
         fontSizeBlock.append(row)
     }
     const fontSizeHint = el('div', { class: 'lh-section-help' })
-    fontSizeHint.textContent = 'Multihog’s two sliders, 8 to 32 px. Until a slider moves, each box keeps the host’s own size; × puts it back.'
+    fontSizeHint.textContent = 'Three sliders, 8 to 32 px: one per widget and one for the settings tab. Until a slider moves, each keeps the host’s own size; × puts it back.'
     // The cards under the messages (67, the maintainer's ask): the switch
     // sat with the tracker since Phase 4 and lives under General & visuals
     // now. Not a cartridge key — the install's furniture, as the layout is.
@@ -1504,6 +1506,7 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
             showBackdrop('tracker', result.prefs?.trackerBackdrop)
             showBackdrop('settings', result.prefs?.settingsBackdrop)
             showFontSize('tracker', result.prefs?.trackerFontSize)
+            showFontSize('agent', result.prefs?.agentFontSize)
             showFontSize('settings', result.prefs?.settingsFontSize)
             cardsToggle.checked = result.prefs?.messageCards === true
             connections.applyPrefs((result.prefs ?? {}) as Record<string, unknown>)
@@ -1537,6 +1540,7 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
             if (prefs.trackerBackdrop !== undefined) showBackdrop('tracker', prefs.trackerBackdrop)
             if (prefs.settingsBackdrop !== undefined) showBackdrop('settings', prefs.settingsBackdrop)
             if (prefs.trackerFontSize !== undefined) showFontSize('tracker', prefs.trackerFontSize)
+            if (prefs.agentFontSize !== undefined) showFontSize('agent', prefs.agentFontSize)
             if (prefs.settingsFontSize !== undefined) showFontSize('settings', prefs.settingsFontSize)
             mapThemeCard.applyPrefs(prefs as Record<string, unknown>)
             connections.applyPrefs(prefs as Record<string, unknown>)

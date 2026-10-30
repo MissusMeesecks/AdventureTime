@@ -162,7 +162,7 @@ describe('the preference store', () => {
             agentMaxTurns: DEFAULT_MAX_TURNS, agentRunEvery: DEFAULT_RUN_EVERY,
             agentWatermarks: {},
             trackerConnectionId: '', agentConnectionId: '',
-            trackerLookbackMode: DEFAULT_LOOKBACK_MODE, trackerLookbackCount: DEFAULT_LOOKBACK_COUNT, layout: 'widgets', trackerTheme: 'native', trackerFontSize: 0, settingsFontSize: 0, customTheme: null, savedThemes: {}, dayNightCycle: false, xpBarAtBottom: true, animateAllCustomBarChanges: true, panelLayoutMode: 'stack', trackerActiveTab: '', displayGroupsEnabled: false, displayGroupsShowGaps: false, displayGroups: [], mapTheme: { ...DEFAULT_MAP_THEME }, savedMapThemePresets: {}, activeMapThemePresetId: 'factory:ember', trackerBackdrop: { day: '', night: '', strength: 55 }, settingsBackdrop: { day: '', night: '', strength: 55 }, widgetPositions: {}, widgetSizes: {}, widgetMinimized: {}, partyCompact: false, choicesDisplayRegex: true,
+            trackerLookbackMode: DEFAULT_LOOKBACK_MODE, trackerLookbackCount: DEFAULT_LOOKBACK_COUNT, layout: 'widgets', trackerTheme: 'native', trackerFontSize: 0, agentFontSize: 0, settingsFontSize: 0, customTheme: null, savedThemes: {}, dayNightCycle: false, xpBarAtBottom: true, animateAllCustomBarChanges: true, panelLayoutMode: 'stack', trackerActiveTab: '', displayGroupsEnabled: false, displayGroupsShowGaps: false, displayGroups: [], mapTheme: { ...DEFAULT_MAP_THEME }, savedMapThemePresets: {}, activeMapThemePresetId: 'factory:ember', trackerBackdrop: { day: '', night: '', strength: 55 }, settingsBackdrop: { day: '', night: '', strength: 55 }, widgetPositions: {}, widgetSizes: {}, widgetMinimized: {}, partyCompact: false, choicesDisplayRegex: true,
             trackerRunEvery: DEFAULT_TRACKER_RUN_EVERY, trackerWatermarks: {},
             trackerDirectLookback: 5, sceneLookback: 3, agentDirectLookback: 10,
             scenePictureAuto: false, scenePictureTrigger: 'location_change', scenePictureEveryN: 1, scenePicturePresentNpcs: true, scenePictureConnectionId: '', portraitSkipPromptDialog: false, portraitLocationBackground: false, attachBooksToCard: true, attachBooksTarget: 'chat',
@@ -764,7 +764,14 @@ describe('the font sizes (74e)', () => {
         expect((await store.load()).trackerFontSize).toBe(0)
         expect((await store.load()).settingsFontSize).toBe(0)
         await store.patch({ trackerFontSize: 16, settingsFontSize: 11 })
-        expect((await store.load())).toMatchObject({ trackerFontSize: 16, settingsFontSize: 11 })
+        expect((await store.load())).toMatchObject({ trackerFontSize: 16, agentFontSize: 0, settingsFontSize: 11 })
+        await store.patch({ agentFontSize: 9 })
+        expect((await store.load())).toMatchObject({ agentFontSize: 9, settingsFontSize: 11 })
+        // The second widget sized with the settings tab before 90: a file written before it has no agent size, and reads the settings' (the look kept).
+        const before90 = new PrefsStore(fakeStorage({ [`@self:${PREFS_PATH}`]: { trackerFontSize: 16, settingsFontSize: 11 } }).storage)
+        expect((await before90.load())).toMatchObject({ agentFontSize: 11, settingsFontSize: 11 })
+        const hostAgent = new PrefsStore(fakeStorage({ [`@self:${PREFS_PATH}`]: { agentFontSize: 0, settingsFontSize: 11 } }).storage)
+        expect((await hostAgent.load())).toMatchObject({ agentFontSize: 0, settingsFontSize: 11 })
         await store.patch({ trackerFontSize: 90 })
         expect((await store.load()).trackerFontSize).toBe(32)
         await store.patch({ settingsFontSize: 0 })

@@ -21,8 +21,9 @@ describe('the font sizes (74e)', () => {
 
     it('writes each size as a token on the body in px, and takes it off for the host’s', () => {
         const body = document.createElement('div')
-        applyFontSizes(body, { tracker: 16, settings: 0 })
+        applyFontSizes(body, { tracker: 16, settings: 0, agent: 14 })
         expect(body.style.getPropertyValue('--lh-size-tracker')).toBe('16px')
+        expect(body.style.getPropertyValue('--lh-size-agent')).toBe('14px')
         expect(body.style.getPropertyValue('--lh-size-settings')).toBe('')
         // One box at a time: an undefined size leaves the other as it was.
         applyFontSizes(body, { settings: 12 })
@@ -36,6 +37,8 @@ describe('the font sizes (74e)', () => {
         const plain = document.createElement('div')
         sizeRoot(plain, 'settings')
         expect(plain.classList.contains('lh-size-settings')).toBe(true)
+        sizeRoot(plain, 'agent')
+        expect(Array.from(plain.classList)).toEqual(['lh-size-agent'])
         sizeRoot(plain, 'tracker')
         expect(Array.from(plain.classList)).toEqual(['lh-size-tracker'])
         const widget = document.createElement('div')
@@ -49,6 +52,7 @@ describe('the font sizes (74e)', () => {
 
     it('reads each root’s size from its token, the host’s when unset', () => {
         expect(FONT_SIZE_CSS).toContain('.lh-size-tracker { font-size: var(--lh-size-tracker, inherit); }')
+        expect(FONT_SIZE_CSS).toContain('.lh-size-agent { font-size: var(--lh-size-agent, inherit); }')
         expect(FONT_SIZE_CSS).toContain('.lh-size-settings { font-size: var(--lh-size-settings, inherit); }')
     })
 })

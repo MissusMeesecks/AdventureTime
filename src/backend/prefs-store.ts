@@ -179,6 +179,8 @@ export interface UiPrefs {
      * the host's own size, the default.
      */
     trackerFontSize: number
+    /** The second widget's size (90); it sized with the settings tab before. */
+    agentFontSize: number
     settingsFontSize: number
     /**
      * The AI Theme Wizard's theme (74b, departure 81): the legacy's fifteen
@@ -735,6 +737,7 @@ export const DEFAULT_PREFS: UiPrefs = {
     layout: DEFAULT_LAYOUT,
     trackerTheme: DEFAULT_THEME,
     trackerFontSize: 0,
+    agentFontSize: 0,
     settingsFontSize: 0,
     customTheme: null,
     savedThemes: {},
@@ -1218,6 +1221,9 @@ export function readPrefs(stored: unknown): UiPrefs {
     if (source.layout !== undefined) prefs.layout = readLayout(source.layout)
     if (source.trackerTheme !== undefined) prefs.trackerTheme = readThemeId(source.trackerTheme)
     if (source.trackerFontSize !== undefined) prefs.trackerFontSize = readFontSize(source.trackerFontSize)
+    // The second widget sized with the settings tab before 90: a stored file without the agent's size keeps the look.
+    if (source.agentFontSize !== undefined) prefs.agentFontSize = readFontSize(source.agentFontSize)
+    else if (source.settingsFontSize !== undefined) prefs.agentFontSize = readFontSize(source.settingsFontSize)
     if (source.settingsFontSize !== undefined) prefs.settingsFontSize = readFontSize(source.settingsFontSize)
     if (source.customTheme !== undefined) prefs.customTheme = readCustomTheme(source.customTheme)
     if (source.savedThemes !== undefined) prefs.savedThemes = readSavedThemes(source.savedThemes)
@@ -1367,6 +1373,7 @@ export function readPrefsPatch(patch: unknown): Partial<UiPrefs> {
     if (source.layout !== undefined) clean.layout = readLayout(source.layout)
     if (source.trackerTheme !== undefined) clean.trackerTheme = readThemeId(source.trackerTheme)
     if (source.trackerFontSize !== undefined) clean.trackerFontSize = readFontSize(source.trackerFontSize)
+    if (source.agentFontSize !== undefined) clean.agentFontSize = readFontSize(source.agentFontSize)
     if (source.settingsFontSize !== undefined) clean.settingsFontSize = readFontSize(source.settingsFontSize)
     if (source.customTheme !== undefined) clean.customTheme = readCustomTheme(source.customTheme)
     if (source.savedThemes !== undefined) clean.savedThemes = readSavedThemes(source.savedThemes)

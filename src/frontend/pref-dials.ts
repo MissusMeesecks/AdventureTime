@@ -76,9 +76,9 @@ export const PREF_DIAL_GROUPS: readonly DialGroup[] = [
             },
             {
                 id: 'display',
-                icon: '🖼️',
-                title: 'Portraits & inventory',
-                lead: 'How an item’s worth is drawn. The portraits switch is the first row of Portraits and location images since 83.',
+                icon: '🎒',
+                title: 'Inventory settings',
+                lead: 'How an item’s worth is drawn on the Inventory card.',
                 rows: [
                     { key: 'inventoryShowTotal', kind: 'switch', label: 'Show the total inventory value', hint: 'Every item’s worth and every sum of money in the Inventory card added up in its header, in the currency most lines use.' },
                     { key: 'inventoryWorthMode', kind: 'select', label: 'Item worth', hint: 'An item’s (~120 GP) or (Worth: 120 GP): hover keeps it as a tooltip, display draws it as a coin badge beside the item.', options: [{ value: 'hover', label: 'Hover (tooltip only)' }, { value: 'display', label: 'Display (inline badge)' }] },

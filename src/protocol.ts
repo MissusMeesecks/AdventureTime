@@ -627,7 +627,9 @@ export interface PrefsResult {
         trackerTheme?: ThemeId
         /** The tracker's font size in px (74e): the tracker widget, the play tab, the cards under the messages; 0 is the host's. */
         trackerFontSize?: number
-        /** The second box's font size in px (74e): the map/scene/relationships widget and the settings tab; 0 is the host's. */
+        /** The second widget's font size in px (90): the Lorebook Agent, Campaign Records and Visuals/Map box; it sized with the settings tab before. 0 is the host's. */
+        agentFontSize?: number
+        /** The settings tab's font size in px (74e; the second widget's too until 90); 0 is the host's. */
         settingsFontSize?: number
         /** The day/night cycle (74c): tint every root and show the sky badge by the memo's `[TIME]` clock. Off, as Multihog ships it. */
         dayNightCycle?: boolean

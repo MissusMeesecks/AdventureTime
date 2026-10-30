@@ -47,6 +47,8 @@ above is done. Reports are worked through in batches, not in real time.
 
 ## What it does
 
+![Screenshot of AdventureTime for Lumiverse extension interface](AdventureTime.png)
+
 - **The State Tracker.** After every reply a second model call reads what
   changed and keeps a memo of it: the character, the party, the inventory
   with its worth, the quests, combat, the in-world time and date, spell

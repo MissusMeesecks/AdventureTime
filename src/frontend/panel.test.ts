@@ -1229,7 +1229,7 @@ describe('the settings in Multihog’s categories (63)', () => {
         'settings.get': { settings: createDefaultSettings() },
         'prefs.get': { prefs: PREFS },
         'prefs.patch': { prefs: PREFS },
-        'status.get': { version: '1.0.0-beta.7', host: '1.2.0', checked: true, granted: ['a'], missing: [], dice: { registered: false, mode: 'off' } },
+        'status.get': { version: '1.0.0-beta.8', host: '1.2.0', checked: true, granted: ['a'], missing: [], dice: { registered: false, mode: 'off' } },
         'connections.list': { connections: [{ id: 'conn-1', name: 'Main', model: 'deepseek', isDefault: true }] },
         'scene.connections': { connections: [{ id: 'img-1', name: 'Swarm', provider: 'swarmui', model: 'anima', isDefault: true }] },
     })
@@ -1252,7 +1252,7 @@ describe('the settings in Multihog’s categories (63)', () => {
         expect(titles(category(root, 'world'))).toEqual(['World Progression'])
         const general = category(root, 'general').querySelector('.lh-category-body')!
         expect(general.children[0]!.classList.contains('lh-version-twin')).toBe(true)
-        expect(general.children[0]!.textContent).toContain('AdventureTime 1.0.0-beta.7')
+        expect(general.children[0]!.textContent).toContain('AdventureTime 1.0.0-beta.8')
         // Core & Branching (81), Multihog's first drawer, is the first card; the Layout and Cartridges cards (82) follow.
         expect(general.children[1]!.getAttribute('data-lh-card')).toBe('core-branching')
         expect(general.children[2]!.getAttribute('data-lh-card')).toBe('layout')
@@ -2108,8 +2108,8 @@ describe('the theme layer (74a)', () => {
         expect((second.querySelector('.lh-backdrop-preview--night') as HTMLElement).style.backgroundImage).toBe('url("/images/n.jpg")')
     })
 
-    it('offers the two font sizes as sliders under the theme, marks the roots as their boxes, and writes a size on the body (74e)', async () => {
-        const { bridge, requests, emit } = makeBridge({ 'settings.get': { settings: createDefaultSettings() }, 'prefs.get': { prefs: { messageCards: true, bars: {}, layout: 'widgets', trackerFontSize: 16, settingsFontSize: 0 } }, 'prefs.patch': { prefs: { trackerFontSize: 20 } } })
+    it('offers the three font sizes as sliders under the theme, marks the roots as their boxes, and writes a size on the body (74e; three since 90)', async () => {
+        const { bridge, requests, emit } = makeBridge({ 'settings.get': { settings: createDefaultSettings() }, 'prefs.get': { prefs: { messageCards: true, bars: {}, layout: 'widgets', trackerFontSize: 16, agentFontSize: 12, settingsFontSize: 0 } }, 'prefs.patch': { prefs: { trackerFontSize: 20 } } })
         const root = document.createElement('div')
         const rest = document.createElement('div')
         const widget = document.createElement('div')
@@ -2120,18 +2120,25 @@ describe('the theme layer (74a)', () => {
         mountPanel(root, bridge, makeHost().host, { rest, scene })
         await settle()
 
-        // The roots: this one the tracker's, the second tab and the second widget (its box, not its body) the settings'.
+        // The roots: this one the tracker's, the second widget (its box, not its body) the agent's, the settings tab the settings'.
         expect(root.classList.contains('lh-size-tracker')).toBe(true)
         expect(rest.classList.contains('lh-size-settings')).toBe(true)
-        expect(widget.classList.contains('lh-size-settings')).toBe(true)
-        expect(scene.classList.contains('lh-size-settings')).toBe(false)
+        expect(widget.classList.contains('lh-size-agent')).toBe(true)
+        expect(widget.classList.contains('lh-size-settings')).toBe(false)
+        expect(scene.classList.contains('lh-size-agent')).toBe(false)
         // The two rows sit under the theme's hint, before the cards tick.
         // With a second tab the settings are drawn in it (47b), the layout box among them.
         const box = rest.querySelector('.lh-layout')!
         // After the day/night row and its hint (74c).
         expect(box.children[11]!.classList.contains('lh-font-sizes')).toBe(true)
         const tracker = rest.querySelector('input[data-lh-field="trackerFontSize"]') as HTMLInputElement
+        const agent = rest.querySelector('input[data-lh-field="agentFontSize"]') as HTMLInputElement
         const settings = rest.querySelector('input[data-lh-field="settingsFontSize"]') as HTMLInputElement
+        // Three rows, in the boxes' order, one per widget and one for the settings tab (90).
+        expect(Array.from(rest.querySelectorAll('.lh-font-size-row input[type="range"]')).map((i) => i.getAttribute('data-lh-field'))).toEqual(['trackerFontSize', 'agentFontSize', 'settingsFontSize'])
+        expect(agent.value).toBe('12')
+        expect(agent.closest('.lh-font-size-row')!.querySelector('span')!.textContent).toBe('Agent & maps font size')
+        expect(document.body.style.getPropertyValue('--lh-size-agent')).toBe('12px')
         expect([tracker.type, tracker.min, tracker.max]).toEqual(['range', '8', '32'])
         expect(tracker.value).toBe('16')
         expect(tracker.closest('.lh-font-size-row')!.querySelector('.lh-font-size-value')!.textContent).toBe('16px')
@@ -2162,6 +2169,11 @@ describe('the theme layer (74a)', () => {
         emit('prefs.changed', { prefs: { settingsFontSize: 0 } })
         expect(document.body.style.getPropertyValue('--lh-size-settings')).toBe('')
         expect(settings.closest('.lh-font-size-row')!.querySelector('.lh-font-size-value')!.textContent).toBe('the host’s')
+        // The agent's row follows the event on its own key (90), and the settings' token does not move with it.
+        emit('prefs.changed', { prefs: { agentFontSize: 10 } })
+        expect(agent.value).toBe('10')
+        expect(document.body.style.getPropertyValue('--lh-size-agent')).toBe('10px')
+        expect(document.body.style.getPropertyValue('--lh-size-settings')).toBe('')
     })
 
     it('greys a disabled box visibly, and the prompt dialog’s box is styled as the panel is (73g-bis)', () => {
