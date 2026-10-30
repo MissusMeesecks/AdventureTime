@@ -23,14 +23,24 @@
  * and a picture the host wrote over is laid again on the next sync. Before
  * that, a clear after the host had written restored the empty value saved
  * earlier, which wiped the host's own background to a plain colour.
+ *
+ * The host may keep its layer transparent (73f-quater, Lumiverse 1.2.5's
+ * rebuilt `sceneBackgroundLayer`: `opacity: 0` until the host has a scene
+ * background of its own to fade in). A picture laid on such a layer is on
+ * the page and invisible, so while this module's picture is on the layer
+ * the layer is shown at full opacity inline, said once in the console, and
+ * the inline opacity the layer had is put back with the image on clear.
  */
 
 /** What the finder reads: the page and its window, injectable for tests. */
 export interface BackgroundView {
     innerWidth: number
     innerHeight: number
-    getComputedStyle(element: Element): { backgroundImage: string }
+    getComputedStyle(element: Element): { backgroundImage: string; opacity?: string }
 }
+
+/** The opacity under which a layer is as good as hidden. */
+const TRANSPARENT = 0.05
 
 const NAMED = /background|wallpaper|(^|[^a-z])bg([^a-z]|$)/i
 const COVERS = 0.5
@@ -79,7 +89,9 @@ export interface LocationBackground {
 export function createLocationBackground(doc: Document, view: BackgroundView, log: (line: string) => void): LocationBackground {
     let layer: HTMLElement | null = null
     let onBody = false
-    let kept: { image: string; size: string; position: string; repeat: string } | null = null
+    let kept: { image: string; size: string; position: string; repeat: string; opacity: string } | null = null
+    /** Whether this module raised the layer's opacity, so a clear knows to put it back. */
+    let raised = false
     let shown: string | null = null
     /** The image as the layer serialised it after this wrote it; the mark of this module's own picture. */
     let written: string | null = null
@@ -101,17 +113,28 @@ export function createLocationBackground(doc: Document, view: BackgroundView, lo
         const found = findBackgroundLayer(doc, view)
         onBody = !found
         layer = found ?? doc.body
-        kept = { image: layer.style.backgroundImage, size: layer.style.backgroundSize, position: layer.style.backgroundPosition, repeat: layer.style.backgroundRepeat }
+        kept = { image: layer.style.backgroundImage, size: layer.style.backgroundSize, position: layer.style.backgroundPosition, repeat: layer.style.backgroundRepeat, opacity: layer.style.opacity }
+        raised = false
         log(found
             ? `[AdventureTime] location background: laid on the host's ${describeElement(found)}`
             : '[AdventureTime] location background: no background layer found on the page; laid on the body, which the host’s panes may cover')
         return layer
     }
 
+    /** A layer the host keeps transparent is shown while the picture is on it; said once, and again only if the host put it back. */
+    function show(target: HTMLElement): void {
+        if (raised && target.style.opacity === '1') return
+        const opacity = Number.parseFloat(view.getComputedStyle(target).opacity ?? '1')
+        if (Number.isNaN(opacity) || opacity >= TRANSPARENT) return
+        target.style.opacity = '1'
+        if (!raised) log(`[AdventureTime] location background: the host keeps ${describeElement(target)} transparent; shown at full opacity while the picture is laid`)
+        raised = true
+    }
+
     return {
         apply(src) {
             if (!src) { this.clear(); return }
-            if (src === shown && layer?.isConnected && stillOurs()) return
+            if (src === shown && layer?.isConnected && stillOurs()) { show(layer!); return }
             if (layer?.isConnected) adoptHostChange()
             const target = choose()
             const escaped = src.replace(/["\\\r\n]/g, '\\$&')
@@ -122,11 +145,13 @@ export function createLocationBackground(doc: Document, view: BackgroundView, lo
                 target.style.backgroundPosition = 'center'
                 target.style.backgroundRepeat = 'no-repeat'
             }
+            show(target)
             shown = src
         },
         clear() {
             if (layer && kept) {
                 // Only this module's own picture is taken off; the host's value stands.
+                if (raised && layer.style.opacity === '1') layer.style.opacity = kept.opacity
                 if (stillOurs()) {
                     layer.style.backgroundImage = kept.image
                     if (onBody) {
@@ -142,6 +167,7 @@ export function createLocationBackground(doc: Document, view: BackgroundView, lo
             kept = null
             shown = null
             written = null
+            raised = false
         },
     }
 }

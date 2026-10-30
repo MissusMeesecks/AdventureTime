@@ -4,18 +4,21 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { createLocationBackground, describeElement, findBackgroundLayer, type BackgroundView } from './location-background.js'
 
 /** A page whose elements have sizes and background images of our choosing. */
-function page(spec: Array<{ tag?: string; id?: string; className?: string; width: number; height: number; image?: string }>) {
+function page(spec: Array<{ tag?: string; id?: string; className?: string; width: number; height: number; image?: string; opacity?: string }>) {
     document.body.replaceChildren()
     const images = new Map<Element, string>()
+    const opacities = new Map<Element, string>()
     for (const item of spec) {
         const element = document.createElement(item.tag ?? 'div')
         if (item.id) element.id = item.id
         if (item.className) element.className = item.className
         element.getBoundingClientRect = () => ({ width: item.width, height: item.height, top: 0, left: 0, right: item.width, bottom: item.height, x: 0, y: 0, toJSON: () => ({}) })
         images.set(element, item.image ?? 'none')
+        if (item.opacity !== undefined) opacities.set(element, item.opacity)
         document.body.append(element)
     }
-    const view: BackgroundView = { innerWidth: 1000, innerHeight: 800, getComputedStyle: (element) => ({ backgroundImage: images.get(element) ?? 'none' }) }
+    // The computed opacity follows an inline write, as a browser's does, else the page's own value.
+    const view: BackgroundView = { innerWidth: 1000, innerHeight: 800, getComputedStyle: (element) => ({ backgroundImage: images.get(element) ?? 'none', opacity: (element as HTMLElement).style.opacity || opacities.get(element) || '1' }) }
     return view
 }
 
@@ -105,6 +108,44 @@ describe('the host’s background layer (73f)', () => {
         onBody.clear()
         expect(document.body.style.backgroundImage).toBe('url("https://lumiverse/body.png")')
         expect(document.body.style.backgroundSize).toBe('cover')
+    })
+
+    it('shows a layer the host keeps transparent while the picture is on it, once, and puts its opacity back on clear (73f-quater)', () => {
+        const view = page([{ className: '_sceneBackgroundLayer_115ow_28', width: 1000, height: 800, image: 'url(host.png)', opacity: '0' }])
+        const layer = document.querySelector<HTMLElement>('._sceneBackgroundLayer_115ow_28')!
+        const lines: string[] = []
+        const background = createLocationBackground(document, view, (line) => lines.push(line))
+        background.apply('https://host/a.png')
+        expect(layer.style.backgroundImage).toBe('url("https://host/a.png")')
+        expect(layer.style.opacity).toBe('1')
+        expect(lines).toEqual([
+            "[AdventureTime] location background: laid on the host's div._sceneBackgroundLayer_115ow_28",
+            '[AdventureTime] location background: the host keeps div._sceneBackgroundLayer_115ow_28 transparent; shown at full opacity while the picture is laid',
+        ])
+        // The same picture again, and another: nothing more is said, and the layer stays shown.
+        background.apply('https://host/a.png')
+        background.apply('https://host/b.png')
+        expect(layer.style.opacity).toBe('1')
+        expect(lines).toHaveLength(2)
+        // The host put its transparency back meanwhile (a re-render): the next sync shows the layer again, quietly.
+        layer.style.opacity = ''
+        background.apply('https://host/b.png')
+        expect(layer.style.opacity).toBe('1')
+        expect(lines).toHaveLength(2)
+        // Clear puts the inline opacity back with the image.
+        background.clear()
+        expect(layer.style.opacity).toBe('')
+        expect(layer.style.backgroundImage).toBe('')
+        // A layer the host shows is left alone: no opacity written, nothing said about it.
+        const shownView = page([{ id: 'background', width: 1000, height: 800, image: 'url(host.png)', opacity: '1' }])
+        const shownLayer = document.getElementById('background')!
+        const quiet: string[] = []
+        const plain = createLocationBackground(document, shownView, (line) => quiet.push(line))
+        plain.apply('https://host/c.png')
+        expect(shownLayer.style.opacity).toBe('')
+        expect(quiet).toHaveLength(1)
+        plain.clear()
+        expect(shownLayer.style.opacity).toBe('')
     })
 
     it('with no layer on the page, uses the body, sized to cover, and says so', () => {

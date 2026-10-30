@@ -143,7 +143,13 @@ export function readsTheFixture(path, content) {
     return /\.test\.[cm]?[jt]s$/.test(path) && content.includes(FIXTURE_NAME)
 }
 
-/** The public tree's CI: install, test, typecheck, build. */
+/**
+ * The heap the public workflow runs the suite with (88-ter): the private
+ * workflow's margin, found again when the first public run's worker died.
+ */
+export const PUBLIC_TEST_HEAP = '--max-old-space-size=3072'
+
+/** The public tree's CI: install, test, typecheck, build, the suite on the bigger heap. */
 export function publicWorkflow() {
     return [
         '# The public tree\'s checks: what a contributor runs locally, run on every push',
@@ -171,7 +177,13 @@ export function publicWorkflow() {
         '          node-version: 22',
         '          cache: npm',
         '      - run: npm ci',
+        '      # Each test file runs in its own worker with Node\'s default heap, which',
+        '      # the runner sizes at about 2 GB; the panel test outgrows it and the',
+        '      # worker dies ("Worker exited unexpectedly"), so the suite gets the',
+        '      # same margin the private repository\'s workflow gives it.',
         '      - run: npm test',
+        '        env:',
+        `          NODE_OPTIONS: ${PUBLIC_TEST_HEAP}`,
         '      - run: npm run typecheck',
         '      - run: npm run build',
         '',
