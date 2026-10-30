@@ -633,6 +633,8 @@ export interface PrefsResult {
         settingsFontSize?: number
         /** The day/night cycle (74c): tint every root and show the sky badge by the memo's `[TIME]` clock. Off, as Multihog ships it. */
         dayNightCycle?: boolean
+        /** The choice buttons' backing (74c-ter, 74c-quater; departure 154): what a theme or the day/night phase does to the choice buttons under the replies — `tinted` (the translucent accent), `solid` (the theme's background behind them) or `hover` (that backing while the list is hovered). `tinted`. */
+        choicesBacking?: 'tinted' | 'solid' | 'hover'
         /** The XP bar at the bottom (74f): the XP card's row pinned at the foot of the tracker's box, the card left out. On, as Multihog's `xpBarAtBottom` ships. */
         xpBarAtBottom?: boolean
         /** The animated bars (74h): gains and losses shown on every custom `((BAR))` and `((BARREL))` as they land. On, as Multihog's `animateAllCustomBarChanges` ships. */
@@ -1345,7 +1347,7 @@ export interface RecordBookDTO {
     name: string
     /** The category after the prefix: `NPC`, `LOC`, `World`… */
     category: string
-    kind: 'npc' | 'location' | 'world' | 'other'
+    kind: 'npc' | 'location' | 'world' | 'skeleton' | 'other'
     entries: RecordEntryDTO[]
     tokens: number
 }

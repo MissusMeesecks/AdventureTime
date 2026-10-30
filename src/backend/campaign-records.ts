@@ -63,14 +63,20 @@ export function estimateTokens(content: string): number {
     return Math.round(stripMapSection(content).length / 4)
 }
 
-/** The kind a book's folder draws as, by the legacy's name rules: NPCs, Locations, World, or any other. */
+/**
+ * The kind a book's folder draws as, by the legacy's name rules: NPCs,
+ * Locations, World, or any other — and the World Skeleton's seed book as
+ * its own kind (78b-bis): it filed under World and drew as a second *World*
+ * folder beside World Progression's reports.
+ */
 export function bookKind(name: string, prefix: string): RecordBookDTO['kind'] {
     const lower = name.toLowerCase()
     const root = campaignBookName(prefix, null).toLowerCase()
     const category = root && lower.startsWith(`${root}_`) ? lower.slice(root.length + 1) : lower
     if (['npc', 'npcs'].includes(category) || lower.endsWith('_npc') || lower.endsWith('_npcs')) return 'npc'
     if (isLocationBookName(name, prefix)) return 'location'
-    if (['world', 'skeleton'].includes(category) || lower.endsWith('_world') || lower.endsWith('_skeleton')) return 'world'
+    if (category === 'skeleton' || lower.endsWith('_skeleton')) return 'skeleton'
+    if (category === 'world' || lower.endsWith('_world')) return 'world'
     return 'other'
 }
 
@@ -80,7 +86,7 @@ export function bookCategory(name: string, prefix: string): string {
     return root && name.toLowerCase().startsWith(`${root.toLowerCase()}_`) ? name.slice(root.length + 1) : name
 }
 
-const KIND_ORDER: Record<RecordBookDTO['kind'], number> = { npc: 0, location: 1, other: 2, world: 3 }
+const KIND_ORDER: Record<RecordBookDTO['kind'], number> = { npc: 0, location: 1, other: 2, world: 3, skeleton: 4 }
 
 export function entryDTO(entry: WorldEntry): RecordEntryDTO {
     const title = String(entry.comment ?? '').trim()

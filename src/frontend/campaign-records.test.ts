@@ -123,6 +123,16 @@ describe('the Campaign records fold (71a)', () => {
         expect(Array.from(row('l1').querySelectorAll('.lh-records-actions button')).map((b) => b.getAttribute('data-lh-field'))).toEqual(['records-pin', 'records-edit', 'records-clean', 'records-delete'])
         openFolder('Vell_World')
         expect(row('w1').querySelector('[data-lh-field="records-clean"]')).toBeNull()
+        expect(folder('Vell_World').querySelector('.lh-records-folder-icon')!.textContent).toBe('🌍')
+        // The World Skeleton's seed book is its own folder after the reports (78b-bis): it drew as a second World.
+        const skeleton = { id: 'b4', name: 'Vell_Skeleton', category: 'Skeleton', kind: 'skeleton' as const, entries: [entry({ id: 's1', title: 'FACTION: The Night Shift Network', content: 'A seed.', disabled: true })], tokens: 2 }
+        const seeded = mount({ result: { ...RESULT, books: [...RESULT.books, skeleton] } })
+        seeded.fold.setChat('c1')
+        await seeded.openIt()
+        expect(Array.from(seeded.root.querySelectorAll('.lh-records-folder')).map((f) => f.querySelector('.lh-records-folder-name')!.textContent)).toEqual(['NPCs', 'Locations', 'World', 'World skeleton'])
+        expect(seeded.folder('Vell_Skeleton').querySelector('.lh-records-folder-icon')!.textContent).toBe('🦴')
+        seeded.openFolder('Vell_Skeleton')
+        expect(seeded.row('s1').querySelector('[data-lh-field="records-clean"]')).toBeNull()
         // The mapping section off: no badges, no form button.
         const off = mount({ result: { ...RESULT, mapping: false } })
         off.fold.setChat('c1')

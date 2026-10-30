@@ -195,6 +195,16 @@ export interface UiPrefs {
      */
     dayNightCycle: boolean
     /**
+     * The choice buttons' backing (74c-ter, 74c-quater; departure 154): what
+     * a theme or the day/night phase does to the narrator's choice buttons
+     * under the replies — `tinted` (the translucent accent they were always
+     * drawn with), `solid` (the theme's or the phase's own background behind
+     * them) or `hover` (that backing while the pointer is over the list).
+     * `tinted`, so nothing changes on update; a file from 1.0.0-beta.10 is
+     * read through its `dayNightChoices`.
+     */
+    choicesBacking: 'tinted' | 'solid' | 'hover'
+    /**
      * The XP bar at the bottom (74f): the XP card's row at the foot of the
      * tracker's box, the card left out of the cards. On, as Multihog's
      * `xpBarAtBottom` ships.
@@ -742,6 +752,7 @@ export const DEFAULT_PREFS: UiPrefs = {
     customTheme: null,
     savedThemes: {},
     dayNightCycle: false,
+    choicesBacking: 'tinted',
     xpBarAtBottom: true,
     animateAllCustomBarChanges: true,
     panelLayoutMode: 'stack',
@@ -1228,6 +1239,12 @@ export function readPrefs(stored: unknown): UiPrefs {
     if (source.customTheme !== undefined) prefs.customTheme = readCustomTheme(source.customTheme)
     if (source.savedThemes !== undefined) prefs.savedThemes = readSavedThemes(source.savedThemes)
     if (source.dayNightCycle !== undefined) prefs.dayNightCycle = source.dayNightCycle === true
+    if (source.choicesBacking === 'tinted' || source.choicesBacking === 'solid' || source.choicesBacking === 'hover') prefs.choicesBacking = source.choicesBacking
+    else {
+        // 1.0.0-beta.10 kept the three under the cycle's own key (74c-ter).
+        const older = (source as Record<string, unknown>).dayNightChoices
+        if (older === 'solid' || older === 'hover') prefs.choicesBacking = older
+    }
     if (source.xpBarAtBottom !== undefined) prefs.xpBarAtBottom = source.xpBarAtBottom === true
     if (source.animateAllCustomBarChanges !== undefined) prefs.animateAllCustomBarChanges = source.animateAllCustomBarChanges === true
     if (source.panelLayoutMode === 'tabs' || source.panelLayoutMode === 'stack') prefs.panelLayoutMode = source.panelLayoutMode
@@ -1378,6 +1395,7 @@ export function readPrefsPatch(patch: unknown): Partial<UiPrefs> {
     if (source.customTheme !== undefined) clean.customTheme = readCustomTheme(source.customTheme)
     if (source.savedThemes !== undefined) clean.savedThemes = readSavedThemes(source.savedThemes)
     if (source.dayNightCycle !== undefined) clean.dayNightCycle = source.dayNightCycle === true
+    if (source.choicesBacking === 'tinted' || source.choicesBacking === 'solid' || source.choicesBacking === 'hover') clean.choicesBacking = source.choicesBacking
     if (source.xpBarAtBottom !== undefined) clean.xpBarAtBottom = source.xpBarAtBottom === true
     if (source.animateAllCustomBarChanges !== undefined) clean.animateAllCustomBarChanges = source.animateAllCustomBarChanges === true
     if (source.panelLayoutMode === 'tabs' || source.panelLayoutMode === 'stack') clean.panelLayoutMode = source.panelLayoutMode

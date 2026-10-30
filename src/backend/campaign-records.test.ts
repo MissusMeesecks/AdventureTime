@@ -66,7 +66,8 @@ describe('the records’ shape (71a)', () => {
         expect(bookKind('Vell_LOC', 'Vell')).toBe('location')
         expect(bookKind('Vell_Places', 'Vell')).toBe('location')
         expect(bookKind('Vell_World', 'Vell')).toBe('world')
-        expect(bookKind('Vell_Skeleton', 'Vell')).toBe('world')
+        expect(bookKind('Vell_Skeleton', 'Vell')).toBe('skeleton')
+        expect(bookKind('Vell_skeleton', 'Vell')).toBe('skeleton')
         expect(bookKind('Vell_Factions', 'Vell')).toBe('other')
         expect(bookCategory('Vell_Factions', 'Vell')).toBe('Factions')
         expect(bookCategory('Other', 'Vell')).toBe('Other')
@@ -97,6 +98,10 @@ describe('the campaign’s records (71a)', () => {
         expect(result.mapped.map((m) => m.siteRoot).sort()).toEqual(['Abbey Undercroft', 'Morrowfen'])
         expect(result.mapped.every((m) => !m.hosted)).toBe(true)
         expect(result.allBooks).toEqual(['Elsewhere', 'Vell_LOC', 'Vell_NPC', 'Vell_World'])
+        // The World Skeleton's seed book is its own kind, listed after the reports (78b-bis): it filed as a second World.
+        const seeded = harness({ ...SEED, Vell_Skeleton: [{ comment: 'FACTION: The Night Shift Network', content: 'A seed.', disabled: true }] }, { campaign: async () => ({ prefix: 'Vell', owned: ['Vell_LOC', 'Vell_NPC', 'Vell_World', 'Vell_Skeleton'] }) })
+        const withSkeleton = await seeded.records.list('c1', 'u1')
+        expect(withSkeleton.books.map((b) => [b.name, b.kind, b.category])).toEqual([['Vell_NPC', 'npc', 'NPC'], ['Vell_LOC', 'location', 'LOC'], ['Vell_World', 'world', 'World'], ['Vell_Skeleton', 'skeleton', 'Skeleton']])
         // With the mapping section off, no MAP badges and no peers.
         const off = harness(SEED, { mapping: { enabled: async () => false, state: new MapStore(storage()), refresh: async () => undefined } })
         expect(await off.records.list('c1', 'u1')).toMatchObject({ mapping: false, mapped: [] })

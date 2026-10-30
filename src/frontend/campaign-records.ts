@@ -139,7 +139,7 @@ export function withStockFolders(result: CampaignRecordsResult): RecordBookDTO[]
 
 /** The folder's name as Multihog's manifest shows it. */
 export function folderName(book: RecordBookDTO): string {
-    return book.kind === 'npc' ? 'NPCs' : book.kind === 'location' ? 'Locations' : book.kind === 'world' ? 'World' : book.category
+    return book.kind === 'npc' ? 'NPCs' : book.kind === 'location' ? 'Locations' : book.kind === 'world' ? 'World' : book.kind === 'skeleton' ? 'World skeleton' : book.category
 }
 
 /** The status badge's words (Multihog's): pinned outranks the scan. */
@@ -290,7 +290,7 @@ export const RECORDS_FOLD_CSS = `
 .adventuretime-panel .lh-details-modal .lh-player-card > summary, .adventuretime-panel .lh-details-modal .lh-library > summary, .adventuretime-panel .lh-details-modal .lh-npc-creator > summary { display: none; }
 `
 
-const KIND_ICON: Record<RecordBookDTO['kind'], string> = { npc: '👤', location: '🗺️', world: '🌍', other: '📁' }
+const KIND_ICON: Record<RecordBookDTO['kind'], string> = { npc: '👤', location: '🗺️', world: '🌍', skeleton: '🦴', other: '📁' }
 
 /**
  * The prose's lines with the agent's turn stamp read off each (73a-ter): a line
@@ -1260,7 +1260,8 @@ export function createRecordsFold(host: RecordsFoldHost): RecordsFold {
         if (book.kind === 'npc') actions.append(iconButton('🔖', 'Save to the NPC library', 'records-bookmark', () => { bookmark(entry).catch(host.fail) }))
         actions.append(iconButton('📌', entry.pinned ? 'Pinned — always in the prompt. Unpin' : 'Pin — keep this entry always in the prompt', 'records-pin', () => { togglePin(entry).catch(host.fail) }, entry.pinned))
         actions.append(iconButton('✎', 'Edit this entry', 'records-edit', () => { editing.set(entry.id, { title: entry.title, keys: entry.keys.join(', '), content: entry.content }); openEntries.add(entry.id); draw() }))
-        if (book.kind !== 'world') actions.append(iconButton('🧹', 'Run a targeted cleanup of this entry through the agent', 'records-clean', () => { cleaning.add(entry.id); openEntries.add(entry.id); draw() }))
+        // World Progression's reports and the skeleton's seed entries are never the agent's to clean (78b-bis).
+        if (book.kind !== 'world' && book.kind !== 'skeleton') actions.append(iconButton('🧹', 'Run a targeted cleanup of this entry through the agent', 'records-clean', () => { cleaning.add(entry.id); openEntries.add(entry.id); draw() }))
         actions.append(iconButton('🗑', 'Delete this entry', 'records-delete', () => { removeEntry(entry).catch(host.fail) }))
         row.append(actions)
         row.addEventListener('click', () => { if (openEntries.has(entry.id)) openEntries.delete(entry.id); else openEntries.add(entry.id); draw() })

@@ -46,6 +46,7 @@ import { THEME_CSS, THEME_WIZARD_CSS, applyCustomTheme, applyTheme, readThemeId,
 import { readCustomTheme, readSavedThemes, type CustomTheme } from '../tracker/theme-wizard.js'
 import { FONT_SIZE_CSS, FONT_SIZE_MAX, FONT_SIZE_MIN, applyFontSizes, fontSizeLabel, readFontSize, sizeRoot, type FontSizeBox } from './font-sizes.js'
 import { DAY_NIGHT_CSS, applyDayNightCycle } from './day-night.js'
+import { CHOICES_BACKINGS, CHOICES_BACKING_CSS, applyChoicesBacking, readChoicesBacking } from './choices-backing.js'
 import { BACKDROP_CSS, BACKDROP_PREF, applyBackdrops, backdropConfig, backdropRoot, readBackdrop, scaleBackdropImage, type Backdrop, type BackdropBox } from './backdrop.js'
 import { MAX_PORTRAIT_BYTES, toDataUrl } from './tracker-panel.js'
 import { MAP_THEME_CSS, applyMapTheme, createMapThemeCard } from './map-theme-card.js'
@@ -586,6 +587,37 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
             .then((result) => { showTheme(result.prefs?.trackerTheme) })
             .catch(fail)
     })
+    // The choice buttons' backing (74c-ter, 74c-quater; departure 154; the
+    // maintainer's asks of 2026-10-30): the theme's or the phase's translucent
+    // accent reaches the choice buttons under the replies, which read badly
+    // over a chat background with the host's glass look on. A select under
+    // the theme's hint — the tint as the buttons were always drawn, a solid
+    // backing, or that backing while the list is hovered — as a class on the
+    // body, where the theme's and the cycle's classes go; 74c-ter had it
+    // under the cycle's tick, for the cycle alone.
+    const choicesBackingRow = el('div', { class: 'lh-layout-row lh-choices-backing-row' })
+    const choicesBackingLabel = el('span')
+    choicesBackingLabel.textContent = 'Choice buttons'
+    const choicesBackingSelect = el('select', { class: 'lh-input', 'data-lh-field': 'choicesBacking', title: 'What the theme or the day/night cycle does to the narrator’s choice buttons under the replies.' }) as HTMLSelectElement
+    const choicesBackingText = { tinted: 'Tinted, as the theme draws them', solid: 'On a solid backing', hover: 'Solid while hovered' } as const
+    for (const value of CHOICES_BACKINGS) {
+        const option = el('option', { value }) as HTMLOptionElement
+        option.textContent = choicesBackingText[value]
+        choicesBackingSelect.append(option)
+    }
+    choicesBackingRow.append(choicesBackingLabel, choicesBackingSelect)
+    const choicesBackingHint = el('div', { class: 'lh-section-help' })
+    choicesBackingHint.textContent = 'The narrator’s choice buttons under the replies take the theme’s or the day/night phase’s tint, which can be hard to read over a chat background with Lumiverse’s glass look on. On a solid backing draws them on the theme’s own background (the host’s with Match Lumiverse); Solid while hovered does so only while the pointer is over the list, the hovered choice keeping its highlighted border. Nothing here touches the chat’s own background.'
+    const showChoicesBacking = (stored: unknown) => {
+        choicesBackingSelect.value = applyChoicesBacking(root.ownerDocument.body, stored)
+    }
+    choicesBackingSelect.addEventListener('change', () => {
+        const choicesBacking = readChoicesBacking(choicesBackingSelect.value)
+        applyChoicesBacking(root.ownerDocument.body, choicesBacking)
+        bridge.request<PrefsResult>('prefs.patch', { patch: { choicesBacking } })
+            .then((result) => { showChoicesBacking(result.prefs?.choicesBacking) })
+            .catch(fail)
+    })
     // The day/night cycle (74c): Multihog's tick under its theme select. The
     // switch is a class on the body (day-night.ts); the phase beside it is the
     // tracker panel's, read off the memo on every redraw. Shown at once, as the
@@ -836,7 +868,7 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
         backdropBlock.append(card)
         showBackdrop(box, null)
     }
-    layoutBox.append(layoutHint, panelLayoutRow, themeRow, themeHint, wizardBox, dayNightRow, dayNightHint, xpBarRow, xpBarHint, animateBarsRow, animateBarsHint, fontSizeBlock, fontSizeHint, backdropBlock, cardsRow, widgetButtons)
+    layoutBox.append(layoutHint, panelLayoutRow, themeRow, themeHint, choicesBackingRow, choicesBackingHint, wizardBox, dayNightRow, dayNightHint, xpBarRow, xpBarHint, animateBarsRow, animateBarsHint, fontSizeBlock, fontSizeHint, backdropBlock, cardsRow, widgetButtons)
     // Each in a folding card of its own (82, the maintainer's ask), as the cards around them.
     // Multihog's name for the drawer since 84 (the maintainer's ask): the theme, the sizes, the backdrops and the widgets live in it.
     const layoutCard = settingsCard('layout', '🎨', 'UI Appearance', layoutBox)
@@ -1501,6 +1533,7 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
             drawLibrary()
             showTheme(result.prefs?.trackerTheme)
             showDayNight(result.prefs?.dayNightCycle)
+            showChoicesBacking(result.prefs?.choicesBacking)
             showXpBar(result.prefs?.xpBarAtBottom)
             showAnimateBars(result.prefs?.animateAllCustomBarChanges)
             showBackdrop('tracker', result.prefs?.trackerBackdrop)
@@ -1534,6 +1567,7 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
             if (prefs.trackerTheme !== undefined) showTheme(prefs.trackerTheme)
             else if (prefs.customTheme !== undefined) showTheme(themeSelect.value)
             if (prefs.dayNightCycle !== undefined) showDayNight(prefs.dayNightCycle)
+            if (prefs.choicesBacking !== undefined) showChoicesBacking(prefs.choicesBacking)
             if (prefs.xpBarAtBottom !== undefined) showXpBar(prefs.xpBarAtBottom)
             if (prefs.panelLayoutMode !== undefined) showPanelLayout(prefs.panelLayoutMode)
             if (prefs.animateAllCustomBarChanges !== undefined) showAnimateBars(prefs.animateAllCustomBarChanges)
@@ -2898,4 +2932,4 @@ export const PANEL_CSS = `
 }
 .rt-combat-side--enemies { color: #e74c3c; }
 .rt-combat-side--allies { color: #3498db; }
-` + '\n' + MAP_PICTURE_CSS + '\n' + RECORDS_FOLD_CSS + '\n' + TERMINAL_FOLD_CSS + '\n' + AGENT_TOOLS_CSS + '\n' + SANDBOX_FOLD_CSS + '\n' + CREATOR_FOLD_CSS + '\n' + NARRATOR_CONFIG_CSS + '\n' + DEVELOPER_CARD_CSS + '\n' + SECOND_PASS_CSS + '\n' + CORE_CARD_CSS + '\n' + INSTANT_FOLD_CSS + '\n' + START_AREA_CSS + '\n' + PLAYER_CARD_FOLD_CSS + '\n' + WAYS_FOLD_CSS + '\n' + IMPORT_FOLD_CSS + '\n' + LIBRARY_FOLD_CSS + '\n' + NPC_CREATOR_FOLD_CSS + '\n' + EDITOR_TAB_CSS + '\n' + SCENE_FOLD_CSS + '\n' + CARD_SETTINGS_CSS + '\n' + PORTRAIT_DRAW_CSS + '\n' + PORTRAITS_SECTION_CSS + '\n' + PORTRAIT_STYLES_CSS + '\n' + PREF_DIALS_CSS + '\n' + CARDS_CSS + '\n' + CATEGORIES_CSS + '\n' + ENLARGE_CSS + '\n' + mapKindArtCss() + '\n' + THEME_CSS + THEME_WIZARD_CSS + FONT_SIZE_CSS + DAY_NIGHT_CSS + BACKDROP_CSS + MAP_THEME_CSS + '\n' + BAR_ANIMATION_CSS + '\n' + RECOLOR_CSS + '\n' + DISPLAY_GROUP_CSS + DISPLAY_GROUPS_CARD_CSS + '\n' + TAB_MODE_CSS + TAB_MODE_PANEL_CSS + SECTIONS_EDITOR_CSS + '\n' + RELATIONSHIP_FLOAT_CSS
+` + '\n' + MAP_PICTURE_CSS + '\n' + RECORDS_FOLD_CSS + '\n' + TERMINAL_FOLD_CSS + '\n' + AGENT_TOOLS_CSS + '\n' + SANDBOX_FOLD_CSS + '\n' + CREATOR_FOLD_CSS + '\n' + NARRATOR_CONFIG_CSS + '\n' + DEVELOPER_CARD_CSS + '\n' + SECOND_PASS_CSS + '\n' + CORE_CARD_CSS + '\n' + INSTANT_FOLD_CSS + '\n' + START_AREA_CSS + '\n' + PLAYER_CARD_FOLD_CSS + '\n' + WAYS_FOLD_CSS + '\n' + IMPORT_FOLD_CSS + '\n' + LIBRARY_FOLD_CSS + '\n' + NPC_CREATOR_FOLD_CSS + '\n' + EDITOR_TAB_CSS + '\n' + SCENE_FOLD_CSS + '\n' + CARD_SETTINGS_CSS + '\n' + PORTRAIT_DRAW_CSS + '\n' + PORTRAITS_SECTION_CSS + '\n' + PORTRAIT_STYLES_CSS + '\n' + PREF_DIALS_CSS + '\n' + CARDS_CSS + '\n' + CATEGORIES_CSS + '\n' + ENLARGE_CSS + '\n' + mapKindArtCss() + '\n' + THEME_CSS + THEME_WIZARD_CSS + FONT_SIZE_CSS + DAY_NIGHT_CSS + CHOICES_BACKING_CSS + BACKDROP_CSS + MAP_THEME_CSS + '\n' + BAR_ANIMATION_CSS + '\n' + RECOLOR_CSS + '\n' + DISPLAY_GROUP_CSS + DISPLAY_GROUPS_CARD_CSS + '\n' + TAB_MODE_CSS + TAB_MODE_PANEL_CSS + SECTIONS_EDITOR_CSS + '\n' + RELATIONSHIP_FLOAT_CSS

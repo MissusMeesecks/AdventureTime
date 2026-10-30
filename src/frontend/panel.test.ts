@@ -1229,7 +1229,7 @@ describe('the settings in Multihog’s categories (63)', () => {
         'settings.get': { settings: createDefaultSettings() },
         'prefs.get': { prefs: PREFS },
         'prefs.patch': { prefs: PREFS },
-        'status.get': { version: '1.0.0-beta.8', host: '1.2.0', checked: true, granted: ['a'], missing: [], dice: { registered: false, mode: 'off' } },
+        'status.get': { version: '1.0.0-beta.11', host: '1.2.0', checked: true, granted: ['a'], missing: [], dice: { registered: false, mode: 'off' } },
         'connections.list': { connections: [{ id: 'conn-1', name: 'Main', model: 'deepseek', isDefault: true }] },
         'scene.connections': { connections: [{ id: 'img-1', name: 'Swarm', provider: 'swarmui', model: 'anima', isDefault: true }] },
     })
@@ -1252,7 +1252,7 @@ describe('the settings in Multihog’s categories (63)', () => {
         expect(titles(category(root, 'world'))).toEqual(['World Progression'])
         const general = category(root, 'general').querySelector('.lh-category-body')!
         expect(general.children[0]!.classList.contains('lh-version-twin')).toBe(true)
-        expect(general.children[0]!.textContent).toContain('AdventureTime 1.0.0-beta.8')
+        expect(general.children[0]!.textContent).toContain('AdventureTime 1.0.0-beta.11')
         // Core & Branching (81), Multihog's first drawer, is the first card; the Layout and Cartridges cards (82) follow.
         expect(general.children[1]!.getAttribute('data-lh-card')).toBe('core-branching')
         expect(general.children[2]!.getAttribute('data-lh-card')).toBe('layout')
@@ -1806,7 +1806,7 @@ describe('the theme layer (74a)', () => {
         const box = root.querySelector('[data-lh-field="themeWizard"]') as HTMLElement
         // Custom chosen: the box shows under the select, the stored theme is on the body as tokens, the library lists Night.
         expect(box.hidden).toBe(false)
-        expect(root.querySelector('.lh-layout')!.children[4]).toBe(box)
+        expect(root.querySelector('.lh-layout')!.children[6]).toBe(box)
         expect(document.body.classList.contains('lh-theme-custom')).toBe(true)
         expect(document.body.style.getPropertyValue('--lh-custom-accent')).toBe('#112233')
         expect(document.body.style.getPropertyValue('--lh-custom-accent-contrast')).toBe('#f4f4f4')
@@ -1900,8 +1900,8 @@ describe('the theme layer (74a)', () => {
         const tick = root.querySelector('.lh-layout input[data-lh-field="dayNightCycle"]') as HTMLInputElement
         expect(tick.checked).toBe(true)
         const box = root.querySelector('.lh-layout')!
-        expect(box.children[5]).toBe(tick.closest('.lh-daynight-row'))
-        expect(box.children[6]!.textContent).toContain('Seven phases: late night, dawn, morning, midday, afternoon, sunset and night')
+        expect(box.children[7]).toBe(tick.closest('.lh-daynight-row'))
+        expect(box.children[8]!.textContent).toContain('Seven phases: late night, dawn, morning, midday, afternoon, sunset and night')
         // The switch is a class on the body, where the tracker panel's phase class meets it.
         expect(document.body.classList.contains('lh-daynight')).toBe(true)
         // The stylesheet the host is handed carries the cycle's rules.
@@ -1920,6 +1920,45 @@ describe('the theme layer (74a)', () => {
         emit('prefs.changed', { prefs: { dayNightCycle: 'yes' } })
         expect(tick.checked).toBe(false)
         expect(document.body.classList.contains('lh-daynight')).toBe(false)
+    })
+
+    it('offers the choice buttons’ backing as a select under the theme’s hint, read onto the body as a class, saved and followed (74c-ter, 74c-quater)', async () => {
+        const { bridge, requests, emit } = makeBridge({ 'settings.get': { settings: createDefaultSettings() }, 'prefs.get': { prefs: { messageCards: true, bars: {}, layout: 'tabs', trackerTheme: 'hacker', choicesBacking: 'solid' } }, 'prefs.patch': { prefs: { choicesBacking: 'hover' } } })
+        const root = document.createElement('div')
+        document.body.className = ''
+        mountPanel(root, bridge, makeHost().host)
+        await settle()
+
+        const select = root.querySelector('.lh-layout select[data-lh-field="choicesBacking"]') as HTMLSelectElement
+        const box = root.querySelector('.lh-layout')!
+        expect(box.children[4]).toBe(select.closest('.lh-choices-backing-row'))
+        expect(box.children[4]!.textContent).toContain('Choice buttons')
+        expect(Array.from(select.options).map((option) => [option.value, option.textContent])).toEqual([['tinted', 'Tinted, as the theme draws them'], ['solid', 'On a solid backing'], ['hover', 'Solid while hovered']])
+        expect(box.children[5]!.textContent).toContain('Nothing here touches the chat’s own background.')
+        expect(select.value).toBe('solid')
+        // Live under any theme and with the cycle off: the rules need no other class.
+        expect(select.disabled).toBe(false)
+        expect(document.body.classList.contains('lh-choice-backing-solid')).toBe(true)
+        expect(document.body.classList.contains('lh-theme-hacker')).toBe(true)
+        // The stylesheet the host is handed carries the two rules, under the backing's class alone.
+        expect(PANEL_CSS).toContain('.lh-choice-backing-solid .lh-choice,\n.lh-choice-backing-hover .lh-choices-list:hover .lh-choice {\n    background: var(--lh-bg, var(--lumiverse-bg, rgba(20, 22, 30, 0.95)));\n}')
+        expect(PANEL_CSS).toContain('.lh-choice-backing-hover .lh-choice { transition: background-color 0.2s ease; }')
+        expect(PANEL_CSS).not.toContain('lh-dn-choices')
+
+        select.value = 'hover'
+        select.dispatchEvent(new Event('change'))
+        await settle()
+        expect(requests.find((r) => r.op === 'prefs.patch')?.params).toEqual({ patch: { choicesBacking: 'hover' } })
+        expect(Array.from(document.body.classList).filter((name) => name.startsWith('lh-choice-backing-'))).toEqual(['lh-choice-backing-hover'])
+
+        emit('prefs.changed', { prefs: { choicesBacking: 'tinted' } })
+        expect(select.value).toBe('tinted')
+        expect(Array.from(document.body.classList).filter((name) => name.startsWith('lh-choice-backing-'))).toEqual([])
+        emit('prefs.changed', { prefs: { choicesBacking: 'solid' } })
+        expect(select.value).toBe('solid')
+        expect(document.body.classList.contains('lh-choice-backing-solid')).toBe(true)
+        emit('prefs.changed', { prefs: { dayNightCycle: false } })
+        expect(select.disabled).toBe(false)
     })
 
     it('puts the Map Themes card second under Persistent maps, paints the theme on the body from the preferences and follows prefs.changed (74g)', async () => {
@@ -1964,8 +2003,8 @@ describe('the theme layer (74a)', () => {
         const tick = root.querySelector('.lh-layout input[data-lh-field="xpBarAtBottom"]') as HTMLInputElement
         expect(tick.checked).toBe(true)
         const box = root.querySelector('.lh-layout')!
-        expect(box.children[7]).toBe(tick.closest('.lh-xpbar-row'))
-        expect(box.children[8]!.textContent).toContain('like an MMO experience bar')
+        expect(box.children[9]).toBe(tick.closest('.lh-xpbar-row'))
+        expect(box.children[10]!.textContent).toContain('like an MMO experience bar')
         expect(PANEL_CSS).toContain('.lh-bottom-xp {')
 
         tick.checked = false
@@ -1989,9 +2028,9 @@ describe('the theme layer (74a)', () => {
         const tick = root.querySelector('.lh-layout input[data-lh-field="animateAllCustomBarChanges"]') as HTMLInputElement
         expect(tick.checked).toBe(true)
         const box = root.querySelector('.lh-layout')!
-        expect(box.children[9]).toBe(tick.closest('.lh-animate-bars-row'))
-        expect(box.children[9]!.textContent).toContain('Animate changes on every custom bar')
-        expect(box.children[10]!.textContent).toContain('A green gain or a red loss')
+        expect(box.children[11]).toBe(tick.closest('.lh-animate-bars-row'))
+        expect(box.children[11]!.textContent).toContain('Animate changes on every custom bar')
+        expect(box.children[12]!.textContent).toContain('A green gain or a red loss')
         expect(PANEL_CSS).toContain('.rt-bar-delta-gain {')
         expect(PANEL_CSS).toContain('.rt-xp-gain-floater {')
         expect(PANEL_CSS).toContain('.rt-barrel-color-control {')
@@ -2034,7 +2073,7 @@ describe('the theme layer (74a)', () => {
         expect(rest.classList.contains('lh-backdrop')).toBe(false)
         // The rows, in the settings tab: two boxes under the font sizes, before the cards tick.
         const box = rest.querySelector('.lh-layout')!
-        expect(box.children[13]!.classList.contains('lh-backdrops')).toBe(true)
+        expect(box.children[15]!.classList.contains('lh-backdrops')).toBe(true)
         const tracker = rest.querySelector('[data-lh-backdrop-box="tracker"]') as HTMLElement
         expect(tracker.querySelector('.lh-backdrop-title')!.textContent).toBe('Backdrop behind the tracker’s box')
         expect((tracker.querySelector('.lh-backdrop-preview') as HTMLElement).style.backgroundImage).toBe('url("/images/day.jpg")')
@@ -2130,7 +2169,7 @@ describe('the theme layer (74a)', () => {
         // With a second tab the settings are drawn in it (47b), the layout box among them.
         const box = rest.querySelector('.lh-layout')!
         // After the day/night row and its hint (74c).
-        expect(box.children[11]!.classList.contains('lh-font-sizes')).toBe(true)
+        expect(box.children[13]!.classList.contains('lh-font-sizes')).toBe(true)
         const tracker = rest.querySelector('input[data-lh-field="trackerFontSize"]') as HTMLInputElement
         const agent = rest.querySelector('input[data-lh-field="agentFontSize"]') as HTMLInputElement
         const settings = rest.querySelector('input[data-lh-field="settingsFontSize"]') as HTMLInputElement

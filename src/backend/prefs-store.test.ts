@@ -162,7 +162,7 @@ describe('the preference store', () => {
             agentMaxTurns: DEFAULT_MAX_TURNS, agentRunEvery: DEFAULT_RUN_EVERY,
             agentWatermarks: {},
             trackerConnectionId: '', agentConnectionId: '',
-            trackerLookbackMode: DEFAULT_LOOKBACK_MODE, trackerLookbackCount: DEFAULT_LOOKBACK_COUNT, layout: 'widgets', trackerTheme: 'native', trackerFontSize: 0, agentFontSize: 0, settingsFontSize: 0, customTheme: null, savedThemes: {}, dayNightCycle: false, xpBarAtBottom: true, animateAllCustomBarChanges: true, panelLayoutMode: 'stack', trackerActiveTab: '', displayGroupsEnabled: false, displayGroupsShowGaps: false, displayGroups: [], mapTheme: { ...DEFAULT_MAP_THEME }, savedMapThemePresets: {}, activeMapThemePresetId: 'factory:ember', trackerBackdrop: { day: '', night: '', strength: 55 }, settingsBackdrop: { day: '', night: '', strength: 55 }, widgetPositions: {}, widgetSizes: {}, widgetMinimized: {}, partyCompact: false, choicesDisplayRegex: true,
+            trackerLookbackMode: DEFAULT_LOOKBACK_MODE, trackerLookbackCount: DEFAULT_LOOKBACK_COUNT, layout: 'widgets', trackerTheme: 'native', trackerFontSize: 0, agentFontSize: 0, settingsFontSize: 0, customTheme: null, savedThemes: {}, dayNightCycle: false, choicesBacking: 'tinted', xpBarAtBottom: true, animateAllCustomBarChanges: true, panelLayoutMode: 'stack', trackerActiveTab: '', displayGroupsEnabled: false, displayGroupsShowGaps: false, displayGroups: [], mapTheme: { ...DEFAULT_MAP_THEME }, savedMapThemePresets: {}, activeMapThemePresetId: 'factory:ember', trackerBackdrop: { day: '', night: '', strength: 55 }, settingsBackdrop: { day: '', night: '', strength: 55 }, widgetPositions: {}, widgetSizes: {}, widgetMinimized: {}, partyCompact: false, choicesDisplayRegex: true,
             trackerRunEvery: DEFAULT_TRACKER_RUN_EVERY, trackerWatermarks: {},
             trackerDirectLookback: 5, sceneLookback: 3, agentDirectLookback: 10,
             scenePictureAuto: false, scenePictureTrigger: 'location_change', scenePictureEveryN: 1, scenePicturePresentNpcs: true, scenePictureConnectionId: '', portraitSkipPromptDialog: false, portraitLocationBackground: false, attachBooksToCard: true, attachBooksTarget: 'chat',
@@ -796,6 +796,34 @@ describe('the backdrops (74d)', () => {
         // A record written by a later build, or by hand, is read on load alone: the patch cleans only what it writes.
         const kept = fakeStorage({ [`@self:${PREFS_PATH}`]: { trackerBackdrop: { day: '/images/k.jpg', night: '', strength: 20 }, settingsBackdrop: { day: '', night: 'https://host/s.jpg', strength: 80 } } })
         expect((await new PrefsStore(kept.storage).load())).toMatchObject({ trackerBackdrop: { day: '/images/k.jpg', night: '', strength: 20 }, settingsBackdrop: { day: '', night: 'https://host/s.jpg', strength: 80 } })
+    })
+})
+
+describe('the choice buttons’ backing (74c-ter, 74c-quater)', () => {
+    it('is the tint by default, keeps one of the three, reads anything else as the tint, and reads a beta.10 file’s dayNightChoices', async () => {
+        const { storage } = fakeStorage()
+        const store = new PrefsStore(storage)
+        expect((await store.load()).choicesBacking).toBe('tinted')
+        await store.patch({ choicesBacking: 'solid' })
+        expect((await store.load()).choicesBacking).toBe('solid')
+        await store.patch({ choicesBacking: 'hover' })
+        expect((await store.load()).choicesBacking).toBe('hover')
+        await store.patch({ choicesBacking: 'glass' as never })
+        expect((await store.load()).choicesBacking).toBe('hover')
+        await store.patch({ choicesBacking: 'tinted' })
+        expect((await store.load()).choicesBacking).toBe('tinted')
+        const seeded = fakeStorage({ [`@self:${PREFS_PATH}`]: { choicesBacking: 1 } })
+        expect((await new PrefsStore(seeded.storage).load()).choicesBacking).toBe('tinted')
+        const kept = fakeStorage({ [`@self:${PREFS_PATH}`]: { choicesBacking: 'solid' } })
+        expect((await new PrefsStore(kept.storage).load()).choicesBacking).toBe('solid')
+        // A file written by 1.0.0-beta.10 keeps what the cycle's select said.
+        const older = fakeStorage({ [`@self:${PREFS_PATH}`]: { dayNightChoices: 'hover' } })
+        expect((await new PrefsStore(older.storage).load()).choicesBacking).toBe('hover')
+        const both = fakeStorage({ [`@self:${PREFS_PATH}`]: { dayNightChoices: 'hover', choicesBacking: 'tinted' } })
+        expect((await new PrefsStore(both.storage).load()).choicesBacking).toBe('tinted')
+        // The old key is not a patch any more.
+        await store.patch({ dayNightChoices: 'solid' } as never)
+        expect((await store.load()).choicesBacking).toBe('tinted')
     })
 })
 
