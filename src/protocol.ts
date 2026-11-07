@@ -609,6 +609,10 @@ export interface PrefsResult {
     settings?: Record<string, unknown>
     prefs: {
         messageCards: boolean
+        /** One window (92): the tracker and the Lorebook Agent & maps as tabs of one box. */
+        oneWindow?: boolean | null
+        /** The mobile widget (92f): the round d20 button over the chat on a phone that opens the window. On, as it ships. */
+        mobileWidget?: boolean
         /** The PARTY card compact: portrait, name and HP only (47e-ter). Absent reads as off. */
         partyCompact?: boolean
         /** The display regex that hides the `<choices>` block in the host's library (65). Absent reads as on. */
@@ -622,7 +626,7 @@ export interface PrefsResult {
         /** How much story a tracker pass reads: the exchange, or a fixed count. */
         trackerLookbackMode?: 'since-last-user' | 'fixed'
         /** The panel's layout (47b, 47c): one tab with everything; the play tab and the rest; or the two widgets and one tab. */
-        layout?: 'classic' | 'tabs' | 'widgets'
+        layout?: 'classic' | 'tabs' | 'widgets' | 'one'
         /** The panel's visual theme (74a): one of THEME_IDS; `native` is the host's own colours. */
         trackerTheme?: ThemeId
         /** The tracker's font size in px (74e): the tracker widget, the play tab, the cards under the messages; 0 is the host's. */

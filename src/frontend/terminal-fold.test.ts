@@ -104,6 +104,7 @@ describe('the terminal fold (71b)', () => {
         await settle()
         expect(runs).toEqual([['map_architect', 'Create a DUNGEON map for "The Hollow"', 100]])
         expect(field('terminal-run-map_architect').disabled).toBe(false)
+        expect(field('terminal-run-map_architect').getAttribute('data-lh-short')).toBe('Send')
         expect(patches.at(-1)).toEqual({ terminalDrafts: { state_tracker: '', lorebook_agent: '', map_updater: '', map_evolution: '', map_architect: '' }, mapArchitectDirectLookback: 100 })
         // Shift+Enter is a new line, not a send; an empty bar sends nothing.
         input.value = 'x'

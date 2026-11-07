@@ -135,7 +135,7 @@ export function createTerminalFold(host: TerminalFoldHost): TerminalFold {
         const lookback = el('input', { type: 'number', min: '0', max: String(tab.lookbackMax), step: '1', class: 'lh-input', 'data-lh-field': `terminal-lookback-${tab.id}` }) as HTMLInputElement
         lookback.value = String(lookbacks[tab.id])
         lookbackLabel.append(lookbackText, lookback)
-        const run = el('button', { type: 'button', class: 'lh-button lh-terminal-run', 'data-lh-field': `terminal-run-${tab.id}`, title: 'Run the command (Enter)' }) as HTMLButtonElement
+        const run = el('button', { type: 'button', class: 'lh-button lh-terminal-run', 'data-lh-field': `terminal-run-${tab.id}`, title: 'Run the command (Enter)', 'data-lh-short': 'Send' }) as HTMLButtonElement
         run.textContent = '↵'
         actions.append(lookbackLabel, run)
         bar.append(prompt, input, actions)

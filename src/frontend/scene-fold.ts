@@ -164,15 +164,16 @@ export function createSceneFold(host: SceneFoldHost): SceneFold {
     hero.append(heroInner, overlay)
     const tools = el('div', { class: 'lh-scene-tools' })
     // Icons alone, the words as the hover (78b, the maintainer's ask): the aria-label is the name a reader hears.
-    const pickButton = el('button', { type: 'button', class: 'lh-button lh-button--quiet lh-scene-tool', 'aria-label': 'Set a picture for the place', title: 'Set a picture' }) as HTMLButtonElement
+    // On a phone nothing hovers, so the stylesheet's phone block draws `data-lh-short` beside each glyph (92b, the audit's A5).
+    const pickButton = el('button', { type: 'button', class: 'lh-button lh-button--quiet lh-scene-tool', 'aria-label': 'Set a picture for the place', title: 'Set a picture', 'data-lh-short': 'File' }) as HTMLButtonElement
     pickButton.textContent = '🖼'
-    const urlButton = el('button', { type: 'button', class: 'lh-button lh-button--quiet lh-scene-tool', 'aria-label': 'Set a picture for the place from an address', title: 'From an address' }) as HTMLButtonElement
+    const urlButton = el('button', { type: 'button', class: 'lh-button lh-button--quiet lh-scene-tool', 'aria-label': 'Set a picture for the place from an address', title: 'From an address', 'data-lh-short': 'Address' }) as HTMLButtonElement
     urlButton.textContent = '🔗'
-    const forgetButton = el('button', { type: 'button', class: 'lh-button lh-button--quiet lh-scene-tool', 'aria-label': 'Forget the place’s picture', title: 'Forget the picture' }) as HTMLButtonElement
+    const forgetButton = el('button', { type: 'button', class: 'lh-button lh-button--quiet lh-scene-tool', 'aria-label': 'Forget the place’s picture', title: 'Forget the picture', 'data-lh-short': 'Forget' }) as HTMLButtonElement
     forgetButton.textContent = '✖'
-    const drawButton = el('button', { type: 'button', class: 'lh-button lh-button--quiet lh-scene-tool', 'aria-label': 'Draw the picture of the place', title: 'Draw the picture' }) as HTMLButtonElement
+    const drawButton = el('button', { type: 'button', class: 'lh-button lh-button--quiet lh-scene-tool', 'aria-label': 'Draw the picture of the place', title: 'Draw the picture', 'data-lh-short': 'Draw' }) as HTMLButtonElement
     drawButton.textContent = '🎨'
-    const reload = el('button', { type: 'button', class: 'lh-button lh-button--quiet lh-scene-tool', 'aria-label': 'Re-read the scene', title: 'Re-read the scene' }) as HTMLButtonElement
+    const reload = el('button', { type: 'button', class: 'lh-button lh-button--quiet lh-scene-tool', 'aria-label': 'Re-read the scene', title: 'Re-read the scene', 'data-lh-short': 'Re-read' }) as HTMLButtonElement
     reload.textContent = '↻'
     tools.append(pickButton, urlButton, drawButton, forgetButton, reload)
     // The picture's settings (49): the legacy's Real-Time Mode.

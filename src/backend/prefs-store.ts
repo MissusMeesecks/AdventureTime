@@ -211,6 +211,24 @@ export interface UiPrefs {
      */
     xpBarAtBottom: boolean
     /**
+     * One window (92, the maintainer's ask of 2026-11-05): the tracker and
+     * the Lorebook Agent & maps as four tabs of one floating box, in place
+     * of the two boxes. `true` the one box and `false` the two on every
+     * device; `null`, as it ships, is the device's choice (92b, the
+     * maintainer's decision of 2026-11-05): the one box on a phone, where it
+     * opens full-screen from one button in the tab with its tabs drawn as
+     * icons, and the two boxes on a desktop, the layout since 47f.
+     */
+    oneWindow: boolean | null
+    /**
+     * The mobile widget (92f, the maintainer's ask of 2026-11-06): a small
+     * round d20 button floating over the chat on a phone, which opens the
+     * AdventureTime window; the window's × leaves it standing. Off, the
+     * *Show AdventureTime* button in the drawer tab is the way in, as before.
+     * On, as it ships. The desktop never draws it.
+     */
+    mobileWidget: boolean
+    /**
      * The animated bars (74h): a green gain or a red loss floated over every
      * custom `((BAR))` and `((BARREL))` as it lands, the changed segment lit.
      * A bar's own tick in the bar editor animates it whatever this says. On,
@@ -722,13 +740,18 @@ export function readBounded(value: unknown, fallback: number, min: number, max: 
  * rest; or the two floating widgets (the tracker; the map, the scene and
  * the relationships) with one tab for the rest.
  */
-export type PanelLayout = 'classic' | 'tabs' | 'widgets'
+export type PanelLayout = 'classic' | 'tabs' | 'widgets' | 'one'
 /** The widgets since 47f (2026-10-11): the pass's layout, confirmed live, is the one a fresh install gets; classic stays a choice. */
 export const DEFAULT_LAYOUT: PanelLayout = 'widgets'
 /** Where each floating widget was last left, by its name. */
 export type WidgetPositions = Record<string, { x: number; y: number }>
 export type WidgetSizes = Record<string, { width: number; height: number }>
 export type WidgetMinimized = Record<string, boolean>
+
+/** The one-window preference's three states (92b): a boolean as written, anything else the automatic `null`. */
+export function readOneWindow(value: unknown): boolean | null {
+    return value === true ? true : value === false ? false : null
+}
 
 export const DEFAULT_PREFS: UiPrefs = {
     // Off since 82 (the maintainer's ask of 2026-10-28); on from Phase 4 to 0.161.0.
@@ -754,6 +777,8 @@ export const DEFAULT_PREFS: UiPrefs = {
     dayNightCycle: false,
     choicesBacking: 'tinted',
     xpBarAtBottom: true,
+    oneWindow: null,
+    mobileWidget: true,
     animateAllCustomBarChanges: true,
     panelLayoutMode: 'stack',
     trackerActiveTab: '',
@@ -1097,7 +1122,7 @@ export function readLookbackMode(value: unknown): TrackerLookbackMode {
 
 /** The panel's layout (47b, 47c). Anything unknown is the classic one tab. */
 export function readLayout(value: unknown): PanelLayout {
-    return value === 'classic' || value === 'tabs' || value === 'widgets' ? value : DEFAULT_LAYOUT
+    return value === 'classic' || value === 'tabs' || value === 'widgets' || value === 'one' ? value : DEFAULT_LAYOUT
 }
 
 /**
@@ -1246,6 +1271,8 @@ export function readPrefs(stored: unknown): UiPrefs {
         if (older === 'solid' || older === 'hover') prefs.choicesBacking = older
     }
     if (source.xpBarAtBottom !== undefined) prefs.xpBarAtBottom = source.xpBarAtBottom === true
+    if (source.oneWindow !== undefined) prefs.oneWindow = readOneWindow(source.oneWindow)
+    if (source.mobileWidget !== undefined) prefs.mobileWidget = source.mobileWidget !== false
     if (source.animateAllCustomBarChanges !== undefined) prefs.animateAllCustomBarChanges = source.animateAllCustomBarChanges === true
     if (source.panelLayoutMode === 'tabs' || source.panelLayoutMode === 'stack') prefs.panelLayoutMode = source.panelLayoutMode
     if (typeof source.trackerActiveTab === 'string') prefs.trackerActiveTab = source.trackerActiveTab.slice(0, 200)
@@ -1397,6 +1424,8 @@ export function readPrefsPatch(patch: unknown): Partial<UiPrefs> {
     if (source.dayNightCycle !== undefined) clean.dayNightCycle = source.dayNightCycle === true
     if (source.choicesBacking === 'tinted' || source.choicesBacking === 'solid' || source.choicesBacking === 'hover') clean.choicesBacking = source.choicesBacking
     if (source.xpBarAtBottom !== undefined) clean.xpBarAtBottom = source.xpBarAtBottom === true
+    if (source.oneWindow !== undefined) clean.oneWindow = readOneWindow(source.oneWindow)
+    if (source.mobileWidget !== undefined) clean.mobileWidget = source.mobileWidget !== false
     if (source.animateAllCustomBarChanges !== undefined) clean.animateAllCustomBarChanges = source.animateAllCustomBarChanges === true
     if (source.panelLayoutMode === 'tabs' || source.panelLayoutMode === 'stack') clean.panelLayoutMode = source.panelLayoutMode
     if (typeof source.trackerActiveTab === 'string') clean.trackerActiveTab = source.trackerActiveTab.slice(0, 200)

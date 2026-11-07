@@ -24,11 +24,14 @@ describe('the choice buttons’ backing (74c-ter, 74c-quater)', () => {
     it('writes the two rules under the backing’s class alone, on the buttons and their list and nothing else', () => {
         expect(CHOICES_BACKING_CSS).toContain('.lh-choice-backing-solid .lh-choice,\n.lh-choice-backing-hover .lh-choices-list:hover .lh-choice {\n    background: var(--lh-bg, var(--lumiverse-bg, rgba(20, 22, 30, 0.95)));\n}')
         expect(CHOICES_BACKING_CSS).toContain('.lh-choice-backing-hover .lh-choice { transition: background-color 0.2s ease; }')
+        // Where nothing hovers (92b, the audit's C3) the hover mode is the solid one, under the host's own no-pointer test.
+        expect(CHOICES_BACKING_CSS).toContain('@media (hover: none) {\n    .lh-choice-backing-hover .lh-choice {\n        background: var(--lh-bg, var(--lumiverse-bg, rgba(20, 22, 30, 0.95)));\n    }\n}')
+        expect(CHOICES_BACKING_CSS.split('@media').length).toBe(2)
         // No rule needs the cycle's or a theme's class, and none names anything but the buttons and their list.
         expect(CHOICES_BACKING_CSS).not.toContain('lh-daynight')
         expect(CHOICES_BACKING_CSS).not.toContain('lh-theme')
-        const rules = CHOICES_BACKING_CSS.replace(/\/\*[\s\S]*?\*\//g, '').split('}').map((block) => block.split('{')[0]!.trim()).filter(Boolean)
-        expect(rules).toHaveLength(2)
+        const rules = CHOICES_BACKING_CSS.replace(/\/\*[\s\S]*?\*\//g, '').replace('@media (hover: none) {', '').split('}').map((block) => block.split('{')[0]!.trim()).filter(Boolean)
+        expect(rules).toHaveLength(3)
         for (const selectors of rules) {
             for (const part of selectors.split(',')) expect(part.trim(), part).toMatch(/^\.lh-choice-backing-(solid|hover) (\.lh-choices-list:hover )?\.lh-choice$/)
         }

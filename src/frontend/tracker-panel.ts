@@ -153,7 +153,7 @@ export function mountTrackerPanel(
      * play parts (the head, the cards, the map, the scene, the relationships)
      * stay in `root` and the rest goes there, in the same relative order.
      */
-    slots: { rest?: HTMLElement; scene?: HTMLElement; head?: HTMLElement; foot?: HTMLElement; sceneHead?: HTMLElement; sceneFoot?: HTMLElement; repertoire?: HTMLElement; world?: HTMLElement } = {},
+    slots: { rest?: HTMLElement; scene?: HTMLElement; head?: HTMLElement; lights?: HTMLElement; foot?: HTMLElement; sceneHead?: HTMLElement; sceneFoot?: HTMLElement; repertoire?: HTMLElement; world?: HTMLElement } = {},
 ): TrackerPanel {
     const el = host.dom.createElement
     /** A picture large (55, then every picture in Phase 64), in the host's modal where it has one. */
@@ -309,16 +309,22 @@ export function mountTrackerPanel(
     root.classList.add('lh-tracker')
 
     /**
-     * The head (47a, by the maintainer's list of 2026-10-09): one line that
-     * says what is running — five lights, one per process that runs on its
-     * own — when the tracker last ran, and the two buttons. Everything else
-     * the tracker owns folds under it.
+     * The head (47a, by the maintainer's list of 2026-10-09): what is
+     * running — five lights, one per process that runs on its own — then the
+     * two buttons with when the tracker last ran. Two rows since 92e (the
+     * maintainer's ask of 2026-11-06): the lights row (`lh-tracker-head`,
+     * with the sky badge and the starfield) and the actions row (the buttons
+     * and *Last run:*), so the one window can put the lights row in its
+     * title row, seen from every pane (`slots.lights`), and keep the actions
+     * with the Tracker pane. Everything else the tracker owns folds under it.
      *
      * The colours are Multihog's `.rpg-tracker-status-indicator`: grey idle,
      * amber pulsing while running, green when done. Multihog has no red; a
      * failed pass is red here, which the report under the fold explains.
      */
-    const header = el('div', { class: 'lh-tracker-header lh-tracker-head' })
+    const header = el('div', { class: 'lh-tracker-header' })
+    const lightsRow = el('div', { class: 'lh-tracker-head lh-tracker-lights' })
+    const actionsRow = el('div', { class: 'lh-tracker-actions' })
     const lights = el('span', { class: 'lh-lights', role: 'status' })
     const light = (key: HeadLightKey, label: string) => {
         const wrap = el('span', { class: `lh-light lh-light--${key} lh-light--idle`, 'data-lh-light': key })
@@ -357,7 +363,13 @@ export function mountTrackerPanel(
     // long enough to be useful — "the tracker is updating after the last
     // reply" — competes with the buttons for a panel about 340px wide and wins,
     // wrapping "Run tracker now" into a three-line block.
-    header.append(starfield, lights, skySlot, headTime, runButton, refreshButton)
+    lightsRow.append(starfield, lights, skySlot)
+    actionsRow.append(runButton, refreshButton, headTime)
+    // The lights row goes to the slot that stays in view whatever pane shows (the one window's title
+    // row, 92e) when the layout gives one; else it heads the header, over the actions.
+    if (slots.lights) slots.lights.append(lightsRow)
+    else header.append(lightsRow)
+    header.append(actionsRow)
 
     // The fold of 47a — the tracker's settings, instruction and report under the head — is gone since 78d
     // (the maintainer's ask): the instruction bar is behind the footer's 💬, the report is under the
@@ -691,13 +703,15 @@ export function mountTrackerPanel(
      * instruction bar over the footer, which closes as the instruction goes.
      */
     const footTokens = el('span', { class: 'lh-tracker-footer-tokens', 'data-lh-field': 'tracker-footer-tokens', title: 'How big the memo on screen is, as the narrator reads it: an estimate of its tokens' })
-    const changeLogButton = el('button', { type: 'button', class: 'lh-footer-btn', 'data-lh-field': 'tracker-change-log-toggle', title: 'Toggle change log' })
+    // A glyph alone is a hover away from its meaning on a desktop and nowhere on a phone (92b, the audit's A5):
+    // the short word the phone block draws beside it is on `data-lh-short`.
+    const changeLogButton = el('button', { type: 'button', class: 'lh-footer-btn', 'data-lh-field': 'tracker-change-log-toggle', title: 'Toggle change log', 'data-lh-short': 'Log' })
     changeLogButton.textContent = '\u03b4'
     const memoClearButton = el('button', { type: 'button', class: 'lh-footer-btn', 'data-lh-field': 'tracker-memo-clear', title: 'Clear the memo. The states under the messages are kept, so \u2190 can still bring one back' })
     memoClearButton.textContent = 'CLEAR'
     const footUtility = el('span', { class: 'lh-tracker-footer-utility' })
     footUtility.append(footTokens, changeLogButton, memoClearButton)
-    const promptButton = el('button', { type: 'button', class: 'lh-footer-icon-btn', 'data-lh-field': 'tracker-prompt-toggle', title: 'Toggle direct prompt' })
+    const promptButton = el('button', { type: 'button', class: 'lh-footer-icon-btn', 'data-lh-field': 'tracker-prompt-toggle', title: 'Toggle direct prompt', 'data-lh-short': 'Prompt' })
     promptButton.textContent = '\ud83d\udcac'
     trackerFooter.append(historyRow, footClock, footPlace, footUtility, promptButton)
 
@@ -1934,7 +1948,7 @@ export function mountTrackerPanel(
     const siteMapHead = el('div', { class: 'lh-site-map-head' })
     const siteMapTitle = el('span', { class: 'lh-site-map-title' })
     siteMapTitle.textContent = 'Site map'
-    const siteMapDirectToggle = el('button', { type: 'button', class: 'lh-button lh-button--quiet', 'data-lh-field': 'site-map-direct-toggle', title: 'Show or hide the Map Updater’s direct prompt', 'aria-expanded': 'false' })
+    const siteMapDirectToggle = el('button', { type: 'button', class: 'lh-button lh-button--quiet', 'data-lh-field': 'site-map-direct-toggle', title: 'Show or hide the Map Updater’s direct prompt', 'aria-expanded': 'false', 'data-lh-short': 'Prompt' })
     siteMapDirectToggle.textContent = '💬'
     const siteMapDetails = el('button', { type: 'button', class: 'lh-button lh-button--quiet', 'data-lh-field': 'site-map-details', title: 'The map’s details in a window: the entries, the evolution history, the raw JSON' })
     siteMapDetails.textContent = 'Map Details'
@@ -2277,6 +2291,9 @@ export function mountTrackerPanel(
      * the folds under it, one shown at a time, the shown one held open so
      * the tab is the fold's switch and its summary has nothing to do.
      */
+    const TAB_ICONS: Record<string, string> = { agent: '📖', records: '👥', visuals: '🗺️' }
+    /** The word under each icon on a phone (92b): a long press there opens the host's own menu, never the hover. */
+    const TAB_SHORT: Record<string, string> = { agent: 'Agent', records: 'Records', visuals: 'Map' }
     function tabbed(panes: Array<[string, string, HTMLDetailsElement]>, initial: string): HTMLElement[] {
         const strip = el('div', { class: 'lh-widget-tabs', role: 'tablist' })
         const buttons = new Map<string, HTMLButtonElement>()
@@ -2297,8 +2314,12 @@ export function mountTrackerPanel(
             }
         }
         for (const [name, label, pane] of panes) {
-            const button = el('button', { type: 'button', class: 'lh-widget-tab', role: 'tab', 'data-lh-tab': name })
-            button.textContent = label
+            // The words in a span and an icon on the button (92): on a phone the stylesheet draws the icon
+            // and hides the words, the words staying on the label and the hover.
+            const button = el('button', { type: 'button', class: 'lh-widget-tab', role: 'tab', 'data-lh-tab': name, 'data-lh-icon': TAB_ICONS[name] ?? '▫', 'data-lh-short': TAB_SHORT[name] ?? label, 'aria-label': label, title: label })
+            const text = el('span', { class: 'lh-widget-tab-text' })
+            text.textContent = label
+            button.append(text)
             button.addEventListener('click', () => { show(name) })
             buttons.set(name, button)
             strip.append(button)
@@ -3279,11 +3300,12 @@ export function mountTrackerPanel(
             node.title = headWords(key, states[key])
             node.setAttribute('aria-label', node.title)
         }
+        // *Last run:* before the time (92e, the maintainer's ask), on the buttons' row.
         headTime.textContent = running
-            ? `running since ${clock(running.at)}`
+            ? `Running since ${clock(running.at)}`
             : lastReport
-              ? `${clock(lastReport.at)}, ${ago(lastReport.at)}`
-              : 'no pass yet'
+              ? `Last run: ${clock(lastReport.at)}, ${ago(lastReport.at)}`
+              : 'Last run: none yet'
         headTime.title = running
             ? 'When the pass now running started'
             : lastReport ? 'When the tracker last ran in this chat' : 'The tracker has not run in this chat'
@@ -5252,6 +5274,7 @@ export function mountTrackerPanel(
             scene?.replaceChildren()
             slots.sceneHead?.replaceChildren()
             slots.sceneFoot?.replaceChildren()
+            slots.lights?.replaceChildren()
         },
     }
 }

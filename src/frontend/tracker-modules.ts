@@ -83,6 +83,10 @@ interface Place {
     tag: string
 }
 
+/** A unique id for a switch, so its name can be its label (91): the words are the hit area a thumb needs. */
+let switches = 0
+const switchId = (): string => `lh-tm-switch-${++switches}`
+
 export function mountTrackerModulesEditor(
     root: HTMLElement,
     host: TrackerModulesHost,
@@ -187,18 +191,21 @@ export function mountTrackerModulesEditor(
 
         const head = el('div', { class: 'lh-tm-head' })
 
+        // The name is the switch's label (91): the words are the hit area, as on every other row with a
+        // tick, so a thumb has more than the box to press. A row the engine owns has no switch to label.
+        const name = el(row.switchable ? 'label' : 'span', { class: 'lh-tm-name' })
         if (row.switchable) {
-            const toggle = el('input', { type: 'checkbox' })
+            const toggle = el('input', { type: 'checkbox', id: switchId() })
             toggle.checked = row.verdict === 'on' || row.verdict === 'no-prompt'
             toggle.title = `Maintain the ${row.tag} block`
             toggle.addEventListener('change', () => { setEnabled(row, toggle.checked) })
             head.append(toggle)
+            name.setAttribute('for', toggle.id)
         } else {
             // A spacer, so the names line up down the column.
             head.append(el('span', { class: 'lh-tm-nocheck' }))
         }
 
-        const name = el('span', { class: 'lh-tm-name' })
         name.textContent = row.label
         head.append(name)
 

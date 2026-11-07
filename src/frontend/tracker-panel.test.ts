@@ -3819,10 +3819,33 @@ describe('the tracker head (47a)', () => {
         expect(light('picture').textContent).toBe('Picture')
         expect(light('agent').title).toMatch(/nothing has run in this chat yet/)
         expect(light('picture').title).toBe('The scene picture: nothing has been drawn in this chat yet')
-        expect(time()).toBe('no pass yet')
-        // The buttons stay on the line.
-        expect(root.querySelector('.lh-tracker-head')!.contains(button(root, 'Run tracker now'))).toBe(true)
-        expect(root.querySelector('.lh-tracker-head')!.contains(button(root, 'Refresh'))).toBe(true)
+        expect(time()).toBe('Last run: none yet')
+        // Two rows since 92e: the lights row, then the buttons with the last-run time beside them.
+        const header = root.querySelector('.lh-tracker-header')!
+        expect(Array.from(header.children).map((c) => c.className)).toEqual(['lh-tracker-head lh-tracker-lights', 'lh-tracker-actions'])
+        const actions = header.querySelector('.lh-tracker-actions')!
+        expect(Array.from(actions.children).map((c) => c.textContent)).toEqual(['Run tracker now', 'Refresh', 'Last run: none yet'])
+        expect(root.querySelector('.lh-tracker-head')!.contains(button(root, 'Run tracker now'))).toBe(false)
+    })
+
+    it('puts the lights row in the slot the layout gives for it (92e), the buttons and the time staying in the header', async () => {
+        const { bridge } = makeBridge({ 'chat-1': MEMO })
+        const lightsSlot = document.createElement('div')
+        const panel = mountTrackerPanel(root, bridge, makeHost(), undefined, { lights: lightsSlot })
+        await settle()
+
+        expect(lightsSlot.children.length).toBe(1)
+        expect(lightsSlot.firstElementChild!.className).toBe('lh-tracker-head lh-tracker-lights')
+        expect(lightsSlot.querySelectorAll('.lh-light').length).toBe(5)
+        expect(lightsSlot.querySelector('.lh-sky-slot')).not.toBeNull()
+        expect(lightsSlot.querySelector('.lh-head-starfield')).not.toBeNull()
+        const header = root.querySelector('.lh-tracker-header')!
+        expect(Array.from(header.children).map((c) => c.className)).toEqual(['lh-tracker-actions'])
+        expect(header.contains(button(root, 'Run tracker now'))).toBe(true)
+        expect(root.querySelector('.lh-tracker-head-time')!.textContent).toBe('Last run: none yet')
+        // Leaves with the panel.
+        panel.destroy()
+        expect(lightsSlot.children.length).toBe(0)
     })
 
     it('turns the tracker light amber while a pass runs, with when it started', async () => {
@@ -3835,7 +3858,7 @@ describe('the tracker head (47a)', () => {
 
         expect(state('tracker')).toBe('running')
         expect(light('tracker').title).toMatch(/running now, since 12:00/)
-        expect(time()).toMatch(/^running since 12:00/)
+        expect(time()).toMatch(/^Running since 12:00/)
         vi.useRealTimers()
     })
 
@@ -3847,7 +3870,7 @@ describe('the tracker head (47a)', () => {
 
         expect(state('tracker')).toBe('done')
         expect(light('tracker').title).toMatch(/the last pass is done/)
-        expect(time()).toMatch(/, just now$/)
+        expect(time()).toMatch(/^Last run: .*, just now$/)
     })
 
     it('turns it red when the last pass failed, and says to open the fold', async () => {
@@ -4004,6 +4027,10 @@ describe('the foot after Multihog\'s (78d)', () => {
         expect(field('tracker-memo-clear').textContent).toBe('CLEAR')
         expect(field('tracker-prompt-toggle').textContent).toBe('💬')
         expect(field('tracker-prompt-toggle').title).toBe('Toggle direct prompt')
+        // The short word a phone draws beside each glyph (92b, the audit's A5); CLEAR is a word already.
+        expect(field('tracker-change-log-toggle').getAttribute('data-lh-short')).toBe('Log')
+        expect(field('tracker-prompt-toggle').getAttribute('data-lh-short')).toBe('Prompt')
+        expect(field('tracker-memo-clear').hasAttribute('data-lh-short')).toBe(false)
 
         // The stepped state's size.
         ;(footer().querySelector('button[aria-label="Older state"]') as HTMLElement).click()
@@ -6845,6 +6872,7 @@ describe('the second widget after Multihog\'s Lorebook Agent tab (78a)', () => {
         mountTrackerPanel(root, bridge, makeHost())
         await settle()
         const toggle = root.querySelector('[data-lh-field="site-map-direct-toggle"]') as HTMLButtonElement
+        expect(toggle.getAttribute('data-lh-short')).toBe('Prompt')
         const direct = root.querySelector('[data-lh-field="site-map-direct"]') as HTMLElement
         expect(direct.hidden).toBe(true)
         expect(direct.querySelector('[data-lh-field="map-updater-instruction"]')).not.toBeNull()

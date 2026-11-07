@@ -37,6 +37,8 @@ import { CARDS_CSS } from './category-copy.js'
 import { ENLARGE_CSS } from './enlarge.js'
 import { CARD_SETTINGS_CSS } from './card-settings.js'
 import { RELATIONSHIP_FLOAT_CSS } from './relationship-float.js'
+import { MOBILE_MEDIA, isMobileViewportOrDevice } from './mobile.js'
+import { layoutForOneWindow } from './layout.js'
 import { MAP_PICTURE_CSS } from './map-picture.js'
 import { RECORDS_FOLD_CSS } from './campaign-records.js'
 import { TERMINAL_FOLD_CSS } from './terminal-fold.js'
@@ -142,10 +144,20 @@ export interface PanelSlots {
     sceneFoot?: HTMLElement
     /** The tracker widget's strip under its title (57): where the head's lights go, so they never scroll away. */
     trackerHead?: HTMLElement
+    /** The one window's place for the lights row alone (92e): in its title row, seen from every pane. */
+    trackerLights?: HTMLElement
     /** The tracker widget's foot under its body (74f): where the XP bar at the bottom goes, so it never scrolls away. */
     trackerFoot?: HTMLElement
     /** The widgets' controls, when there are widgets: a hidden one needs a way back. */
-    widgets?: { show(which: 'tracker' | 'scene'): void; toggle(which: 'tracker' | 'scene'): void; reset(): void }
+    widgets?: {
+        show(which: 'tracker' | 'scene' | 'one'): void
+        toggle(which: 'tracker' | 'scene' | 'one'): void
+        reset(): void
+        /** The one window (92): one box, so one toggle and one button in the tab. */
+        one?: boolean
+        /** The mobile widget (92f): the disc over the chat on a phone, made or taken down as the tick moves. */
+        mobileWidget?(on: boolean): void
+    }
 }
 
 export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, slots: PanelSlots = {}): Panel {
@@ -196,7 +208,8 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
     if (slots.rest) sizeRoot(slots.rest, 'settings')
     if (slots.scene) sizeRoot(slots.scene, 'agent')
     if (slots.rest) backdropTargets.push(backdropRoot(slots.rest, 'settings'))
-    if (slots.scene) backdropTargets.push(backdropRoot(slots.scene, 'settings'))
+    // In the one window (92) the two roots share a box, which wears the tracker's backdrop alone.
+    if (slots.scene && slots.scene.closest('.lh-widget') !== root.closest('.lh-widget')) backdropTargets.push(backdropRoot(slots.scene, 'settings'))
 
     const status = el('div', { class: 'lh-status', role: 'status' })
     const actions = el('div', { class: 'lh-actions' })
@@ -403,7 +416,7 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
      */
     const layoutBox = el('div', { class: 'lh-layout' })
     const layoutHint = el('div', { class: 'lh-section-help' })
-    layoutHint.textContent = 'The tracker is one floating box and the Lorebook Agent, the Campaign Records and Visuals/Map are the tabs of another; drag them where you like, pull the corner to size them, fold them to their heads. This tab holds the rest.'
+    layoutHint.textContent = 'Two floating widgets: the Tracker widget, and the Lore widget with the Lorebook Agent, the Campaign Records and Visuals/Map as its tabs; drag them where you like, pull the corner to size them, fold them to their heads. This tab holds the rest.'
     // Tab Mode (76): Multihog's Panel Layout toggle, under the layout select as it heads
     // Multihog's page — Stacked, or Character and Combat pinned above a tab strip.
     const panelLayoutRow = el('div', { class: 'lh-layout-row lh-panel-layout-row' })
@@ -650,7 +663,7 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
     xpBarLabel.textContent = 'XP bar at the foot of the tracker'
     xpBarRow.append(xpBarInput, xpBarLabel)
     const xpBarHint = el('div', { class: 'lh-section-help' })
-    xpBarHint.textContent = 'Moves XP out of its module card and pins it at the foot of the tracker’s box, like an MMO experience bar: the widget’s foot, or the foot of the view in the tabs and classic layouts. The cards under the messages keep their XP card.'
+    xpBarHint.textContent = 'Moves XP out of its module card and pins it at the foot of the Tracker widget, like an MMO experience bar: the widget’s foot, or the foot of the view in the tabs and classic layouts. The cards under the messages keep their XP card.'
     const showXpBar = (stored: unknown) => { xpBarInput.checked = stored === true }
     xpBarInput.addEventListener('change', () => {
         const xpBarAtBottom = xpBarInput.checked
@@ -696,8 +709,8 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
         applyFontSizes(root.ownerDocument.body, { [box]: size })
     }
     const fontSizeBoxes: Array<{ box: FontSizeBox; key: 'trackerFontSize' | 'agentFontSize' | 'settingsFontSize'; label: string; title: string }> = [
-        { box: 'tracker', key: 'trackerFontSize', label: 'Tracker font size', title: 'The tracker widget, the play tab and the cards under the messages.' },
-        { box: 'agent', key: 'agentFontSize', label: 'Agent & maps font size', title: 'The second widget: the Lorebook Agent, Campaign Records and Visuals/Map box.' },
+        { box: 'tracker', key: 'trackerFontSize', label: 'Tracker widget font size', title: 'The Tracker widget, the play tab and the cards under the messages; in the one window, the Tracker pane and the tab row.' },
+        { box: 'agent', key: 'agentFontSize', label: 'Lore widget font size', title: 'The Lore widget: the Lorebook Agent, Campaign Records and Visuals/Map; in the one window, those three panes.' },
         { box: 'settings', key: 'settingsFontSize', label: 'Settings font size', title: 'The settings tab.' },
     ]
     const fontSizeBlock = el('div', { class: 'lh-font-sizes' })
@@ -732,7 +745,7 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
         fontSizeBlock.append(row)
     }
     const fontSizeHint = el('div', { class: 'lh-section-help' })
-    fontSizeHint.textContent = 'Three sliders, 8 to 32 px: one per widget and one for the settings tab. Until a slider moves, each keeps the host’s own size; × puts it back.'
+    fontSizeHint.textContent = 'Three sliders, 8 to 32 px: one per widget and one for the settings tab. Until a slider moves, each keeps the host’s own size; × puts it back. In the one window each pane keeps its own size and the tab row takes the Tracker widget’s, so the four names match.'
     // The cards under the messages (67, the maintainer's ask): the switch
     // sat with the tracker since Phase 4 and lives under General & visuals
     // now. Not a cartridge key — the install's furniture, as the layout is.
@@ -750,30 +763,101 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
             .then(() => { say(wanted ? 'Cards will show under each message.' : 'Cards under messages are off.') })
             .catch((error: unknown) => { cardsToggle.checked = !wanted; fail(error) })
     })
+    // One window (92, the maintainer's ask of 2026-11-05): the tracker and the Lorebook Agent & maps as
+    // four tabs of one box. The tick writes the preference; the entry follows the `prefs.changed` event
+    // and remakes the layout, this panel with it, so nothing here redraws.
+    const oneWindowRow = el('label', { class: 'lh-layout-row lh-tracker-pref' })
+    const oneWindowToggle = el('input', { type: 'checkbox', 'data-lh-field': 'one-window' }) as HTMLInputElement
+    oneWindowToggle.checked = slots.widgets?.one === true
+    const oneWindowLabel = el('span')
+    oneWindowLabel.textContent = 'One window: the Tracker and Lore widgets as tabs of one box'
+    oneWindowRow.append(oneWindowToggle, oneWindowLabel)
+    const oneWindowHint = el('div', { class: 'lh-section-help' })
+    oneWindowHint.textContent = 'Off, the two widgets. On, one box with four tabs — Tracker, Lorebook Agent, Campaign Records, Visuals/Map — that folds, drags and keeps its place as a box does; on a phone it opens full-screen from one button in this tab, its tabs drawn as icons. Until the tick is pressed, a phone has the one box and a desktop the two; pressed anywhere, it is the choice for every device of this install.'
+    oneWindowToggle.addEventListener('change', () => {
+        const wanted = oneWindowToggle.checked
+        bridge.request<PrefsResult>('prefs.patch', { patch: { oneWindow: wanted } })
+            .then(() => { say(wanted ? 'One window: the boxes are remade as one.' : 'Two boxes again.') })
+            .catch((error: unknown) => { oneWindowToggle.checked = !wanted; fail(error) })
+    })
     // A hidden widget needs a way back (47c), and a shown one a way out (67):
     // the buttons toggle, and a third puts both boxes back where a fresh
     // install draws them. Drawn only when the layout module has widgets.
+    // At the head of the card with short names (92c, the maintainer's ask of
+    // 2026-11-06), so the three stand on one line; the long words are on the hover.
     const widgetButtons = el('div', { class: 'lh-actions lh-widget-buttons' })
+    const oneWindow = slots.widgets?.one === true
     if (slots.widgets) {
-        for (const [which, text] of [['tracker', 'Toggle the tracker widget'], ['scene', 'Toggle the map, scene and relationships widget']] as const) {
+        const toggles: ReadonlyArray<readonly ['tracker' | 'scene' | 'one', string]> = oneWindow
+            ? [['one', 'Toggle AdventureTime']]
+            : [['tracker', 'Toggle Tracker'], ['scene', 'Toggle Lore']]
+        for (const [which, text] of toggles) {
             const button = el('button', { type: 'button', class: 'lh-button', 'data-lh-widget': which })
             button.textContent = text
-            button.title = 'Hide the widget, or bring it back where it was if it was hidden with its ×.'
+            button.title = which === 'scene'
+                ? 'Hide the Lore widget, or bring it back where it was if it was hidden with its ×.'
+                : which === 'one' ? 'Hide the AdventureTime window, or bring it back where it was if it was hidden with its ×.'
+                    : 'Hide the Tracker widget, or bring it back where it was if it was hidden with its ×.'
             button.addEventListener('click', () => { slots.widgets?.toggle(which) })
             widgetButtons.append(button)
         }
         const reset = el('button', { type: 'button', class: 'lh-button lh-button--quiet', 'data-lh-widget': 'reset' })
-        reset.textContent = 'Reset the widgets’ positions'
-        reset.title = 'Put both widgets back where a fresh install draws them, and show them. Their sizes are kept.'
+        reset.textContent = oneWindow ? 'Reset Widget' : 'Reset Widgets'
+        reset.title = oneWindow ? 'Put the window back where a fresh install draws it, unfolded, and show it.' : 'Put both widgets back where a fresh install draws them, and show them. Their sizes are kept.'
         reset.addEventListener('click', () => { slots.widgets?.reset() })
         widgetButtons.append(reset)
     } else {
         widgetButtons.hidden = true
     }
+    // The way back to a box on a phone (91): both boxes start hidden there, and the Toggles above sit two
+    // levels down the settings, so the same two toggles stand at the top of the drawer tab. The stylesheet's
+    // phone block alone draws the row; on the desktop it is not displayed, and the layout is as it was.
+    const phoneWidgets = el('div', { class: 'lh-actions lh-phone-widgets' })
+    /** The mobile widget's tick follows the preference (92f); nothing without widgets. */
+    let showMobileWidget: (value: unknown) => void = () => undefined
+    if (slots.widgets) {
+        const shows: ReadonlyArray<readonly ['tracker' | 'scene' | 'one', string]> = oneWindow
+            ? [['one', 'Show AdventureTime']]
+            : [['tracker', 'Show the Tracker widget'], ['scene', 'Show the Lore widget']]
+        for (const [which, text] of shows) {
+            const button = el('button', { type: 'button', class: 'lh-button', 'data-lh-phone-widget': which })
+            button.textContent = text
+            button.title = 'Open this box over the chat, full-screen; its × closes it. Pressed while it shows, it hides it.'
+            button.addEventListener('click', () => { slots.widgets?.toggle(which) })
+            phoneWidgets.append(button)
+        }
+        // The mobile widget's tick (92f, the maintainer's ask of 2026-11-06): the round d20 button floating over
+        // the chat, which opens the box and stands again when the box's × closes it. On as it ships; off, the
+        // button beside it is the way in. The layout module makes or takes down the disc as the tick moves.
+        const mobileWidgetRow = el('label', { class: 'lh-tracker-pref lh-phone-widget-tick' })
+        const mobileWidgetToggle = el('input', { type: 'checkbox', 'data-lh-field': 'mobile-widget' }) as HTMLInputElement
+        mobileWidgetToggle.checked = true
+        const mobileWidgetLabel = el('span')
+        mobileWidgetLabel.textContent = 'Mobile widget'
+        mobileWidgetRow.title = 'A small d20 button floating over the chat. Tap it to open the box; the box’s × leaves it standing. Drag it to move it. Off, the button beside it is the way in.'
+        mobileWidgetRow.append(mobileWidgetToggle, mobileWidgetLabel)
+        mobileWidgetToggle.addEventListener('change', () => {
+            const wanted = mobileWidgetToggle.checked
+            slots.widgets?.mobileWidget?.(wanted)
+            bridge.request<PrefsResult>('prefs.patch', { patch: { mobileWidget: wanted } })
+                .catch((error: unknown) => { mobileWidgetToggle.checked = !wanted; slots.widgets?.mobileWidget?.(!wanted); fail(error) })
+        })
+        phoneWidgets.append(mobileWidgetRow)
+        showMobileWidget = (value) => {
+            const on = value !== false
+            mobileWidgetToggle.checked = on
+            slots.widgets?.mobileWidget?.(on)
+        }
+    } else {
+        phoneWidgets.hidden = true
+    }
     // The backdrops (74d): Multihog's two blocks under its tick — a day
     // image, a night image and the tint's strength per box — as the font
     // sizes' two boxes. An upload goes through the host's picker and store,
     // scaled as the legacy scales it; the preference holds the address.
+    // Each block is a folding card in the look of the cards around it, closed
+    // as it ships (92d, the maintainer's ask of 2026-11-06: the two took the
+    // card's height), its title and a chevron on the summary.
     const backdrops: Record<BackdropBox, Backdrop> = { tracker: readBackdrop(null), settings: readBackdrop(null) }
     const backdropBlock = el('div', { class: 'lh-backdrops', 'data-lh-field': 'backdrops' })
     const backdropRows: Partial<Record<BackdropBox, { day: HTMLElement; night: HTMLElement; url: HTMLInputElement; nightUrl: HTMLInputElement; strength: HTMLInputElement; value: HTMLElement; note: HTMLElement }>> = {}
@@ -792,18 +876,23 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
         applyBackdrops(backdropTargets, { trackerBackdrop: backdrops.tracker, settingsBackdrop: backdrops.settings })
     }
     const backdropBoxes: Array<{ box: BackdropBox; title: string; help: string }> = [
-        { box: 'tracker', title: 'Backdrop behind the tracker’s box', help: 'Optional scenario art behind the tracker widget, the play tab or the one classic tab. A tint keeps the text readable; with the day/night cycle on it shifts with the in-world time. The night image swaps in during night and late night from [TIME], cycle or no cycle.' },
-        { box: 'settings', title: 'Backdrop behind the second box', help: 'The map, scene and relationships widget, and the settings tab. In the classic layout everything is in the tracker’s box, so only its backdrop shows.' },
+        { box: 'tracker', title: 'Backdrop behind the Tracker widget', help: 'Optional scenario art behind the Tracker widget — the one window too — or the play tab or the one classic tab. A tint keeps the text readable; with the day/night cycle on it shifts with the in-world time. The night image swaps in during night and late night from [TIME], cycle or no cycle.' },
+        { box: 'settings', title: 'Backdrop behind the Lore widget', help: 'The Lore widget and the settings tab. With the one window on, the Tracker widget’s backdrop dresses the box and this one shows on the settings tab alone.' },
     ]
     for (const { box, title, help } of backdropBoxes) {
-        const card = el('div', { class: 'lh-backdrop-box', 'data-lh-backdrop-box': box })
-        const cardTitle = el('div', { class: 'lh-backdrop-title' })
+        const card = el('details', { class: 'lh-card lh-second-card lh-backdrop-box', 'data-lh-backdrop-box': box })
+        const cardSummary = el('summary')
+        const cardIcon = el('span', { class: 'lh-card-icon', 'aria-hidden': 'true' })
+        cardIcon.textContent = box === 'tracker' ? '🖼️' : '🌄'
+        const cardTitle = el('span', { class: 'lh-card-title lh-backdrop-title' })
         cardTitle.textContent = title
+        cardSummary.append(cardIcon, cardTitle, el('span', { class: 'lh-chevron', 'aria-hidden': 'true' }))
+        const cardBody = el('div', { class: 'lh-second-body lh-backdrop-body' })
         const cardHelp = el('div', { class: 'lh-section-help' })
         cardHelp.textContent = help
         const note = el('div', { class: 'lh-backdrop-note', role: 'status' })
         const say = (message: string, error = false) => { note.textContent = message; note.classList.toggle('lh-backdrop-note--error', error) }
-        const boxName = box === 'tracker' ? 'tracker’s' : 'second'
+        const boxName = box === 'tracker' ? 'Tracker widget' : 'Lore widget'
         const save = (next: Backdrop, done: string) => {
             bridge.request<PrefsResult>('prefs.patch', { patch: { [BACKDROP_PREF[box]]: next } })
                 .then((result) => { showBackdrop(box, result.prefs?.[BACKDROP_PREF[box]]); say(done) })
@@ -818,7 +907,7 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
             const filename = dataUrl.startsWith('data:image/jpeg') ? `backdrop-${box}-${slot}.jpg` : picked.name || `backdrop-${box}-${slot}.png`
             const result = await bridge.request<PrefsResult>('backdrop.upload', { box, slot, dataUrl, filename })
             showBackdrop(box, result.prefs?.[BACKDROP_PREF[box]])
-            say(slot === 'day' ? `The ${boxName} box’s backdrop is set.` : `The ${boxName} box’s night backdrop is set.`)
+            say(slot === 'day' ? `The ${boxName}’s backdrop is set.` : `The ${boxName}’s night backdrop is set.`)
         }
         const slotRow = (slot: 'day' | 'night') => {
             const row = el('div', { class: 'lh-backdrop-row' })
@@ -842,7 +931,7 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
                 if (!value) { save({ ...backdrops[box], [slot]: '' }, slot === 'day' ? 'The backdrop is cleared.' : 'The night image is cleared.'); return }
                 // The legacy's rule: an https address, or a file.
                 if (!/^https?:\/\//i.test(value)) { say('Use an https image URL or upload a file.', true); return }
-                save({ ...backdrops[box], [slot]: value }, slot === 'day' ? `The ${boxName} box’s backdrop is set.` : `The ${boxName} box’s night backdrop is set.`)
+                save({ ...backdrops[box], [slot]: value }, slot === 'day' ? `The ${boxName}’s backdrop is set.` : `The ${boxName}’s night backdrop is set.`)
             })
             fields.append(url)
             row.append(preview, fields)
@@ -864,11 +953,13 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
         strength.addEventListener('change', () => { save(backdrops[box], '') })
         strengthRow.append(strengthLabel, strength, value)
         backdropRows[box] = { day: day.preview, night: night.preview, url: day.url, nightUrl: night.url, strength, value, note }
-        card.append(cardTitle, cardHelp, day.row, night.row, strengthRow, note)
+        cardBody.append(cardHelp, day.row, night.row, strengthRow, note)
+        card.append(cardSummary, cardBody)
         backdropBlock.append(card)
         showBackdrop(box, null)
     }
-    layoutBox.append(layoutHint, panelLayoutRow, themeRow, themeHint, choicesBackingRow, choicesBackingHint, wizardBox, dayNightRow, dayNightHint, xpBarRow, xpBarHint, animateBarsRow, animateBarsHint, fontSizeBlock, fontSizeHint, backdropBlock, cardsRow, widgetButtons)
+    // The two tick rows under the Panel layout row (92d, the maintainer's ask of 2026-11-06); the backdrops close the card.
+    layoutBox.append(widgetButtons, layoutHint, panelLayoutRow, cardsRow, oneWindowRow, oneWindowHint, themeRow, themeHint, choicesBackingRow, choicesBackingHint, wizardBox, dayNightRow, dayNightHint, xpBarRow, xpBarHint, animateBarsRow, animateBarsHint, fontSizeBlock, fontSizeHint, backdropBlock)
     // Each in a folding card of its own (82, the maintainer's ask), as the cards around them.
     // Multihog's name for the drawer since 84 (the maintainer's ask): the theme, the sizes, the backdrops and the widgets live in it.
     const layoutCard = settingsCard('layout', '🎨', 'UI Appearance', layoutBox)
@@ -892,9 +983,9 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
     if (slots.rest && trackerRest) {
         // The dice line under the status line of the settings tab since 78d (the maintainer's ask); it headed the play tab before.
         root.append(trackerRoot)
-        slots.rest.append(status, diceLine, diagnostics, problem, trackerRest, body)
+        slots.rest.append(phoneWidgets, status, diceLine, diagnostics, problem, trackerRest, body)
     } else {
-        root.append(status, diagnostics, diceLine, problem, trackerRoot, body)
+        root.append(phoneWidgets, status, diagnostics, diceLine, problem, trackerRoot, body)
     }
 
     function say(message: string, tone: 'ok' | 'error' = 'ok'): void {
@@ -1484,7 +1575,7 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
             repertoire.append(...repertoireRows)
             // The World skeleton goes into the World progression category (78b, the maintainer's answer), whatever the layout.
             tracker = mountTrackerPanel(trackerRoot, bridge, host, result.settings, trackerRest
-                ? { rest: trackerRest, scene: slots.scene, head: slots.trackerHead, foot: slots.trackerFoot, sceneHead: slots.sceneHead, sceneFoot: slots.sceneFoot, repertoire, world: categories.bodies.world }
+                ? { rest: trackerRest, scene: slots.scene, head: slots.trackerHead, lights: slots.trackerLights, foot: slots.trackerFoot, sceneHead: slots.sceneHead, sceneFoot: slots.sceneFoot, repertoire, world: categories.bodies.world }
                 : { repertoire, world: categories.bodies.world })
             say('Ready.')
         })
@@ -1542,6 +1633,8 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
             showFontSize('agent', result.prefs?.agentFontSize)
             showFontSize('settings', result.prefs?.settingsFontSize)
             cardsToggle.checked = result.prefs?.messageCards === true
+            if (result.prefs?.oneWindow !== undefined) oneWindowToggle.checked = layoutForOneWindow(result.prefs?.oneWindow, isMobileViewportOrDevice(window)) === 'one'
+            if (result.prefs?.mobileWidget !== undefined) showMobileWidget(result.prefs.mobileWidget)
             connections.applyPrefs((result.prefs ?? {}) as Record<string, unknown>)
             mirrorPortraits.applyPrefs((result.prefs ?? {}) as Record<string, unknown>)
             mirrorScene.applyPrefs((result.prefs ?? {}) as Record<string, unknown>)
@@ -1562,6 +1655,8 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
         const prefs = data?.prefs
         if (prefs) {
             if (prefs.messageCards !== undefined) cardsToggle.checked = prefs.messageCards === true
+ if (prefs.oneWindow !== undefined) oneWindowToggle.checked = layoutForOneWindow(prefs.oneWindow, isMobileViewportOrDevice(window)) === 'one'
+            if (prefs.mobileWidget !== undefined) showMobileWidget(prefs.mobileWidget)
             if (prefs.customTheme !== undefined) customTheme = readCustomTheme(prefs.customTheme)
             if (prefs.savedThemes !== undefined) { savedThemes = readSavedThemes(prefs.savedThemes); drawLibrary() }
             if (prefs.trackerTheme !== undefined) showTheme(prefs.trackerTheme)
@@ -1621,6 +1716,7 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
             slots.sceneHead?.replaceChildren()
             slots.sceneFoot?.replaceChildren()
             slots.trackerHead?.replaceChildren()
+            slots.trackerLights?.replaceChildren()
             slots.trackerFoot?.replaceChildren()
         },
     }
@@ -1794,9 +1890,10 @@ export const PANEL_CSS = `
 /* ── the tracker ─────────────────────────────────────────────────────── */
 
 .lh-tracker { display: flex; flex-direction: column; gap: 8px; }
-/* The head (47a): the five lights (the picture's since 49-bis), the last-run time and the two buttons on
-   one wrapping line. Multihog's colours; red is ours. */
-.lh-tracker-head { flex-wrap: wrap; row-gap: 4px; }
+/* The head (47a): the five lights (the picture's since 49-bis) on one wrapping row, the two buttons with
+   the last-run time on another (92e). Multihog's colours; red is ours. */
+.lh-tracker-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; row-gap: 4px; }
+.lh-tracker-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; row-gap: 4px; }
 .lh-lights { display: inline-flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .lh-light { display: inline-flex; align-items: center; gap: 4px; font-size: 0.8em; opacity: 0.85; cursor: default; }
 .lh-light-dot { width: 8px; height: 8px; border-radius: 50%; background: #555; flex-shrink: 0; }
@@ -1814,7 +1911,19 @@ export const PANEL_CSS = `
 .adventuretime-panel .lh-layout { margin-bottom: 12px; }
 .adventuretime-panel .lh-layout-row { display: flex; align-items: center; gap: 8px; font-size: 0.9em; flex-wrap: wrap; }
 .adventuretime-panel .lh-layout-row .lh-select { max-width: 100%; }
-.adventuretime-panel .lh-widget-buttons { margin-top: 6px; }
+.adventuretime-panel .lh-widget-buttons { margin-bottom: 8px; }
+/* The two tick rows of the card (92c): a long label wrapped under its box in a narrow panel, since the row
+   wraps as its sibling rows do; here the box keeps its line and the words wrap beside it. */
+.adventuretime-panel .lh-layout-row.lh-tracker-pref { flex-wrap: nowrap; align-items: flex-start; }
+.adventuretime-panel .lh-layout-row.lh-tracker-pref > input { flex: 0 0 auto; margin-top: 0.2em; }
+.adventuretime-panel .lh-layout-row.lh-tracker-pref > span { flex: 1 1 auto; min-width: 0; }
+/* Every other tick row that wraps (92g, the maintainer's finding after 92c): the day/night, XP bar and animated
+   bars rows here, the portraits' and the scene's rows, the wizard's options — each a label whose words stood after
+   the box at their own width, so a label longer than the row dropped whole under the box. The words take a basis
+   of nothing and grow into the line's remainder, so they stay beside the box and wrap inside their cell; the rows
+   keep wrapping for the hints and controls that follow. */
+.adventuretime-panel .lh-layout-row > input[type="checkbox"], .adventuretime-panel .lh-portrait-settings-row > input[type="checkbox"], .adventuretime-panel .lh-scene-picture-row > input[type="checkbox"], .adventuretime-panel .lh-wizard-option > input[type="checkbox"] { flex: 0 0 auto; }
+.adventuretime-panel .lh-layout-row > input[type="checkbox"] + span, .adventuretime-panel .lh-portrait-settings-row > input[type="checkbox"] + span, .adventuretime-panel .lh-scene-picture-row > input[type="checkbox"] + span, .adventuretime-panel .lh-wizard-option > input[type="checkbox"] + span { flex: 1 1 0; min-width: 0; }
 .adventuretime-panel .lh-widget-buttons[hidden] { display: none; }
 /* The floating widgets (47c): a header with the title, a – that folds the
    box to its head (57) and a × that hides it; a strip under the header
@@ -1826,15 +1935,22 @@ export const PANEL_CSS = `
 .lh-widget-strip .lh-tracker-head { margin: 0; }
 .lh-widget-minimize { background: none; border: 0; color: inherit; cursor: pointer; font-size: 1.1em; line-height: 1; padding: 0 4px; opacity: 0.7; }
 .lh-widget-minimize:hover { opacity: 1; }
-.lh-widget--minimized .lh-widget-body, .lh-widget--minimized .lh-widget-grip { display: none; }
+.lh-widget--minimized .lh-widget-body, .lh-widget--minimized .lh-widget-foot, .lh-widget--minimized .lh-widget-grip { display: none; }
+/* The foot wears the panel's .lh-tracker, whose display: flex beat the fold's hidden (92, lesson 60): the footer stood under a folded strip. */
+.lh-widget-foot[hidden] { display: none; }
 .lh-widget--minimized .lh-widget-strip { border-bottom: 0; }
 /* A folded frame the host keeps taller than the head centres it (57-bis). */
-.lh-widget--minimized { justify-content: center; }
+/* safe: a frame shorter than the head keeps the title row at the top, never pushed off it (92). */
+.lh-widget--minimized { justify-content: safe center; }
 .lh-widget--minimized .lh-widget-head { border-bottom: 0; }
 .lh-widget-grip { position: absolute; right: 0; bottom: 0; width: 18px; height: 18px; cursor: nwse-resize; touch-action: none; opacity: 0.55; background: linear-gradient(135deg, transparent 0 50%, currentColor 50% 56%, transparent 56% 70%, currentColor 70% 76%, transparent 76% 90%, currentColor 90% 96%, transparent 96%); }
 .lh-widget-grip:hover { opacity: 1; }
-.lh-widget-head { display: flex; align-items: center; gap: 8px; padding: 6px 10px; font-weight: 600; font-size: 0.9em; flex-shrink: 0; background: var(--lh-header-bg, transparent); border-bottom: 1px solid var(--lh-accent-dim, var(--lumiverse-border, rgba(127,127,127,0.25))); cursor: default; }
+.lh-widget-head { display: flex; cursor: move; align-items: center; gap: 8px; padding: 6px 10px; font-weight: 600; font-size: 0.9em; flex-shrink: 0; background: var(--lh-header-bg, transparent); border-bottom: 1px solid var(--lh-accent-dim, var(--lumiverse-border, rgba(127,127,127,0.25))); cursor: default; }
 .lh-widget-head-title { flex: 1; }
+/* The one window's lights row in the title row (92e): after the title, before the fold and hide buttons, wrapping
+   inside its own cell on a narrow box; the title gives up its stretch to it, and the lights keep their own weight. */
+.lh-widget-head--lights .lh-widget-head-title { flex: 0 0 auto; }
+.lh-widget-head .lh-one-head-lights { flex: 1 1 auto; min-width: 0; font-weight: 400; }
 .lh-widget-hide { background: none; border: 0; color: inherit; cursor: pointer; font-size: 1.1em; line-height: 1; padding: 0 4px; opacity: 0.7; }
 .lh-widget-hide:hover { opacity: 1; }
 .lh-widget-body { flex: 1; min-height: 0; overflow: auto; padding: 8px 10px; }
@@ -1907,9 +2023,9 @@ export const PANEL_CSS = `
 .lh-details-modal .lh-map-entries, .lh-details-modal .lh-map-history, .lh-details-modal .lh-map-raw { margin: 0; }
 .lh-campaign-records .lh-records > summary, .lh-maps .lh-scene > summary { display: none; }
 .lh-map-details[hidden] { display: none; }
-.lh-tracker-header { display: flex; align-items: center; gap: 8px; }
+.lh-tracker-header { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
 .lh-tracker-title { font-weight: 600; flex: 1; }
-.lh-tracker-header .lh-button { white-space: nowrap; }
+.lh-tracker-actions .lh-button { white-space: nowrap; }
 /* Its own line: in the header it squeezed the buttons into three-line blocks. */
 .lh-tracker-status { font-size: 0.8em; opacity: 0.7; }
 .lh-tracker-status:empty { display: none; }
@@ -2932,4 +3048,103 @@ export const PANEL_CSS = `
 }
 .rt-combat-side--enemies { color: #e74c3c; }
 .rt-combat-side--allies { color: #3498db; }
+
+/* ── the phone (91, the mobile pass) ──────────────────────────────────────── */
+/* A box on a phone is a page (91): the host sizes it fullscreen, so there is no grip to resize it and no
+   head to fold it to. The class is the layout module's, set where the host's test said phone, so the
+   rule and the runtime decision cannot part. */
+.lh-widget--phone .lh-widget-grip, .lh-widget--phone .lh-widget-minimize { display: none; }
+/* The way back to a box, at the top of the drawer tab (91): drawn on a phone alone. */
+.adventuretime-panel .lh-phone-widgets { display: none; }
+/* The one window (92): the tab row in the strip — the Tracker button, then the panel's three — and the strip's and
+   the foot's parts shown with their pane, by the class the layout module puts on the root. Three classes, since
+   the parts wear the panel's .lh-tracker (display: flex). */
+.lh-widget .lh-one-tabs { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.lh-widget .lh-one-scene-tabs { display: flex; }
+.lh-widget-strip .lh-one-tabs .lh-widget-tabs { margin-bottom: 0; }
+.lh-widget .lh-one-tracker-head { margin-top: 6px; }
+.lh-widget.lh-one--tracker .lh-one-scene-only, .lh-widget.lh-one--scene .lh-one-tracker-only { display: none; }
+.lh-widget.lh-one--tracker .lh-one-scene-tabs .lh-widget-tab--active { border-bottom-color: transparent; opacity: 0.7; }
+.lh-widget .lh-one-pane { min-height: 0; }
+/* Everything below sits under the host's own test for a phone (mobile.ts), so the desktop reads none of it. */
+@media ${MOBILE_MEDIA} {
+    .adventuretime-panel .lh-phone-widgets:not([hidden]) { display: flex; }
+    /* The one window's lights under the title on a phone (92g, the maintainer's ask): beside the name they wrapped
+       into two short lines in a narrow cell; the row wraps now and the lights' cell takes a whole line after the
+       name and the ×, which keep the first. */
+    .lh-widget-head--lights { flex-wrap: wrap; }
+    .lh-widget-head--lights .lh-widget-head-title { flex: 1 1 auto; }
+    .lh-widget-head--lights .lh-one-head-lights { flex: 1 1 100%; order: 1; }
+    .adventuretime-panel .lh-phone-widget-tick { opacity: 1; align-self: center; }
+    /* The mobile widget (92f): the d20 on a disc of the accent colour, filling the host's chromeless 56 px frame; the
+       host drags it, so the cursor says so. The one root with no padding and no column: it is a button, not a panel. */
+    .lh-bubble.adventuretime-panel { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; box-sizing: border-box; padding: 0; gap: 0; border-radius: 50%; background: var(--lh-accent, var(--lumiverse-primary, #d4a940)); color: var(--lh-accent-contrast, var(--lumiverse-primary-contrast, #1a1a1a)); box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45); cursor: pointer; touch-action: none; user-select: none; -webkit-user-select: none; }
+    .lh-bubble.adventuretime-panel svg { width: 62%; height: 62%; display: block; }
+    .lh-bubble.adventuretime-panel:active { filter: brightness(1.1); }
+    /* Nothing scrolls sideways (91, the audit's B2 and B3): the rows that refused to shrink. The Tracker
+       modules' row wraps and its tag column gives way; a select is capped at its row (the host grows every
+       input to 16 px on a phone, which is what pushed the longest option past the edge); three texts that
+       never wrapped may; the tags library's one long example line breaks where it must. */
+    .adventuretime-panel .lh-tm-head { flex-wrap: wrap; }
+    /* A name's basis is 0 on the desktop (flex: 1), so in a wrapping row it took what was left and overprinted
+       the tag; at its own width it fills the line and the rest wraps under it. */
+    .adventuretime-panel .lh-tm-name, .adventuretime-panel .lh-rb-name { flex: 1 1 auto; }
+    /* The tag fills what is left of the name's line, so a row that cannot hold everything breaks before
+       the buttons, which stand together on the right of a second line; a row that fits stays one line. */
+    .adventuretime-panel .lh-tm-tag { width: auto; min-width: 0; flex: 1 0 auto; text-align: right; }
+    .adventuretime-panel .lh-tm-edit { margin-left: auto; }
+    .adventuretime-panel select.lh-input, .adventuretime-panel .lh-select { max-width: 100%; min-width: 0; }
+    .adventuretime-panel .lh-wizard-option { max-width: 100%; flex-wrap: wrap; }
+    .adventuretime-panel .lh-rb-head { flex-wrap: wrap; }
+    .adventuretime-panel .lh-tm-noplace, .adventuretime-panel .lh-rb-tag, .adventuretime-panel .lh-rb-badge { white-space: normal; flex: 0 1 auto; }
+    .adventuretime-panel .lh-rb-tag { overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+    .adventuretime-panel .lh-tags-token, .adventuretime-panel .lh-tags-preview .rt-barrel-value { white-space: normal; overflow-wrap: anywhere; }
+    /* A text box is 100 % wide plus its padding on the desktop, where the margin hides it; on a phone it is the width of its row. */
+    .adventuretime-panel textarea { box-sizing: border-box; max-width: 100%; }
+    /* The host's tap floor (91, the audit's A1 to A3): its smallest phone control is 28 px
+       (--lumiverse-btn-icon-xs at 600 px or less), so every button, every fold header and every
+       checkbox gets at least that. The desktop's sizes stand outside this block. */
+    .adventuretime-panel button, .adventuretime-panel .lh-button { min-height: var(--lumiverse-btn-icon-xs, 28px); min-width: var(--lumiverse-btn-icon-xs, 28px); }
+    .adventuretime-panel .lh-sec-arrows { gap: 2px; }
+    .adventuretime-panel summary, .adventuretime-panel .rt-section-header { min-height: var(--lumiverse-btn-icon-xs, 28px); box-sizing: border-box; align-content: center; }
+    .adventuretime-panel .lh-agent-badge { min-height: var(--lumiverse-btn-icon-xs, 28px); box-sizing: border-box; display: inline-flex; align-items: center; }
+    .adventuretime-panel input.lh-input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]), .adventuretime-panel select.lh-input, .adventuretime-panel .lh-select { min-height: var(--lumiverse-btn-icon-xs, 28px); box-sizing: border-box; }
+    .adventuretime-panel input[type="checkbox"], .adventuretime-panel input[type="radio"], .adventuretime-panel .lh-tm-nocheck, .adventuretime-panel .lh-rb-nocheck { width: 20px; height: 20px; flex-shrink: 0; margin: 0; }
+    /* The two prompt bars (91b, the audit's A4 and the phone try's first finding): the footer's 💬 bar and the
+       terminal's bar each put the box, "Lookback:" with its count and the send button in one row, and at the
+       host's 16 px the count and the button took half the row (the terminal's box was about 60 px). On a phone
+       the box takes its own line, whole, and the lookback and the button stand on a second, at the right. The
+       terminal's $ keeps the box's line: its basis leaves the prompt's width, so the actions alone wrap. */
+    .adventuretime-panel .lh-direct--compact { flex-wrap: wrap; }
+    .adventuretime-panel .lh-direct--compact .lh-direct-input { flex: 1 1 100%; }
+    .adventuretime-panel .lh-direct--compact .lh-direct-actions { flex: 1 1 100%; justify-content: flex-end; }
+    .adventuretime-panel .lh-terminal-bar { flex-wrap: wrap; }
+    .adventuretime-panel .lh-terminal-input { flex: 1 1 calc(100% - 2em); }
+    .adventuretime-panel .lh-terminal-actions { flex: 1 1 100%; justify-content: flex-end; }
+    /* The NPC cards' actions (91b, the audit's A6): dim until the card is hovered on the desktop, which a
+       phone never does, so they stayed dim; here they stand at the hovered strength from the start. The view
+       button and a lit pin keep their own full strength, as on the desktop. The card's class is in the selector
+       because the records' sheet comes after this block and would otherwise win the tie. */
+    .adventuretime-panel .lh-npc-card .lh-npc-action { opacity: 0.9; }
+    .adventuretime-panel .lh-npc-card .lh-npc-action--view, .adventuretime-panel .lh-npc-card .lh-npc-action--on { opacity: 1; }
+    /* The boxes' tabs as icons (92): the icon the button carries is drawn and the words hidden, the words staying
+       on the button's label and hover; the one window's four and the second box's three alike. */
+    .adventuretime-panel .lh-widget-tab::before { content: attr(data-lh-icon); font-size: 1.15em; line-height: 1; }
+    .adventuretime-panel .lh-widget-tab .lh-widget-tab-text { display: none; }
+    /* A short word under each icon (92b): the phone try's long press opened the host's own widget menu, never
+       the hover, so the icon alone said nothing to a thumb. The word is the tab's data-lh-short. */
+    .adventuretime-panel .lh-widget-tab { display: inline-flex; flex-direction: column; align-items: center; gap: 3px; padding: 3px 6px; }
+    .adventuretime-panel .lh-widget-tab::after { content: attr(data-lh-short); font-size: 0.65em; line-height: 1; }
+    /* The glyph-only buttons (92b, the audit's A5): the scene's five, the footer's δ and 💬, the site map's 💬
+       and the terminal's ↵ each carry a short word, drawn beside the glyph here and nowhere else. */
+    .adventuretime-panel button[data-lh-short]:not(.lh-widget-tab)::after { content: attr(data-lh-short); font-size: 0.75em; margin-left: 0.35em; }
+    /* Tab Mode's strip (92b, the audit's A10): the legacy pads its buttons to 13 px a side on a touch screen and
+       they overflowed their 44 px cells, drawing over the pane's edge; narrower a side, they fit the cell. The
+       legacy's rule is sliced as it is; this one outweighs it by the root's class. */
+    .adventuretime-panel .rt-tab-btn { padding-left: 6px; padding-right: 6px; }
+    /* The manager's portrait rows (92b, the audit's C1): the name had what the buttons left, 62 px in the modal;
+       with a basis of its own the buttons wrap under a long name rather than cut it, and nothing goes sideways. */
+    .adventuretime-panel .lh-portrait-row { flex-wrap: wrap; }
+    .adventuretime-panel .lh-portrait-labels { flex: 1 1 8em; }
+}
 ` + '\n' + MAP_PICTURE_CSS + '\n' + RECORDS_FOLD_CSS + '\n' + TERMINAL_FOLD_CSS + '\n' + AGENT_TOOLS_CSS + '\n' + SANDBOX_FOLD_CSS + '\n' + CREATOR_FOLD_CSS + '\n' + NARRATOR_CONFIG_CSS + '\n' + DEVELOPER_CARD_CSS + '\n' + SECOND_PASS_CSS + '\n' + CORE_CARD_CSS + '\n' + INSTANT_FOLD_CSS + '\n' + START_AREA_CSS + '\n' + PLAYER_CARD_FOLD_CSS + '\n' + WAYS_FOLD_CSS + '\n' + IMPORT_FOLD_CSS + '\n' + LIBRARY_FOLD_CSS + '\n' + NPC_CREATOR_FOLD_CSS + '\n' + EDITOR_TAB_CSS + '\n' + SCENE_FOLD_CSS + '\n' + CARD_SETTINGS_CSS + '\n' + PORTRAIT_DRAW_CSS + '\n' + PORTRAITS_SECTION_CSS + '\n' + PORTRAIT_STYLES_CSS + '\n' + PREF_DIALS_CSS + '\n' + CARDS_CSS + '\n' + CATEGORIES_CSS + '\n' + ENLARGE_CSS + '\n' + mapKindArtCss() + '\n' + THEME_CSS + THEME_WIZARD_CSS + FONT_SIZE_CSS + DAY_NIGHT_CSS + CHOICES_BACKING_CSS + BACKDROP_CSS + MAP_THEME_CSS + '\n' + BAR_ANIMATION_CSS + '\n' + RECOLOR_CSS + '\n' + DISPLAY_GROUP_CSS + DISPLAY_GROUPS_CARD_CSS + '\n' + TAB_MODE_CSS + TAB_MODE_PANEL_CSS + SECTIONS_EDITOR_CSS + '\n' + RELATIONSHIP_FLOAT_CSS

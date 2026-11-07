@@ -38,9 +38,11 @@ export function fontSizeToken(box: FontSizeBox): string {
 /**
  * Marks a root as a box's: the widget around it when it is a widget's body
  * (the head and the strip must scale with the cards), else the root itself.
+ * In the one window (92) the two roots share a box, so each pane is marked
+ * on its own and the layout module marks the strip's and the foot's parts.
  */
 export function sizeRoot(root: Element, box: FontSizeBox): void {
-    const target = root.closest('.lh-widget') ?? root
+    const target = root.closest('.lh-one-pane, .lh-widget') ?? root
     for (const other of FONT_SIZE_BOXES) if (other !== box) target.classList.remove(fontSizeClass(other))
     target.classList.add(fontSizeClass(box))
 }

@@ -1,8 +1,24 @@
 // @vitest-environment happy-dom
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-import { PANEL_CSS, mountPanel, type PanelHost } from './panel.js'
+import { MOBILE_MEDIA } from './mobile.js'
+import { PANEL_CSS, mountPanel as mountPanelRaw, type PanelHost } from './panel.js'
+
+// Every mount is destroyed after its test (lesson 50, the second time): a panel kept its bridge
+// subscriptions, its timers and so its DOM for the whole file, and at 95 tests the file outgrew the
+// CI runner's 3 GB heap (92b's two mounts were the straw). A test that destroys its own panel is fine.
+const mounted: Array<ReturnType<typeof mountPanelRaw>> = []
+function mountPanel(...args: Parameters<typeof mountPanelRaw>): ReturnType<typeof mountPanelRaw> {
+    const panel = mountPanelRaw(...args)
+    mounted.push(panel)
+    return panel
+}
+afterEach(() => {
+    for (const panel of mounted.splice(0)) {
+        try { panel.destroy() } catch { /* a test that destroyed its own panel already */ }
+    }
+})
 import { NARRATOR_BLANK } from './connections-category.js'
 import { Bridge, type BridgeHost } from './bridge.js'
 import { CHANNEL, type RequestMessage } from '../protocol.js'
@@ -972,8 +988,10 @@ describe('the cartridge buttons (47a)', () => {
         expect(card.open).toBe(false)
         expect(box.contains(button(root, 'Import cartridge…'))).toBe(true)
         expect(box.contains(button(root, 'Export cartridge'))).toBe(true)
-        // Nothing above the version line but the status.
-        expect(root.firstElementChild!.classList.contains('lh-actions')).toBe(false)
+        // Nothing above the version line but the status — and the phone row (91), hidden here with no widgets.
+        expect(root.firstElementChild!.classList.contains('lh-phone-widgets')).toBe(true)
+        expect((root.firstElementChild as HTMLElement).hidden).toBe(true)
+        expect(root.children[1]!.classList.contains('lh-actions')).toBe(false)
         // The settings still mount beside them, not over them; the Layout card
         // (47b, a card since 82) sits above them — both inside General & visuals since 63.
         expect(card.previousElementSibling!.getAttribute('data-lh-card')).toBe('layout')
@@ -1002,7 +1020,8 @@ describe('the two tabs and the layout select (47b)', () => {
         expect(root.querySelector('.lh-tracker-head')).not.toBeNull()
         expect(root.querySelector('.lh-diagnostics')).toBeNull()
         expect(root.querySelector('.lh-body')).toBeNull()
-        expect(Array.from(rest.children).slice(0, 3).map((n) => n.className.split(' ')[0])).toEqual(['lh-status', 'lh-dice-line', 'lh-diagnostics'])
+        // The phone row first (91; the stylesheet shows it on a phone alone), then the status, the dice line, the diagnostics.
+        expect(Array.from(rest.children).slice(0, 4).map((n) => n.className.split(' ').pop())).toEqual(['lh-phone-widgets', 'lh-status', 'lh-dice-line', 'lh-diagnostics'])
         expect(rest.querySelector('.lh-diagnostics')).not.toBeNull()
         expect(rest.querySelector('.lh-problem')).not.toBeNull()
         // The styles are scoped to this class; without it the second tab is
@@ -1037,7 +1056,7 @@ describe('the two tabs and the layout select (47b)', () => {
         await settle()
 
         expect(root.querySelector('.lh-layout select[data-lh-field="layout"]')).toBeNull()
-        expect(root.querySelector('.lh-layout')!.textContent).toContain('The tracker is one floating box')
+        expect(root.querySelector('.lh-layout')!.textContent).toContain('Two floating widgets: the Tracker widget, and the Lore widget')
         // The search heads the settings (63), the layout card the first category, after the version twin and Core & Branching (81).
         expect(root.querySelector('.lh-body .lh-settings')!.firstElementChild!.classList.contains('lh-search')).toBe(true)
         const card = root.querySelector('[data-lh-category="general"] .lh-category-body')!.children[2] as HTMLDetailsElement
@@ -1068,8 +1087,10 @@ describe('the widgets\' slots and buttons (47c)', () => {
 
         expect(scene.classList.contains('adventuretime-panel')).toBe(true)
         expect(scene.querySelector('.lh-widget-tabs')).not.toBeNull()
-        // The tracker's head goes in the strip when one is given (57), and leaves with the panel.
+        // The tracker's head goes in the strip when one is given (57), and leaves with the panel; with no
+        // lights slot the lights row heads it (92e).
         expect(trackerHead.querySelector('.lh-tracker-head')).not.toBeNull()
+        expect(trackerHead.querySelector('.lh-tracker-actions')).not.toBeNull()
         expect(root.querySelector('.lh-tracker-head')).toBeNull()
         // And the XP bar at the bottom goes in the foot (74f).
         expect(trackerFoot.querySelector('.lh-bottom-xp')).not.toBeNull()
@@ -1079,18 +1100,49 @@ describe('the widgets\' slots and buttons (47c)', () => {
 
         const buttons = rest.querySelector('.lh-widget-buttons') as HTMLElement
         expect(buttons.hidden).toBe(false)
+        // The buttons head the card with short names, the long words on the hover (92c).
+        expect(buttons.parentElement!.firstElementChild).toBe(buttons)
+        expect(Array.from(buttons.querySelectorAll('button')).map((b) => b.textContent)).toEqual(['Toggle Tracker', 'Toggle Lore', 'Reset Widgets'])
+        expect(button(rest, 'Toggle Lore').title).toContain('Hide the Lore widget')
         // The buttons toggle (67), and a third puts both boxes back.
-        button(rest, 'Toggle the tracker widget').click()
-        button(rest, 'Toggle the map, scene and relationships widget').click()
+        button(rest, 'Toggle Tracker').click()
+        button(rest, 'Toggle Lore').click()
         expect(toggled).toEqual(['tracker', 'scene'])
         expect(shown).toEqual([])
-        button(rest, 'Reset the widgets’ positions').click()
+        button(rest, 'Reset Widgets').click()
         expect(resets).toBe(1)
 
         panel.destroy()
         expect(scene.children.length).toBe(0)
         expect(trackerHead.children.length).toBe(0)
         expect(trackerFoot.children.length).toBe(0)
+    })
+
+    it('puts the two toggles at the top of the tab for a phone (91): the same toggles, the stylesheet showing the row on a phone alone', async () => {
+        const { bridge } = makeBridge({ 'settings.get': { settings: createDefaultSettings() } })
+        const root = document.createElement('div')
+        const rest = document.createElement('div')
+        const toggled: string[] = []
+        mountPanel(root, bridge, makeHost().host, { rest, scene: document.createElement('div'), widgets: { show: () => undefined, toggle: (which) => { toggled.push(which) }, reset: () => undefined } })
+        await settle()
+
+        const row = rest.firstElementChild as HTMLElement
+        expect(row.classList.contains('lh-phone-widgets')).toBe(true)
+        expect(row.hidden).toBe(false)
+        const buttons = Array.from(row.querySelectorAll('button'))
+        expect(buttons.map((b) => b.textContent)).toEqual(['Show the Tracker widget', 'Show the Lore widget'])
+        expect(buttons.map((b) => b.getAttribute('data-lh-phone-widget'))).toEqual(['tracker', 'scene'])
+        buttons[1]!.click()
+        buttons[0]!.click()
+        expect(toggled).toEqual(['scene', 'tracker'])
+        // The mobile widget's tick after them (92f), on as it ships.
+        const tick = row.querySelector('label.lh-phone-widget-tick') as HTMLLabelElement
+        expect(tick).not.toBeNull()
+        expect(row.lastElementChild).toBe(tick)
+        expect(tick.textContent).toBe('Mobile widget')
+        expect((tick.querySelector('input[data-lh-field="mobile-widget"]') as HTMLInputElement).checked).toBe(true)
+        // The Layout card's own toggles are still there, untouched.
+        expect(rest.querySelector('[data-lh-card="layout"] .lh-widget-buttons')).not.toBeNull()
     })
 
     it('draws the cards tick off while the preference is absent: off as it ships since 82', async () => {
@@ -1229,7 +1281,7 @@ describe('the settings in Multihog’s categories (63)', () => {
         'settings.get': { settings: createDefaultSettings() },
         'prefs.get': { prefs: PREFS },
         'prefs.patch': { prefs: PREFS },
-        'status.get': { version: '1.0.0-beta.11', host: '1.2.0', checked: true, granted: ['a'], missing: [], dice: { registered: false, mode: 'off' } },
+        'status.get': { version: '1.0.0-beta.22', host: '1.2.0', checked: true, granted: ['a'], missing: [], dice: { registered: false, mode: 'off' } },
         'connections.list': { connections: [{ id: 'conn-1', name: 'Main', model: 'deepseek', isDefault: true }] },
         'scene.connections': { connections: [{ id: 'img-1', name: 'Swarm', provider: 'swarmui', model: 'anima', isDefault: true }] },
     })
@@ -1252,7 +1304,7 @@ describe('the settings in Multihog’s categories (63)', () => {
         expect(titles(category(root, 'world'))).toEqual(['World Progression'])
         const general = category(root, 'general').querySelector('.lh-category-body')!
         expect(general.children[0]!.classList.contains('lh-version-twin')).toBe(true)
-        expect(general.children[0]!.textContent).toContain('AdventureTime 1.0.0-beta.11')
+        expect(general.children[0]!.textContent).toContain('AdventureTime 1.0.0-beta.22')
         // Core & Branching (81), Multihog's first drawer, is the first card; the Layout and Cartridges cards (82) follow.
         expect(general.children[1]!.getAttribute('data-lh-card')).toBe('core-branching')
         expect(general.children[2]!.getAttribute('data-lh-card')).toBe('layout')
@@ -1762,11 +1814,17 @@ describe('the theme layer (74a)', () => {
         expect(Array.from(select.options).map((o) => o.textContent)).toEqual(['Match Lumiverse', 'Hacker', 'Fantasy', 'Hologram', 'Pacific Cove', 'Cherry Blossom', '✨ Custom (AI Wizard)'])
         // Custom is the wizard's (74b), and offered.
         expect(select.options[6]!.disabled).toBe(false)
-        // The select sits right under the layout's row and hint, before the cards tick.
+        // The widget buttons head the card (92c), then the hint, the Panel layout row, the two tick rows and their
+        // hint (92d), and the select after those.
         const box = root.querySelector('.lh-layout')!
-        expect(box.children[1]!.classList.contains('lh-panel-layout-row')).toBe(true)
-        expect(box.children[2]).toBe(select.closest('.lh-theme-row'))
-        expect(box.children[3]!.classList.contains('lh-section-help')).toBe(true)
+        expect(box.children[0]!.classList.contains('lh-widget-buttons')).toBe(true)
+        expect(box.children[1]!.classList.contains('lh-section-help')).toBe(true)
+        expect(box.children[2]!.classList.contains('lh-panel-layout-row')).toBe(true)
+        expect(box.children[3]).toBe(box.querySelector('input[data-lh-field="message-cards"]')!.closest('.lh-tracker-pref'))
+        expect(box.children[4]).toBe(box.querySelector('input[data-lh-field="one-window"]')!.closest('.lh-tracker-pref'))
+        expect(box.children[5]!.textContent).toContain('Off, the two widgets. On, one box with four tabs')
+        expect(box.children[6]).toBe(select.closest('.lh-theme-row'))
+        expect(box.children[7]!.classList.contains('lh-section-help')).toBe(true)
         // The theme is a class on the body, where every root sees it.
         expect(document.body.classList.contains('lh-theme-fantasy')).toBe(true)
 
@@ -1806,7 +1864,7 @@ describe('the theme layer (74a)', () => {
         const box = root.querySelector('[data-lh-field="themeWizard"]') as HTMLElement
         // Custom chosen: the box shows under the select, the stored theme is on the body as tokens, the library lists Night.
         expect(box.hidden).toBe(false)
-        expect(root.querySelector('.lh-layout')!.children[6]).toBe(box)
+        expect(root.querySelector('.lh-layout')!.children[10]).toBe(box)
         expect(document.body.classList.contains('lh-theme-custom')).toBe(true)
         expect(document.body.style.getPropertyValue('--lh-custom-accent')).toBe('#112233')
         expect(document.body.style.getPropertyValue('--lh-custom-accent-contrast')).toBe('#f4f4f4')
@@ -1900,8 +1958,8 @@ describe('the theme layer (74a)', () => {
         const tick = root.querySelector('.lh-layout input[data-lh-field="dayNightCycle"]') as HTMLInputElement
         expect(tick.checked).toBe(true)
         const box = root.querySelector('.lh-layout')!
-        expect(box.children[7]).toBe(tick.closest('.lh-daynight-row'))
-        expect(box.children[8]!.textContent).toContain('Seven phases: late night, dawn, morning, midday, afternoon, sunset and night')
+        expect(box.children[11]).toBe(tick.closest('.lh-daynight-row'))
+        expect(box.children[12]!.textContent).toContain('Seven phases: late night, dawn, morning, midday, afternoon, sunset and night')
         // The switch is a class on the body, where the tracker panel's phase class meets it.
         expect(document.body.classList.contains('lh-daynight')).toBe(true)
         // The stylesheet the host is handed carries the cycle's rules.
@@ -1931,10 +1989,10 @@ describe('the theme layer (74a)', () => {
 
         const select = root.querySelector('.lh-layout select[data-lh-field="choicesBacking"]') as HTMLSelectElement
         const box = root.querySelector('.lh-layout')!
-        expect(box.children[4]).toBe(select.closest('.lh-choices-backing-row'))
-        expect(box.children[4]!.textContent).toContain('Choice buttons')
+        expect(box.children[8]).toBe(select.closest('.lh-choices-backing-row'))
+        expect(box.children[8]!.textContent).toContain('Choice buttons')
         expect(Array.from(select.options).map((option) => [option.value, option.textContent])).toEqual([['tinted', 'Tinted, as the theme draws them'], ['solid', 'On a solid backing'], ['hover', 'Solid while hovered']])
-        expect(box.children[5]!.textContent).toContain('Nothing here touches the chat’s own background.')
+        expect(box.children[9]!.textContent).toContain('Nothing here touches the chat’s own background.')
         expect(select.value).toBe('solid')
         // Live under any theme and with the cycle off: the rules need no other class.
         expect(select.disabled).toBe(false)
@@ -2003,8 +2061,8 @@ describe('the theme layer (74a)', () => {
         const tick = root.querySelector('.lh-layout input[data-lh-field="xpBarAtBottom"]') as HTMLInputElement
         expect(tick.checked).toBe(true)
         const box = root.querySelector('.lh-layout')!
-        expect(box.children[9]).toBe(tick.closest('.lh-xpbar-row'))
-        expect(box.children[10]!.textContent).toContain('like an MMO experience bar')
+        expect(box.children[13]).toBe(tick.closest('.lh-xpbar-row'))
+        expect(box.children[14]!.textContent).toContain('like an MMO experience bar')
         expect(PANEL_CSS).toContain('.lh-bottom-xp {')
 
         tick.checked = false
@@ -2028,9 +2086,9 @@ describe('the theme layer (74a)', () => {
         const tick = root.querySelector('.lh-layout input[data-lh-field="animateAllCustomBarChanges"]') as HTMLInputElement
         expect(tick.checked).toBe(true)
         const box = root.querySelector('.lh-layout')!
-        expect(box.children[11]).toBe(tick.closest('.lh-animate-bars-row'))
-        expect(box.children[11]!.textContent).toContain('Animate changes on every custom bar')
-        expect(box.children[12]!.textContent).toContain('A green gain or a red loss')
+        expect(box.children[15]).toBe(tick.closest('.lh-animate-bars-row'))
+        expect(box.children[15]!.textContent).toContain('Animate changes on every custom bar')
+        expect(box.children[16]!.textContent).toContain('A green gain or a red loss')
         expect(PANEL_CSS).toContain('.rt-bar-delta-gain {')
         expect(PANEL_CSS).toContain('.rt-xp-gain-floater {')
         expect(PANEL_CSS).toContain('.rt-barrel-color-control {')
@@ -2071,11 +2129,12 @@ describe('the theme layer (74a)', () => {
         expect(root.style.getPropertyValue('--lh-backdrop-night')).toBe('url("/images/day.jpg")')
         expect(root.style.getPropertyValue('--lh-backdrop-strength')).toBe('0.4')
         expect(rest.classList.contains('lh-backdrop')).toBe(false)
-        // The rows, in the settings tab: two boxes under the font sizes, before the cards tick.
+        // The rows, in the settings tab: two boxes under the font sizes, the card's last child (92d).
         const box = rest.querySelector('.lh-layout')!
-        expect(box.children[15]!.classList.contains('lh-backdrops')).toBe(true)
+        expect(box.children[19]!.classList.contains('lh-backdrops')).toBe(true)
+        expect(box.lastElementChild).toBe(box.children[19])
         const tracker = rest.querySelector('[data-lh-backdrop-box="tracker"]') as HTMLElement
-        expect(tracker.querySelector('.lh-backdrop-title')!.textContent).toBe('Backdrop behind the tracker’s box')
+        expect(tracker.querySelector('.lh-backdrop-title')!.textContent).toBe('Backdrop behind the Tracker widget')
         expect((tracker.querySelector('.lh-backdrop-preview') as HTMLElement).style.backgroundImage).toBe('url("/images/day.jpg")')
         const strength = tracker.querySelector('[data-lh-backdrop-strength="tracker"]') as HTMLInputElement
         expect(strength.value).toBe('40')
@@ -2093,7 +2152,7 @@ describe('the theme layer (74a)', () => {
         expect(upload?.params).toEqual({ box: 'tracker', slot: 'night', dataUrl: 'data:image/png;base64,iVBORw==', filename: 'night.png' })
         expect(pickFile).toHaveBeenLastCalledWith({ accept: ['image/png', 'image/jpeg', 'image/webp', 'image/gif'], maxSizeBytes: 8 * 1024 * 1024 })
         expect(root.style.getPropertyValue('--lh-backdrop-night')).toBe('url("/images/stored/night.png")')
-        expect(tracker.querySelector('.lh-backdrop-note')!.textContent).toBe('The tracker’s box’s night backdrop is set.')
+        expect(tracker.querySelector('.lh-backdrop-note')!.textContent).toBe('The Tracker widget’s night backdrop is set.')
 
         // The strength moves the box as it is dragged and saves when let go.
         strength.value = '70'
@@ -2115,7 +2174,7 @@ describe('the theme layer (74a)', () => {
         url.dispatchEvent(new Event('change'))
         expect(requests.at(-1)?.params).toEqual({ patch: { trackerBackdrop: { day: 'https://host/a.jpg', night: '/images/stored/night.png', strength: 70 } } })
         await settle()
-        expect(tracker.querySelector('.lh-backdrop-note')!.textContent).toBe('The tracker’s box’s backdrop is set.')
+        expect(tracker.querySelector('.lh-backdrop-note')!.textContent).toBe('The Tracker widget’s backdrop is set.')
         // The night row takes an address too (74d-bis), under the same rule, and shows a stored one.
         const nightUrl = tracker.querySelector('[data-lh-backdrop-url="tracker:night"]') as HTMLInputElement
         const beforeNight = requests.length
@@ -2130,7 +2189,7 @@ describe('the theme layer (74a)', () => {
         emit('prefs.changed', { prefs: { trackerBackdrop: { day: 'https://host/a.jpg', night: 'https://host/n.jpg', strength: 70 } } })
         expect(nightUrl.value).toBe('https://host/n.jpg')
         await settle()
-        expect(tracker.querySelector('.lh-backdrop-note')!.textContent).toBe('The tracker’s box’s night backdrop is set.')
+        expect(tracker.querySelector('.lh-backdrop-note')!.textContent).toBe('The Tracker widget’s night backdrop is set.')
 
         // Clear the day image: the answer takes the class off the root.
         ;(tracker.querySelector('[data-lh-backdrop-clear="tracker:day"]') as HTMLButtonElement).click()
@@ -2169,14 +2228,14 @@ describe('the theme layer (74a)', () => {
         // With a second tab the settings are drawn in it (47b), the layout box among them.
         const box = rest.querySelector('.lh-layout')!
         // After the day/night row and its hint (74c).
-        expect(box.children[13]!.classList.contains('lh-font-sizes')).toBe(true)
+        expect(box.children[17]!.classList.contains('lh-font-sizes')).toBe(true)
         const tracker = rest.querySelector('input[data-lh-field="trackerFontSize"]') as HTMLInputElement
         const agent = rest.querySelector('input[data-lh-field="agentFontSize"]') as HTMLInputElement
         const settings = rest.querySelector('input[data-lh-field="settingsFontSize"]') as HTMLInputElement
         // Three rows, in the boxes' order, one per widget and one for the settings tab (90).
         expect(Array.from(rest.querySelectorAll('.lh-font-size-row input[type="range"]')).map((i) => i.getAttribute('data-lh-field'))).toEqual(['trackerFontSize', 'agentFontSize', 'settingsFontSize'])
         expect(agent.value).toBe('12')
-        expect(agent.closest('.lh-font-size-row')!.querySelector('span')!.textContent).toBe('Agent & maps font size')
+        expect(agent.closest('.lh-font-size-row')!.querySelector('span')!.textContent).toBe('Lore widget font size')
         expect(document.body.style.getPropertyValue('--lh-size-agent')).toBe('12px')
         expect([tracker.type, tracker.min, tracker.max]).toEqual(['range', '8', '32'])
         expect(tracker.value).toBe('16')
@@ -2229,5 +2288,380 @@ describe('a picture large (Phase 64)', () => {
     it('ships the zoom cursor and the large picture\'s size in the panel\'s one stylesheet, which reaches the cards under the messages too', () => {
         expect(PANEL_CSS).toContain('img[data-lh-large] { cursor: zoom-in; }')
         expect(PANEL_CSS).toContain('.lh-large {')
+    })
+})
+
+describe('the mobile widget’s tick (92f)', () => {
+    it('is on as it ships, writes the preference, tells the layout module, and follows the event', async () => {
+        const { bridge, requests, emit } = makeBridge({ 'settings.get': { settings: createDefaultSettings() }, 'prefs.get': { prefs: { bars: {} } }, 'prefs.patch': { prefs: {} } })
+        const root = document.createElement('div')
+        const rest = document.createElement('div')
+        const told: boolean[] = []
+        mountPanel(root, bridge, makeHost().host, { rest, scene: document.createElement('div'), widgets: { one: true, show: () => undefined, toggle: () => undefined, reset: () => undefined, mobileWidget: (on) => { told.push(on) } } })
+        await settle()
+
+        const tick = rest.querySelector('.lh-phone-widgets input[data-lh-field="mobile-widget"]') as HTMLInputElement
+        expect(tick).not.toBeNull()
+        expect(tick.checked).toBe(true)
+        // A file without the key says nothing to the layout module, which has its own read.
+        expect(told).toEqual([])
+        tick.checked = false
+        tick.dispatchEvent(new Event('change'))
+        await settle()
+        expect(told).toEqual([false])
+        expect(requests.filter((r) => r.op === 'prefs.patch').map((r) => r.params)).toEqual([{ patch: { mobileWidget: false } }])
+        emit('prefs.changed', { prefs: { mobileWidget: true } })
+        expect(tick.checked).toBe(true)
+        expect(told).toEqual([false, true])
+        emit('prefs.changed', { prefs: { oneWindow: true } })
+        expect(told).toEqual([false, true])
+        emit('prefs.changed', { prefs: { mobileWidget: false } })
+        expect(tick.checked).toBe(false)
+        expect(told).toEqual([false, true, false])
+    })
+
+    it('reads the preference off at mount and puts the tick back when the write fails; no tick without widgets', async () => {
+        const { bridge } = makeBridge({ 'settings.get': { settings: createDefaultSettings() }, 'prefs.get': { prefs: { bars: {}, mobileWidget: false } } })
+        const root = document.createElement('div')
+        const rest = document.createElement('div')
+        const told: boolean[] = []
+        mountPanel(root, bridge, makeHost().host, { rest, scene: document.createElement('div'), widgets: { one: true, show: () => undefined, toggle: () => undefined, reset: () => undefined, mobileWidget: (on) => { told.push(on) } } })
+        await settle()
+
+        const tick = rest.querySelector('.lh-phone-widgets input[data-lh-field="mobile-widget"]') as HTMLInputElement
+        expect(tick.checked).toBe(false)
+        expect(told).toEqual([false])
+        // prefs.patch has no canned answer: the write fails, the tick goes back and the disc with it.
+        tick.checked = true
+        tick.dispatchEvent(new Event('change'))
+        await settle()
+        expect(tick.checked).toBe(false)
+        expect(told).toEqual([false, true, false])
+
+        const plain = document.createElement('div')
+        const plainRest = document.createElement('div')
+        mountPanel(plain, bridge, makeHost().host, { rest: plainRest, scene: document.createElement('div') })
+        await settle()
+        expect(plainRest.querySelector('input[data-lh-field="mobile-widget"]')).toBeNull()
+    })
+})
+
+describe('the phone block of the stylesheet (91)', () => {
+    const start = PANEL_CSS.indexOf(`@media ${MOBILE_MEDIA} {`)
+    const end = PANEL_CSS.indexOf('\n}\n', start)
+    const block = PANEL_CSS.slice(start, end)
+    const outside = PANEL_CSS.slice(0, start) + PANEL_CSS.slice(end)
+
+    it('sits under the host’s own test for a phone, once', () => {
+        expect(start).toBeGreaterThan(0)
+        expect(PANEL_CSS.indexOf('@media (max-width: 600px)', start + 1)).toBe(-1)
+        expect(MOBILE_MEDIA).toBe('(max-width: 600px), (pointer: coarse)')
+    })
+
+    it('shows the phone row on a phone alone, and hides a phone box’s grip and fold by the layout module’s class', () => {
+        expect(outside).toContain('.adventuretime-panel .lh-phone-widgets { display: none; }')
+        expect(block).toContain('.adventuretime-panel .lh-phone-widgets:not([hidden]) { display: flex; }')
+        expect(outside).toContain('.lh-widget--phone .lh-widget-grip, .lh-widget--phone .lh-widget-minimize { display: none; }')
+    })
+
+    it('puts the one window’s lights under the title on a phone (92g), inside the block alone', () => {
+        expect(block).toContain('.lh-widget-head--lights { flex-wrap: wrap; }')
+        expect(block).toContain('.lh-widget-head--lights .lh-widget-head-title { flex: 1 1 auto; }')
+        expect(block).toContain('.lh-widget-head--lights .lh-one-head-lights { flex: 1 1 100%; order: 1; }')
+        expect(outside).not.toContain('.lh-widget-head--lights { flex-wrap: wrap; }')
+        expect(outside).not.toContain('.lh-one-head-lights { flex: 1 1 100%')
+    })
+
+    it('draws the mobile widget as a disc of the accent colour with the d20 (92f), inside the block alone', () => {
+        expect(block).toContain('.lh-bubble.adventuretime-panel { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; box-sizing: border-box; padding: 0; gap: 0; border-radius: 50%; background: var(--lh-accent, var(--lumiverse-primary, #d4a940)); color: var(--lh-accent-contrast, var(--lumiverse-primary-contrast, #1a1a1a));')
+        expect(block).toContain('.lh-bubble.adventuretime-panel svg { width: 62%; height: 62%; display: block; }')
+        expect(outside).not.toContain('.lh-bubble')
+    })
+
+    it('lets the rows that scrolled sideways shrink (B2, B3), inside the block and nowhere else', () => {
+        for (const rule of [
+            '.adventuretime-panel .lh-tm-head { flex-wrap: wrap; }',
+            '.adventuretime-panel .lh-tm-name, .adventuretime-panel .lh-rb-name { flex: 1 1 auto; }',
+            '.adventuretime-panel .lh-tm-tag { width: auto; min-width: 0; flex: 1 0 auto; text-align: right; }',
+            '.adventuretime-panel .lh-tm-edit { margin-left: auto; }',
+            '.adventuretime-panel select.lh-input, .adventuretime-panel .lh-select { max-width: 100%; min-width: 0; }',
+            '.adventuretime-panel .lh-wizard-option { max-width: 100%; flex-wrap: wrap; }',
+            '.adventuretime-panel .lh-rb-head { flex-wrap: wrap; }',
+            '.adventuretime-panel .lh-tm-noplace, .adventuretime-panel .lh-rb-tag, .adventuretime-panel .lh-rb-badge { white-space: normal; flex: 0 1 auto; }',
+            '.adventuretime-panel .lh-tags-token, .adventuretime-panel .lh-tags-preview .rt-barrel-value { white-space: normal; overflow-wrap: anywhere; }',
+            '.adventuretime-panel textarea { box-sizing: border-box; max-width: 100%; }',
+        ]) {
+            expect(block).toContain(rule)
+            expect(outside).not.toContain(rule)
+        }
+        // The desktop's own rules stand outside the block, unchanged.
+        expect(outside).toContain('.lh-tm-name { flex: 1; min-width: 0; }')
+        expect(outside).toContain('.lh-rb-name { flex: 1; min-width: 0; }')
+        expect(outside).toContain('.lh-tm-head { display: flex; align-items: center; gap: 8px; }')
+    })
+
+    it('gives every button, fold header, box and checkbox the host’s 28 px floor on a phone (A1 to A3), and nothing on the desktop', () => {
+        expect(block).toContain('.adventuretime-panel button, .adventuretime-panel .lh-button { min-height: var(--lumiverse-btn-icon-xs, 28px); min-width: var(--lumiverse-btn-icon-xs, 28px); }')
+        expect(block).toContain('.adventuretime-panel summary, .adventuretime-panel .rt-section-header { min-height: var(--lumiverse-btn-icon-xs, 28px);')
+        expect(block).toContain('.adventuretime-panel input[type="checkbox"], .adventuretime-panel input[type="radio"], .adventuretime-panel .lh-tm-nocheck, .adventuretime-panel .lh-rb-nocheck { width: 20px; height: 20px;')
+        expect(block).toMatch(/input\.lh-input:not\(\[type="checkbox"\]\)[^{]*select\.lh-input, \.adventuretime-panel \.lh-select \{ min-height: var\(--lumiverse-btn-icon-xs, 28px\)/)
+        expect(outside).not.toMatch(/\.adventuretime-panel button, \.adventuretime-panel \.lh-button \{ min-height/)
+        expect(outside).not.toMatch(/\.adventuretime-panel summary[^{]*\{ min-height/)
+        expect(outside).not.toMatch(/input\[type="checkbox"\][^{]*\{ width: 20px/)
+    })
+    it('wraps the two prompt bars and shows the NPC actions at full strength on a phone (91b, A4 and A6), inside the block alone', () => {
+        for (const rule of [
+            '.adventuretime-panel .lh-direct--compact { flex-wrap: wrap; }',
+            '.adventuretime-panel .lh-direct--compact .lh-direct-input { flex: 1 1 100%; }',
+            '.adventuretime-panel .lh-direct--compact .lh-direct-actions { flex: 1 1 100%; justify-content: flex-end; }',
+            '.adventuretime-panel .lh-terminal-bar { flex-wrap: wrap; }',
+            '.adventuretime-panel .lh-terminal-input { flex: 1 1 calc(100% - 2em); }',
+            '.adventuretime-panel .lh-terminal-actions { flex: 1 1 100%; justify-content: flex-end; }',
+            '.adventuretime-panel .lh-npc-card .lh-npc-action { opacity: 0.9; }',
+            '.adventuretime-panel .lh-npc-card .lh-npc-action--view, .adventuretime-panel .lh-npc-card .lh-npc-action--on { opacity: 1; }',
+        ]) {
+            expect(block).toContain(rule)
+            expect(outside).not.toContain(rule)
+        }
+        // The desktop's bars stay one row, and the actions stay dim until hovered there.
+        expect(outside).toContain('.adventuretime-panel .lh-direct--compact .lh-direct-actions { flex-wrap: nowrap; gap: 8px; flex: 0 0 auto; }')
+        expect(outside).toContain('.lh-terminal-bar { display: flex; align-items: flex-start; gap: 6px; }')
+        expect(outside).toMatch(/\.adventuretime-panel \.lh-npc-action \{[^}]*opacity: 0\.5;/)
+        expect(outside).toContain('.adventuretime-panel .lh-npc-card:hover .lh-npc-action { opacity: 0.9; }')
+    })
+
+    it('draws the boxes\' tabs as their icons on a phone (92), inside the block alone', () => {
+        for (const rule of [
+            '.adventuretime-panel .lh-widget-tab::before { content: attr(data-lh-icon); font-size: 1.15em; line-height: 1; }',
+            '.adventuretime-panel .lh-widget-tab .lh-widget-tab-text { display: none; }',
+            // The short word under the icon (92b): a long press on a phone opens the host's own widget menu, never the hover.
+            '.adventuretime-panel .lh-widget-tab { display: inline-flex; flex-direction: column; align-items: center; gap: 3px; padding: 3px 6px; }',
+            '.adventuretime-panel .lh-widget-tab::after { content: attr(data-lh-short); font-size: 0.65em; line-height: 1; }',
+        ]) {
+            expect(block).toContain(rule)
+            expect(outside).not.toContain(rule)
+        }
+    })
+})
+
+describe('the audit\'s last four on a phone (92b: A5, A10, C1; C3 is the choices backing\'s own sheet)', () => {
+    const start = PANEL_CSS.indexOf(`@media ${MOBILE_MEDIA} {`)
+    const end = PANEL_CSS.indexOf('\n}\n', start)
+    const block = PANEL_CSS.slice(start, end)
+    const outside = PANEL_CSS.slice(0, start) + PANEL_CSS.slice(end)
+
+    it('draws a glyph-only button\'s short word beside it, pads Tab Mode\'s buttons to their cells and gives the manager\'s names a basis, inside the block alone', () => {
+        for (const rule of [
+            '.adventuretime-panel button[data-lh-short]:not(.lh-widget-tab)::after { content: attr(data-lh-short); font-size: 0.75em; margin-left: 0.35em; }',
+            '.adventuretime-panel .rt-tab-btn { padding-left: 6px; padding-right: 6px; }',
+            '.adventuretime-panel .lh-portrait-row { flex-wrap: wrap; }',
+            '.adventuretime-panel .lh-portrait-labels { flex: 1 1 8em; }',
+        ]) {
+            expect(block).toContain(rule)
+            expect(outside).not.toContain(rule)
+        }
+        // The desktop's rules stand: the name still ellipsises in its column, and no desktop rule names data-lh-short.
+        expect(outside).toContain('.lh-portrait-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }')
+        expect(outside).not.toContain('data-lh-short')
+    })
+})
+
+describe('the Layout card’s tick rows (92c)', () => {
+    it('keeps a tick on its label’s line, the words wrapping beside the box rather than under it', () => {
+        expect(PANEL_CSS).toContain('.adventuretime-panel .lh-layout-row.lh-tracker-pref { flex-wrap: nowrap; align-items: flex-start; }')
+        // Every other wrapping tick row (92g): the words beside the box at a basis of nothing, so a long label wraps in its cell.
+        expect(PANEL_CSS).toContain('.adventuretime-panel .lh-layout-row > input[type="checkbox"], .adventuretime-panel .lh-portrait-settings-row > input[type="checkbox"], .adventuretime-panel .lh-scene-picture-row > input[type="checkbox"], .adventuretime-panel .lh-wizard-option > input[type="checkbox"] { flex: 0 0 auto; }')
+        expect(PANEL_CSS).toContain('.adventuretime-panel .lh-layout-row > input[type="checkbox"] + span, .adventuretime-panel .lh-portrait-settings-row > input[type="checkbox"] + span, .adventuretime-panel .lh-scene-picture-row > input[type="checkbox"] + span, .adventuretime-panel .lh-wizard-option > input[type="checkbox"] + span { flex: 1 1 0; min-width: 0; }')
+        expect(PANEL_CSS).toContain('.adventuretime-panel .lh-layout-row.lh-tracker-pref > span { flex: 1 1 auto; min-width: 0; }')
+        expect(PANEL_CSS).toContain('.adventuretime-panel .lh-widget-buttons { margin-bottom: 8px; }')
+    })
+})
+
+describe('the lights row in the one window’s title row (92e)', () => {
+    it('puts the lights row in the trackerLights slot when the layout gives one, the actions row in the strip, and empties both on destroy', async () => {
+        const { bridge } = makeBridge({ 'settings.get': { settings: createDefaultSettings() } })
+        const root = document.createElement('div')
+        const rest = document.createElement('div')
+        const scene = document.createElement('div')
+        const trackerHead = document.createElement('div')
+        const trackerLights = document.createElement('div')
+        const panel = mountPanel(root, bridge, makeHost().host, { rest, scene, trackerHead, trackerLights, widgets: { one: true, show: () => undefined, toggle: () => undefined, reset: () => undefined } })
+        await settle()
+
+        expect(trackerLights.querySelector('.lh-tracker-head')).not.toBeNull()
+        expect(trackerLights.querySelectorAll('.lh-light').length).toBe(5)
+        expect(trackerHead.querySelector('.lh-tracker-head')).toBeNull()
+        expect(trackerHead.querySelector('.lh-tracker-actions')).not.toBeNull()
+        expect(trackerHead.querySelector('.lh-tracker-head-time')!.textContent).toBe('Last run: none yet')
+        expect(PANEL_CSS).toContain('.lh-widget-head--lights .lh-widget-head-title { flex: 0 0 auto; }')
+        expect(PANEL_CSS).toContain('.lh-widget-head .lh-one-head-lights { flex: 1 1 auto; min-width: 0; font-weight: 400; }')
+
+        panel.destroy()
+        expect(trackerLights.children.length).toBe(0)
+        expect(trackerHead.children.length).toBe(0)
+    })
+})
+
+describe('the UI Appearance card after the try of beta.17 (92d)', () => {
+    it('draws each backdrop block as a folding card, closed as it ships, with its title, an icon and a chevron on the summary', async () => {
+        const { bridge } = makeBridge({ 'settings.get': { settings: createDefaultSettings() } })
+        const root = document.createElement('div')
+        const rest = document.createElement('div')
+        mountPanel(root, bridge, makeHost().host, { rest })
+        await settle()
+
+        const cards = Array.from(rest.querySelectorAll('.lh-backdrops > *')) as HTMLDetailsElement[]
+        expect(cards.map((c) => c.tagName)).toEqual(['DETAILS', 'DETAILS'])
+        expect(cards.map((c) => c.open)).toEqual([false, false])
+        expect(cards.map((c) => c.getAttribute('data-lh-backdrop-box'))).toEqual(['tracker', 'settings'])
+        for (const card of cards) {
+            expect(card.classList.contains('lh-card')).toBe(true)
+            expect(card.classList.contains('lh-second-card')).toBe(true)
+            const summary = card.firstElementChild as HTMLElement
+            expect(summary.tagName).toBe('SUMMARY')
+            expect(summary.querySelector('.lh-card-icon')).not.toBeNull()
+            expect(summary.querySelector('.lh-chevron')).not.toBeNull()
+            // The rows are in the body under the summary, not beside it.
+            expect(card.children.length).toBe(2)
+            expect(card.children[1]!.classList.contains('lh-second-body')).toBe(true)
+            expect(card.children[1]!.querySelector('.lh-backdrop-row')).not.toBeNull()
+            expect(card.children[1]!.querySelector('.lh-backdrop-strength')).not.toBeNull()
+        }
+        expect(cards.map((c) => c.querySelector('.lh-backdrop-title')!.textContent)).toEqual(['Backdrop behind the Tracker widget', 'Backdrop behind the Lore widget'])
+        // The card's own frame rule is gone: the cards' shared rules draw it.
+        expect(PANEL_CSS).not.toContain('.adventuretime-panel .lh-backdrop-box {')
+    })
+
+    it('names the two widgets one way — the Tracker widget and the Lore widget — on the font sizes, the hint and the one-window row', async () => {
+        const { bridge } = makeBridge({ 'settings.get': { settings: createDefaultSettings() } })
+        const root = document.createElement('div')
+        const rest = document.createElement('div')
+        mountPanel(root, bridge, makeHost().host, { rest, scene: document.createElement('div'), widgets: { show: () => undefined, toggle: () => undefined, reset: () => undefined } })
+        await settle()
+
+        const names = Array.from(rest.querySelectorAll('.lh-font-size-row > span:first-child')).map((s) => s.textContent)
+        expect(names).toEqual(['Tracker widget font size', 'Lore widget font size', 'Settings font size'])
+        expect(rest.querySelector('.lh-layout > .lh-section-help')!.textContent).toContain('the Tracker widget, and the Lore widget')
+        expect(rest.querySelector('input[data-lh-field="one-window"]')!.parentElement!.textContent).toBe('One window: the Tracker and Lore widgets as tabs of one box')
+        expect(button(rest, 'Toggle Tracker').title).toContain('Hide the Tracker widget')
+        expect(rest.textContent).not.toContain('second box')
+        expect(rest.textContent).not.toContain('Lorebook Agent & maps')
+    })
+})
+
+describe('the folded box and the one window in the stylesheet (92)', () => {
+    it('hides a folded box\'s foot by the fold\'s class, whatever display the foot wears (lesson 60), and keeps its title row at the top', () => {
+        expect(PANEL_CSS).toContain('.lh-widget--minimized .lh-widget-body, .lh-widget--minimized .lh-widget-foot, .lh-widget--minimized .lh-widget-grip { display: none; }')
+        expect(PANEL_CSS).toContain('.lh-widget-foot[hidden] { display: none; }')
+        expect(PANEL_CSS).toContain('.lh-widget--minimized { justify-content: safe center; }')
+        expect(PANEL_CSS).not.toContain('.lh-widget--minimized { justify-content: center; }')
+        // The foot does wear a display rule through the panel's class, which is what beat hidden.
+        expect(PANEL_CSS).toContain('.lh-tracker { display: flex;')
+        expect(PANEL_CSS).toMatch(/\.lh-widget-head \{ display: flex; cursor: move;/)
+    })
+
+    it('shows the one window\'s parts with their pane, by the class on the root', () => {
+        expect(PANEL_CSS).toContain('.lh-widget.lh-one--tracker .lh-one-scene-only, .lh-widget.lh-one--scene .lh-one-tracker-only { display: none; }')
+        expect(PANEL_CSS).toContain('.lh-widget .lh-one-tabs { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }')
+        expect(PANEL_CSS).toContain('.lh-widget.lh-one--tracker .lh-one-scene-tabs .lh-widget-tab--active { border-bottom-color: transparent; opacity: 0.7; }')
+    })
+})
+
+describe('the one window in the panel (92)', () => {
+    it('draws one toggle, one reset and one phone button for the one window, each reaching the layout module', async () => {
+        const { bridge } = makeBridge({ 'settings.get': { settings: createDefaultSettings() } })
+        const root = document.createElement('div')
+        const rest = document.createElement('div')
+        const toggled: string[] = []
+        let resets = 0
+        mountPanel(root, bridge, makeHost().host, { rest, scene: document.createElement('div'), widgets: { one: true, show: () => undefined, toggle: (which) => { toggled.push(which) }, reset: () => { resets += 1 } } })
+        await settle()
+
+        const row = rest.firstElementChild as HTMLElement
+        expect(row.classList.contains('lh-phone-widgets')).toBe(true)
+        const phoneButtons = Array.from(row.querySelectorAll('button'))
+        expect(phoneButtons.map((b) => [b.textContent, b.getAttribute('data-lh-phone-widget')])).toEqual([['Show AdventureTime', 'one']])
+        expect(row.querySelector('input[data-lh-field="mobile-widget"]')).not.toBeNull()
+        phoneButtons[0]!.click()
+        const toggles = Array.from(rest.querySelectorAll('[data-lh-card="layout"] .lh-widget-buttons button'))
+        expect(toggles.map((b) => [b.textContent, b.getAttribute('data-lh-widget')])).toEqual([['Toggle AdventureTime', 'one'], ['Reset Widget', 'reset']])
+        ;(toggles[0] as HTMLButtonElement).click()
+        ;(toggles[1] as HTMLButtonElement).click()
+        expect(toggled).toEqual(['one', 'one'])
+        expect(resets).toBe(1)
+        // The tick reads on, since the layout module says the window is up.
+        expect((rest.querySelector('input[data-lh-field="one-window"]') as HTMLInputElement).checked).toBe(true)
+    })
+
+    it('writes the preference from the tick and follows the event; off and two boxes as it ships', async () => {
+        const { bridge, requests, emit } = makeBridge({ 'settings.get': { settings: createDefaultSettings() }, 'prefs.get': { prefs: { bars: {}, oneWindow: false } }, 'prefs.patch': { prefs: {} } })
+        const root = document.createElement('div')
+        const rest = document.createElement('div')
+        mountPanel(root, bridge, makeHost().host, { rest, scene: document.createElement('div'), widgets: { show: () => undefined, toggle: () => undefined, reset: () => undefined } })
+        await settle()
+
+        const box = rest.querySelector('.lh-layout input[data-lh-field="one-window"]') as HTMLInputElement
+        expect(box).not.toBeNull()
+        expect(box.checked).toBe(false)
+        expect(Array.from(rest.querySelectorAll('.lh-phone-widgets button')).length).toBe(2)
+        box.checked = true
+        box.dispatchEvent(new Event('change'))
+        await settle()
+        expect(requests.find((r) => r.op === 'prefs.patch')?.params).toEqual({ patch: { oneWindow: true } })
+        emit('prefs.changed', { prefs: { oneWindow: false } })
+        expect(box.checked).toBe(false)
+        emit('prefs.changed', { prefs: { messageCards: true } })
+        expect(box.checked).toBe(false)
+        emit('prefs.changed', { prefs: { oneWindow: true } })
+        expect(box.checked).toBe(true)
+
+        vi.spyOn(bridge, 'request').mockRejectedValueOnce(new Error('no connection'))
+        box.checked = false
+        box.dispatchEvent(new Event('change'))
+        await settle()
+        expect(box.checked).toBe(true)
+    })
+
+    it('reads an unset preference as the device\'s choice on the tick (92b): on for a phone, off for a desktop, a pressed tick as pressed', async () => {
+        const original = window.matchMedia
+        const phone = (on: boolean) => { (window as unknown as { matchMedia: unknown }).matchMedia = (q: string) => ({ matches: on && q === '(pointer: coarse)' }) }
+        try {
+            phone(true)
+            const { bridge, emit } = makeBridge({ 'settings.get': { settings: createDefaultSettings() }, 'prefs.get': { prefs: { bars: {}, oneWindow: null } } })
+            const root = document.createElement('div')
+            const rest = document.createElement('div')
+            mountPanel(root, bridge, makeHost().host, { rest, scene: document.createElement('div'), widgets: { one: true, show: () => undefined, toggle: () => undefined, reset: () => undefined } })
+            await settle()
+            const box = rest.querySelector('input[data-lh-field="one-window"]') as HTMLInputElement
+            expect(box.checked).toBe(true)
+            emit('prefs.changed', { prefs: { oneWindow: false } })
+            expect(box.checked).toBe(false)
+            emit('prefs.changed', { prefs: { oneWindow: null } })
+            expect(box.checked).toBe(true)
+            // The same unset preference on a desktop reads off.
+            phone(false)
+            emit('prefs.changed', { prefs: { oneWindow: null } })
+            expect(box.checked).toBe(false)
+            emit('prefs.changed', { prefs: { oneWindow: true } })
+            expect(box.checked).toBe(true)
+        } finally {
+            (window as unknown as { matchMedia: unknown }).matchMedia = original
+        }
+    })
+
+    it('gives the second box\'s three tabs an icon each and their words on the label, the words still the text', async () => {
+        const { bridge } = makeBridge({ 'settings.get': { settings: createDefaultSettings() } })
+        const root = document.createElement('div')
+        const sceneHead = document.createElement('div')
+        mountPanel(root, bridge, makeHost().host, { rest: document.createElement('div'), scene: document.createElement('div'), sceneHead, sceneFoot: document.createElement('div') })
+        await settle()
+
+        const tabs = Array.from(sceneHead.querySelectorAll('.lh-widget-tab'))
+        expect(tabs.map((b) => [b.textContent, b.getAttribute('data-lh-icon'), b.getAttribute('data-lh-short'), b.getAttribute('aria-label')])).toEqual([
+            ['Lorebook Agent', '📖', 'Agent', 'Lorebook Agent'],
+            ['Campaign Records', '👥', 'Records', 'Campaign Records'],
+            ['Visuals/Map', '🗺️', 'Map', 'Visuals/Map'],
+        ])
+        for (const tab of tabs) expect((tab.firstElementChild as HTMLElement).className).toBe('lh-widget-tab-text')
     })
 })

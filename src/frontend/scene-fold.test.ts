@@ -301,6 +301,19 @@ describe('the picture drawn by the host (49)', () => {
         expect(SCENE_PICTURE_TRIGGERS.map((t) => t.value)).toEqual(['location_enter', 'location_change', 'every_n_outputs'])
     })
 
+    it('gives each of the five icon buttons a short word for a phone (92b, the audit\'s A5), the label and the hover kept', () => {
+        const { fold } = harness()
+        const tools = Array.from(fold.root.querySelectorAll('.lh-scene-tool'))
+        expect(tools.map((b) => [b.textContent, b.getAttribute('data-lh-short'), b.getAttribute('title')])).toEqual([
+            ['🖼', 'File', 'Set a picture'],
+            ['🔗', 'Address', 'From an address'],
+            ['🎨', 'Draw', 'Draw the picture'],
+            ['✖', 'Forget', 'Forget the picture'],
+            ['↻', 'Re-read', 'Re-read the scene'],
+        ])
+        for (const b of tools) expect(b.getAttribute('aria-label')).toBeTruthy()
+    })
+
     it('the live line sits under the tools and above the drawing fold (73f-bis), not at the foot', () => {
         const { fold } = harness()
         const line = live(fold)

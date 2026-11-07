@@ -57,7 +57,7 @@ describe('the starting area after Multihog’s onboarding (83)', () => {
         expect(q('start-note').textContent).toContain('linked here in its Lumiverse port')
         expect(START_AREA_CSS).toContain('.lh-creator[open] > summary .lh-start-fold-chevron')
         expect(Array.from(q('start-how').querySelectorAll('b')).map((n) => n.textContent)).toEqual(['Auto-Tracking:', 'Prompt Injection:', 'Lorebook Agent 🤖:', 'World Progression 🌍:', 'Map Evolution 🗺️:'])
-        expect(q('start-how').textContent).toContain('Lorebook Agent tab of the second box')
+        expect(q('start-how').textContent).toContain('Lorebook Agent tab of the Lore widget')
         const help = q('start-help')
         expect(help.querySelector('.lh-start-tip-title')!.textContent).toBe('Need help? Try these:')
         expect((help.querySelector('a') as HTMLAnchorElement).href).toBe(MULTIHOG_WALKTHROUGH_URL)

@@ -179,11 +179,11 @@ calls* above). Your own instructions belong in **Your world rules**, under
    | `chats` | naming a campaign after its card |
    | `ui_panels` | the two floating boxes |
 
-3. Open a chat. Two floating boxes appear, *AdventureTime — the tracker*
-   and *AdventureTime — the Lorebook Agent & maps*, and the d20 tab in the
+3. Open a chat. Two floating widgets appear, *AdventureTime — Tracker*
+   and *AdventureTime — Lore*, and the d20 tab in the
    drawer holds the settings. The line at the top of that tab reads
    `AdventureTime <version> · Lumiverse <version> · all 12 permissions
-   granted`, or names any permission still missing.
+   granted`, or names any permission still missing. Prefer one box? Tick **One window** under *UI Appearance* in the settings tab: the two become one, with Tracker, Lorebook Agent, Campaign Records and Visuals/Map as its tabs, drawn as icons with their names under them on a phone — where the one box is the default until the tick is pressed.
 
 **Updating:** press **Update** on AdventureTime in the Extensions panel.
 Lumiverse builds at install time, so nothing changes until it is pressed;
@@ -216,7 +216,7 @@ thread is fine for quick things. Please include:
 - **your Lumiverse version and branch** (main or staging);
 - **what you did, what Multihog does there, and what AdventureTime did
   instead**;
-- for a tracker or agent problem, **its last report**: in the second box,
+- for a tracker or agent problem, **its last report**: in the Lore widget,
   the *Lorebook Agent* tab → *Terminal / direct prompt* → the *State
   Tracker* or *Lorebook Agent* tab.
 

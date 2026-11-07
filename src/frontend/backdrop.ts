@@ -127,8 +127,9 @@ ${night} { background-image: var(--lh-backdrop-night, none); }
 ${scrims}
 /* The settings rows: a preview, Upload and Clear, the address, the night's row, the strength. */
 .adventuretime-panel .lh-backdrops { display: flex; flex-direction: column; gap: 8px; }
-.adventuretime-panel .lh-backdrop-box { border: 1px solid var(--lh-accent-dim, var(--lumiverse-border, rgba(127,127,127,0.25))); border-radius: var(--lumiverse-radius, 6px); padding: 8px; background: var(--lh-card-bg, rgba(127,127,127,0.04)); display: flex; flex-direction: column; gap: 6px; }
-.adventuretime-panel .lh-backdrop-title { font-weight: 600; font-size: 0.9em; }
+/* Each block a folding card (92d), closed as it ships; the cards' own rules draw the frame, the summary and the chevron. */
+.adventuretime-panel .lh-backdrop-body { gap: 6px; }
+.adventuretime-panel .lh-backdrop-title { font-weight: 600; }
 .adventuretime-panel .lh-backdrop-row { display: flex; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
 .adventuretime-panel .lh-backdrop-preview { width: 72px; height: 48px; border-radius: 6px; border: 1px solid var(--lh-accent-dim, var(--lumiverse-border, rgba(255,255,255,0.15))); background: rgba(0,0,0,0.35) center/cover no-repeat; flex-shrink: 0; }
 .adventuretime-panel .lh-backdrop-preview--night { border-style: dashed; border-color: rgba(136,153,255,0.35); background-color: rgba(8,10,28,0.5); }

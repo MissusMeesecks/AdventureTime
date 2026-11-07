@@ -49,6 +49,10 @@ export interface AgentModulesChange {
 }
 
 /** The module's tag as the agent's prompt prints it: the stored tag, or the key, upper-cased. */
+/** A unique id for a switch, so its name can be its label (91): the words are the hit area a thumb needs. */
+let switches = 0
+const switchId = (): string => `lh-am-switch-${++switches}`
+
 export function moduleTag(key: string, module: AgentModule | undefined): string {
     return String(module?.tag ?? key).trim().toUpperCase() || key.toUpperCase()
 }
@@ -118,13 +122,14 @@ export function mountAgentModulesEditor(
         const item = el('div', { class: `lh-tm-row lh-tm-row--${enabled ? 'on' : 'off'}` })
         const head = el('div', { class: 'lh-tm-head' })
 
-        const toggle = el('input', { type: 'checkbox', 'data-lh-field': `agent-module-enabled-${key}` })
+        const toggle = el('input', { type: 'checkbox', 'data-lh-field': `agent-module-enabled-${key}`, id: switchId() })
         toggle.checked = enabled
         toggle.title = `Record ${moduleTag(key, module)} entries`
         toggle.addEventListener('change', () => { setEnabled(key, toggle.checked) })
         head.append(toggle)
 
-        const name = el('span', { class: 'lh-tm-name' })
+        // The name is the switch's label (91): the words are the hit area, as on every other row with a tick.
+        const name = el('label', { class: 'lh-tm-name', for: toggle.id })
         name.textContent = moduleTag(key, module)
         head.append(name)
 

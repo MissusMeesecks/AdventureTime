@@ -23,12 +23,17 @@
  * checked for leaks: a path a rule names, the fixture by name, a test that
  * still reads it, a word of the maintainer's own from
  * `scripts/private-terms.txt` (88) — any of them fails the run, the last
- * naming the file and line of every hit.
+ * naming the file and line of every hit — and a picture that carries a
+ * maker's metadata (88-quater: a PNG's text or EXIF chunks, a JPEG's EXIF,
+ * XMP, IPTC or comment segments), which the terms check cannot read, named
+ * with the chunks found and the script that strips them.
  */
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+
+import { imageMetadata } from './strip-image-metadata.mjs'
 
 export const EXCLUDE_FILE = 'scripts/public-exclude.txt'
 export const FIXTURE_NAME = 'golden-cartridge-v1.json'
@@ -292,7 +297,8 @@ export function exportPublic({ root, out, url, force = false }) {
     written.push(PUBLIC_WORKFLOW_PATH)
 
     // The leak check: nothing a rule names, the fixture nowhere, no test that reads it,
-    // and none of the maintainer's own words (88) in anything written.
+    // no picture carrying its maker's metadata (88-quater), and none of the
+    // maintainer's own words (88) in anything written.
     /** @type {string[]} */
     const privateHits = []
     for (const path of walk(outDir)) {
@@ -301,6 +307,11 @@ export function exportPublic({ root, out, url, force = false }) {
         if (rule) throw new Error(`leak: ${path} is in the public tree, excluded by "${rule.raw}"`)
         if (path.endsWith(FIXTURE_NAME)) throw new Error(`leak: ${path} is the golden cartridge`)
         const buffer = readFileSync(join(outDir, path))
+        const picture = imageMetadata(buffer)
+        if (picture?.found.length) {
+            const names = picture.found.map(({ name, size }) => `${name} (${size} bytes)`).join(', ')
+            throw new Error(`leak: ${path} carries ${names} — a picture's own metadata, which the terms check cannot read; run node scripts/strip-image-metadata.mjs ${path} and commit the result`)
+        }
         if (!isText(buffer)) continue
         const text = buffer.toString('utf8')
         if (readsTheFixture(path, text)) throw new Error(`leak: ${path} reads the golden cartridge`)
@@ -334,6 +345,7 @@ if (isMain) {
         console.log(`Left out by scripts/public-exclude.txt: ${result.excluded.length} files.`)
         console.log(`Left out for reading the golden cartridge: ${result.fixtureTests.length} tests.`)
         console.log(`Private terms (${PRIVATE_TERMS_FILE}) found in the tree: 0.`)
+        console.log('Pictures carrying their maker’s metadata (scripts/strip-image-metadata.mjs): 0.')
         if (!url) console.log('No --url given, so spindle.json still names the private repository; pass --url before the first push.')
         console.log('')
         console.log('Next, in the public clone:')

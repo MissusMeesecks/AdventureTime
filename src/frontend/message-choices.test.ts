@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { Bridge } from './bridge.js'
-import { mountMessageChoices, renderChoice, renderChoices, type MessageChoicesHost } from './message-choices.js'
+import { chatOfEvent, CHOICES_HEARTBEAT_MS, mountMessageChoices, renderChoice, renderChoices, type MessageChoicesHost } from './message-choices.js'
 import { CHANNEL, isRequest, type EventMessage, type RequestMessage } from '../protocol.js'
 
 type Offered = Array<{ messageId: string; choices: string[] }>
@@ -98,7 +98,9 @@ function makeHost(chatId: string | null = 'chat-1') {
         /** Stop listing a bubble without touching its DOM, as a chat switch leaves a stale wrapper behind. */
         hide: (messageId: string) => { bubbles.delete(messageId) },
         setChat: (next: string | null) => { active = next },
-        fire: (event: string) => { for (const handler of listeners.get(event) ?? []) handler() },
+        /** List a bubble again, as the host lists one it remounts. */
+        relist: (messageId: string, element: Element) => { bubbles.set(messageId, element) },
+        fire: (event: string, payload?: unknown) => { for (const handler of listeners.get(event) ?? []) handler(payload) },
     }
 }
 
@@ -255,6 +257,127 @@ describe('drawing the choices', () => {
         fire('CHAT_SWITCHED')
         await settle()
         expect(document.querySelectorAll('.lh-choices')).toHaveLength(0)
+    })
+})
+
+describe('the chat switch on a phone (93)', () => {
+    it('holds the buttons through the host’s home screen, and follows a switch event’s own chat id over the host’s view', async () => {
+        const { bridge, requests, setOffered } = makeBridge({ 'chat-1': OFFERED })
+        const { host, addMessage, fire, setChat, hide } = makeHost()
+        addMessage('m2')
+        mountMessageChoices(bridge, host)
+        await settle()
+        expect(buttonsUnder('m2')).toHaveLength(2)
+
+        // The way to the chat list: a null chat, from the event and from the host's view. Nothing is taken down.
+        setChat(null)
+        fire('CHAT_SWITCHED', { chatId: null })
+        fire('CHARACTER_MESSAGE_RENDERED')
+        await settle(80)
+        expect(buttonsUnder('m2')).toHaveLength(2)
+        expect(requests.filter((r) => r.op === 'cyoa.choices')).toHaveLength(1)
+
+        // The switch to the other chat, announced before the host's view has moved: the event's id is read.
+        setOffered('chat-2', [{ messageId: 'm7', choices: ['1. Go'] }])
+        hide('m2')
+        addMessage('m7')
+        fire('CHAT_SWITCHED', { chatId: 'chat-2' })
+        await settle()
+        expect(requests.filter((r) => r.op === 'cyoa.choices').at(-1)?.params).toEqual({ chatId: 'chat-2' })
+        expect(document.querySelectorAll('[data-message="m2"] .lh-choices')).toHaveLength(0)
+        expect(buttonsUnder('m7').map((b) => b.textContent)).toEqual(['1. Go'])
+        // A change event names its chat the same way; one that names nothing falls to the host's view.
+        setChat('chat-2')
+        fire('CHAT_CHANGED', { chat: { id: 'chat-2' } })
+        await settle()
+        expect(buttonsUnder('m7')).toHaveLength(1)
+        expect(chatOfEvent('CHAT_SWITCHED', { chatId: 'c' })).toBe('c')
+        expect(chatOfEvent('CHAT_SWITCHED', { chatId: null })).toBe(null)
+        expect(chatOfEvent('CHAT_SWITCHED', undefined)).toBe(undefined)
+        expect(chatOfEvent('CHAT_CHANGED', { chat: { id: 'c' } })).toBe('c')
+        expect(chatOfEvent('CHAT_CHANGED', {})).toBe(undefined)
+        expect(chatOfEvent('GENERATION_ENDED', { chatId: 'c' })).toBe(undefined)
+    })
+
+    it('adopts a wrapper the host replays into a remounted bubble rather than drawing a second, and takes a replayed one down when its choices went', async () => {
+        const { bridge, requests, setOffered } = makeBridge({ 'chat-1': OFFERED, 'chat-2': [] })
+        const { host, addMessage, fire, setChat, hide, relist } = makeHost()
+        const bubble = addMessage('m2')
+        mountMessageChoices(bridge, host)
+        await settle()
+        const wrapper = bubble.querySelector('.lh-choices') as Element
+        expect(wrapper).not.toBeNull()
+
+        // Away: the host stops listing the bubble and the module takes its wrapper down.
+        hide('m2')
+        setChat('chat-2')
+        fire('CHAT_SWITCHED', { chatId: 'chat-2' })
+        await settle()
+        expect(wrapper.isConnected).toBe(false)
+        // Back: the host remounts the bubble and puts the old wrapper back into it, as its contract says.
+        bubble.append(wrapper)
+        relist('m2', bubble)
+        setChat('chat-1')
+        fire('CHAT_SWITCHED', { chatId: 'chat-1' })
+        await settle()
+        expect(bubble.querySelectorAll('.lh-choices-list')).toHaveLength(1)
+        expect(buttonsUnder('m2')).toHaveLength(2)
+        // The adopted wrapper takes the click, once.
+        buttonsUnder('m2')[1]!.click()
+        await settle()
+        expect(requests.filter((r) => r.op === 'cyoa.choose')).toHaveLength(1)
+
+        // Away again, and back with the choices gone meanwhile: the wrapper the host replays, which this
+        // module holds no record of, is taken down rather than left standing with stale buttons.
+        hide('m2')
+        setChat('chat-2')
+        fire('CHAT_SWITCHED', { chatId: 'chat-2' })
+        await settle()
+        expect(wrapper.isConnected).toBe(false)
+        setOffered('chat-1', [])
+        bubble.append(wrapper)
+        relist('m2', bubble)
+        setChat('chat-1')
+        fire('CHAT_SWITCHED', { chatId: 'chat-1' })
+        await settle()
+        expect(bubble.querySelectorAll('.lh-choices-list')).toHaveLength(0)
+    })
+
+    it('redraws by the heartbeat what the host dropped without a word, reads a chat the events missed, and stops with the mount', async () => {
+        const debug = vi.spyOn(console, 'debug').mockImplementation(() => undefined)
+        const { bridge, requests, setOffered } = makeBridge({ 'chat-1': OFFERED })
+        const { host, addMessage, setChat, hide } = makeHost()
+        const bubble = addMessage('m2')
+        const mounted = mountMessageChoices(bridge, host, { heartbeatMs: 20 })
+        await settle()
+        expect(buttonsUnder('m2')).toHaveLength(2)
+        expect(CHOICES_HEARTBEAT_MS).toBe(1500)
+
+        // The host redraws the bubble bare, with no render event.
+        bubble.replaceChildren()
+        await settle(60)
+        expect(buttonsUnder('m2')).toHaveLength(2)
+        expect(debug).toHaveBeenCalledTimes(1)
+        expect(String(debug.mock.calls[0][0])).toContain('redrawn by the heartbeat')
+        // Quiet while nothing is missing.
+        await settle(60)
+        expect(debug).toHaveBeenCalledTimes(1)
+
+        // A chat switch the events never announced: the heartbeat reads the host's view.
+        setOffered('chat-2', [{ messageId: 'm7', choices: ['1. Go'] }])
+        hide('m2')
+        addMessage('m7')
+        setChat('chat-2')
+        await settle(60)
+        expect(requests.filter((r) => r.op === 'cyoa.choices').at(-1)?.params).toEqual({ chatId: 'chat-2' })
+        expect(buttonsUnder('m7')).toHaveLength(1)
+
+        mounted.destroy()
+        const before = requests.length
+        setChat('chat-1')
+        await settle(60)
+        expect(requests.length).toBe(before)
+        debug.mockRestore()
     })
 })
 

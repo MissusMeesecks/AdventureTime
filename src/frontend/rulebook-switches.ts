@@ -65,6 +65,10 @@ const LABELS: Record<string, string> = {
     dungeon_reality_and_hidden_mapping: 'Persistent maps',
 }
 
+/** A unique id for a switch, so its name can be its label (91): the words are the hit area a thumb needs. */
+let switches = 0
+const switchId = (): string => `lh-rb-switch-${++switches}`
+
 export function mountRulebookSwitches(
     root: HTMLElement,
     host: RulebookSwitchesHost,
@@ -91,17 +95,19 @@ export function mountRulebookSwitches(
         })
         const head = el('div', { class: 'lh-rb-head' })
 
+        // The name is the switch's label (91): the words are the hit area, as on the sub-switches below.
+        const name = el(row.gate === 'flag' ? 'label' : 'span', { class: 'lh-rb-name' })
         if (row.gate === 'flag') {
-            const toggle = el('input', { type: 'checkbox' })
+            const toggle = el('input', { type: 'checkbox', id: switchId() })
             toggle.checked = row.flag
             toggle.title = `Send <${row.tag}> to the narrator`
             toggle.addEventListener('change', () => { setFlag(row.tag, toggle.checked) })
             head.append(toggle)
+            name.setAttribute('for', toggle.id)
         } else {
             head.append(el('span', { class: 'lh-rb-nocheck' }))
         }
 
-        const name = el('span', { class: 'lh-rb-name' })
         name.textContent = row.kind === 'custom' ? row.tag : (LABELS[row.tag] ?? row.tag)
         head.append(name)
 

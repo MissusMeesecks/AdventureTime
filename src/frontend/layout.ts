@@ -29,6 +29,37 @@
  * the preference tears the panel down and mounts it again in the other
  * shape — the second tab and the widgets registered or destroyed with it.
  *
+ * On a phone (91, the mobile pass) the two boxes are made hidden: the
+ * host clamps each to the viewport less 12 px a side and lands both at
+ * the same spot over the chat, so from the first paint the chat was
+ * covered twice. The buttons that bring a box back stand at the top of
+ * the drawer tab there, and a box shown on a phone is shown through the
+ * host's own fullscreen mode (`setFullscreen`, which sizes it from the
+ * host's keyboard-aware viewport), its × the way out; the fold, the grip
+ * and the kept places are the desktop's and are left alone. *Phone* is
+ * the host's one definition (`mobile.ts`), read once at mount.
+ *
+ * The one window (92, the maintainer's ask of 2026-11-05) is a fourth
+ * layout, `one`, behind the `oneWindow` preference: the tracker and the
+ * second box's three tabs as four tabs of one floating box. The host's
+ * widget is a bare frame, so the tab row is ours — the Tracker button,
+ * then the panel's own strip of three — and the box's strip and foot swap
+ * with the pane shown by a class on the root the stylesheet reads. Its
+ * place, size and fold are kept under its own name; on a phone it starts
+ * hidden and opens full-screen from one button in the tab.
+ *
+ * The mobile widget (92f, the maintainer's ask of 2026-11-06, after Pocket's
+ * launcher): on a phone a third float widget, 56 px square and chromeless
+ * (the host's `chromeless` strips its frame), carrying the d20 on a disc of
+ * the accent colour. It stands over the chat while the box is hidden and
+ * opens the box full-screen on a tap; the box's × hides the box and the
+ * disc comes back. The host drags it as it drags a box, so a tap that moved
+ * is a drag, not a press; where it is dragged to is kept under `bubble`.
+ * The `mobileWidget` preference, on as it ships, is the tick beside *Show
+ * AdventureTime* in the drawer tab; off, the disc is taken down and the
+ * button is the way in, as before 92f. In the two-box layout the disc
+ * opens the Tracker widget.
+ *
  * Nothing here touches the Spindle context: `frontend.ts` hands in the
  * things it needs, so this is tested against a fake.
  */
@@ -50,14 +81,30 @@ export interface LayoutTab {
     destroy(): void
 }
 
-export type WidgetName = 'tracker' | 'scene'
+export type WidgetName = 'tracker' | 'scene' | 'one'
+
+/**
+ * Which of the two box layouts the `oneWindow` preference asks for (92b):
+ * `true` the one window and `false` the two boxes on every device; `null`,
+ * as it ships, is automatic — the one window on a phone, where the box is a
+ * full-screen page and two pages are one too many, the two boxes on a
+ * desktop (the maintainer's decision of 2026-11-05). A tick pressed anywhere
+ * writes `true` or `false` and settles it for every device of the install.
+ */
+export function layoutForOneWindow(oneWindow: unknown, phone: boolean): 'one' | 'widgets' {
+    if (oneWindow === true) return 'one'
+    if (oneWindow === false) return 'widgets'
+    return phone ? 'one' : 'widgets'
+}
 
 export interface LayoutWidgetOptions {
-    which: WidgetName
+    which: WidgetName | 'bubble'
     title: string
     width: number
     height: number
     initialPosition: { x: number; y: number }
+    /** The host's frame stripped (92f): no border, background, shadow or rounding; the inside draws itself. */
+    chromeless?: boolean
 }
 
 /** `ctx.ui.createFloatWidget`'s handle, narrowed. */
@@ -68,6 +115,9 @@ export interface LayoutWidget {
     onDragEnd(handler: (pos: { x: number; y: number }) => void): () => void
     /** The host sizes its frame; the inside follows. */
     setSize(width: number, height: number): void
+    /** The host's fullscreen mode (91): the box anchored at the viewport's origin and sized to it. A host without it floats the box clamped, as before. */
+    setFullscreen?(fullscreen: boolean): void
+    isFullscreen?(): boolean
     destroy(): void
 }
 
@@ -81,6 +131,8 @@ export interface LayoutSlots {
     scene?: HTMLElement
     /** The tracker widget's strip under its title (57): the part that never scrolls, for the head's lights. */
     trackerHead?: HTMLElement
+    /** The one window's place for the lights row (92e): its title row, seen from every pane. */
+    trackerLights?: HTMLElement
     /** The tracker widget's foot under its body (74f): the part that never scrolls, for the XP bar at the bottom. */
     trackerFoot?: HTMLElement
     /** The second widget's strip and foot (78a): the tab strip, and the Lorebook Agent's footer. */
@@ -102,6 +154,10 @@ export interface LayoutWidgetControls {
      * it was hidden and shown again.
      */
     reset(): void
+    /** True in the one window (92): one box, one toggle, one button in the tab. */
+    one?: boolean
+    /** The mobile widget (92f): make the disc over the chat, or take it down, as the tick moves. Only a phone has one to make. */
+    mobileWidget?(on: boolean): void
 }
 
 export type WidgetMinimized = Record<string, boolean>
@@ -112,6 +168,8 @@ export interface LayoutRead {
     sizes: WidgetSizes
     /** Which widgets start folded to their heads (57). */
     minimized?: WidgetMinimized
+    /** The mobile widget (92f): the disc over the chat on a phone. Absent reads as on, as the preference ships. */
+    mobileWidget?: boolean
 }
 
 export interface LayoutHost {
@@ -131,6 +189,10 @@ export interface LayoutHost {
     saveMinimized(minimized: WidgetMinimized): void
     /** Called with the new layout whenever the preferences change. */
     onLayoutChange(handler: (layout: PanelLayout) => void): () => void
+    /** The host's test for a phone (91, `isMobileViewportOrDevice`), read once at each mount. Absent, the desktop path. */
+    isMobile?(): boolean
+    /** The viewport's size (92f), for where the disc first stands. Absent, a far corner the host clamps. */
+    viewport?(): { width: number; height: number }
 }
 
 export interface Layout {
@@ -178,11 +240,23 @@ export const SETTINGS_TAB: LayoutTabOptions = {
 
 /** The widgets' sizes and the places they start, before anyone drags them. */
 export const WIDGETS: Record<WidgetName, Omit<LayoutWidgetOptions, 'which'>> = {
-    tracker: { title: 'AdventureTime — the tracker', width: 520, height: 620, initialPosition: { x: 24, y: 80 } },
-    scene: { title: 'AdventureTime — the Lorebook Agent & maps', width: 460, height: 520, initialPosition: { x: 560, y: 80 } },
+    tracker: { title: 'AdventureTime — Tracker', width: 520, height: 620, initialPosition: { x: 24, y: 80 } },
+    scene: { title: 'AdventureTime — Lore', width: 460, height: 520, initialPosition: { x: 560, y: 80 } },
+    one: { title: 'AdventureTime', width: 560, height: 680, initialPosition: { x: 24, y: 80 } },
 }
 
 export type WidgetSize = { width: number; height: number }
+
+/** The mobile widget (92f): the disc's side, Pocket's launcher is 58; and its margins from the viewport's right and bottom edges, the bottom one clear of the host's input bar. */
+export const BUBBLE_SIZE = 56
+export const BUBBLE_MARGIN = { right: 16, bottom: 96 }
+/** Where the disc first stands (92f): the bottom-right corner, over the input bar; a far corner the host clamps when the viewport is not known. */
+export function bubblePosition(viewport: { width: number; height: number } | undefined): { x: number; y: number } {
+    if (!viewport) return { x: 9999, y: 9999 }
+    return { x: Math.max(0, viewport.width - BUBBLE_SIZE - BUBBLE_MARGIN.right), y: Math.max(0, viewport.height - BUBBLE_SIZE - BUBBLE_MARGIN.bottom) }
+}
+/** A tap on the disc that moved this far is a drag, not a press (92f). */
+export const BUBBLE_TAP_SLOP = 8
 
 /** A folded box's height when its head cannot be measured (57): room for the title row and a strip. */
 export const MINIMIZED_HEIGHT_FLOOR = 36
@@ -204,12 +278,16 @@ interface Fold {
 
 /** A widget's furniture as `dress` leaves it (57): the strip for a head that must not scroll, the body, and the fold's control. */
 export interface Dressed {
+    /** The title row: the name, the fold button and ×; the one window puts its lights row in it (92e). */
+    head: HTMLElement
     strip: HTMLElement
     body: HTMLElement
     /** The foot under the body (74f), hidden with the body on a folded box. */
     foot: HTMLElement
     /** Fold or unfold the box now; used at mount for a box read as folded. */
     setMinimized(minimized: boolean): void
+    /** Put a part into the title row, after the name and before the fold button (92e). */
+    intoHead(part: HTMLElement): void
 }
 
 /** A dragged size, floored so the head and a card stay readable. */
@@ -298,6 +376,13 @@ export function layersOf(a: HTMLElement, b: HTMLElement): [HTMLElement, HTMLElem
 
 /** The press events a drag can start from; stopped in the body so the host's drag does not take a field's press. */
 const PRESS_EVENTS = ['pointerdown', 'mousedown', 'touchstart'] as const
+/**
+ * What a press in a box's strip or foot belongs to (92): a control keeps its
+ * press, as the body keeps every press (47c-ter); a press on the strip's or
+ * the foot's own ground goes through to the host, which drags the box by it.
+ * A folded box is mostly strip, and its title row alone was hard to find.
+ */
+const PRESS_TARGETS = 'button, input, select, textarea, label, a, summary, [role="button"], [role="tab"], [role="slider"], [role="textbox"], [contenteditable]'
 
 /**
  * A widget's furniture: a head with the title, a – that folds the box to
@@ -352,14 +437,21 @@ function dress(widget: LayoutWidget, title: string, onHide: () => void, resize: 
     // The foot (74f): under the body, never scrolling, for the XP bar at the bottom.
     const foot = root.ownerDocument.createElement('div')
     foot.className = 'lh-widget-foot'
-    // The strip holds buttons too (the tracker's), so it shields its presses as the body does; the foot likewise.
+    // The strip holds buttons too (the tracker's), so a press on one of them is shielded as the body's
+    // presses are; a press on the strip's or the foot's own ground is the host's, to drag by (92).
+    const shield = (event: Event): void => {
+        const target = event.target as Element | null
+        if (target && typeof target.closest === 'function' && target.closest(PRESS_TARGETS)) event.stopPropagation()
+    }
     for (const type of PRESS_EVENTS) {
         body.addEventListener(type, (event) => { event.stopPropagation() })
-        strip.addEventListener(type, (event) => { event.stopPropagation() })
-        foot.addEventListener(type, (event) => { event.stopPropagation() })
+        strip.addEventListener(type, shield)
+        foot.addEventListener(type, shield)
     }
     const handle = grip(root, resize)
     root.append(head, strip, body, foot, handle)
+    /** Where a part goes into the title row: before the fold button, after the name (92e). */
+    const intoHead = (part: HTMLElement): void => { head.insertBefore(part, minimize) }
 
     let minimized = false
     /** The host's frame beyond the root, measured while unfolded; nothing until a layout has happened. */
@@ -414,8 +506,19 @@ function dress(widget: LayoutWidget, title: string, onHide: () => void, resize: 
         fold.changed(minimized)
     })
     draw()
+    // A folded frame follows its head (92): the strip changes height after the fold — its buttons wrap as
+    // the frame narrows, the lights fill in — and a frame measured before that clipped the title row
+    // (the try of beta.14: a folded box with its head pushed off the top and no + to reach). The frame
+    // is sized again whenever the head or the strip changes size while folded; nothing on a host without
+    // the observer, where the one measure after the fold stands as before.
+    const view = root.ownerDocument.defaultView
+    if (view && typeof view.ResizeObserver === 'function') {
+        const observer = new view.ResizeObserver(() => { if (minimized && headHeight() !== folded) apply() })
+        observer.observe(head)
+        observer.observe(strip)
+    }
     // A box read as folded is folded by the mount, once the strip is filled (a mutation found a fold here redundant).
-    return { strip, body, foot, setMinimized }
+    return { head, strip, body, foot, setMinimized, intoHead }
 }
 
 /**
@@ -430,12 +533,13 @@ function dress(widget: LayoutWidget, title: string, onHide: () => void, resize: 
  * are made, and a host may re-wrap them; `frameOf` is the fallback for
  * roots that are not in one tree.
  */
-function stacking(roots: Record<WidgetName, HTMLElement>): (which: WidgetName) => void {
+type TwoBoxes = 'tracker' | 'scene'
+function stacking(roots: Record<TwoBoxes, HTMLElement>): (which: TwoBoxes) => void {
     let base: number | null = null
     let said = false
     return (which) => {
         const found = layersOf(roots.tracker, roots.scene)
-        const layers: Record<WidgetName, HTMLElement> = found
+        const layers: Record<TwoBoxes, HTMLElement> = found
             ? { tracker: found[0], scene: found[1] }
             : { tracker: frameOf(roots.tracker), scene: frameOf(roots.scene) }
         const view = layers.tracker.ownerDocument.defaultView
@@ -468,6 +572,9 @@ export function createLayout(host: LayoutHost): Layout {
     let positions: WidgetPositions = {}
     let sizes: WidgetSizes = {}
     let minimized: WidgetMinimized = {}
+    /** The mobile widget (92f): the disc over the chat on a phone, and whether the tick wants one. */
+    let bubble: LayoutWidget | null = null
+    let bubbleWanted = true
     let destroyed = false
 
     function unmount(): void {
@@ -479,6 +586,71 @@ export function createLayout(host: LayoutHost): Layout {
         dragOffs = []
         for (const widget of Object.values(widgets)) widget?.destroy()
         widgets = {}
+        bubble?.destroy()
+        bubble = null
+    }
+
+    /**
+     * The mobile widget (92f): a chromeless float widget the size of a
+     * button, the d20 on a disc, over the chat while every box is hidden.
+     * A tap opens the box; the host's drag moves it, and a press that moved
+     * more than the slop is the drag's, not a tap. Its place is kept under
+     * `bubble`. Nothing when the host refuses, with the reason in the
+     * console: the drawer tab's button is the way in then, as before.
+     */
+    function mountBubble(open: () => void): void {
+        if (bubble || destroyed) return
+        let widget: LayoutWidget
+        try {
+            widget = host.createWidget({ which: 'bubble', title: 'Show AdventureTime', width: BUBBLE_SIZE, height: BUBBLE_SIZE, chromeless: true, initialPosition: positions.bubble ?? bubblePosition(host.viewport?.()) })
+        } catch (error) {
+            console.warn('[AdventureTime] the mobile widget could not be made; the Show AdventureTime button in the tab is the way in', error)
+            return
+        }
+        bubble = widget
+        const root = widget.root
+        root.classList.add('lh-bubble', 'adventuretime-panel')
+        root.setAttribute('role', 'button')
+        root.setAttribute('tabindex', '0')
+        root.setAttribute('aria-label', 'Show AdventureTime')
+        root.title = 'Show AdventureTime. Drag to move it.'
+        root.innerHTML = MAIN_ICON_SVG
+        // A press records where it began; the click after it opens the box only if the pointer stayed put,
+        // since the host moves the disc by the same press and fires the click at the drag's end.
+        let pressed: { x: number; y: number } | null = null
+        root.addEventListener('pointerdown', (event: PointerEvent) => { pressed = { x: event.clientX, y: event.clientY } }, true)
+        root.addEventListener('click', (event: MouseEvent) => {
+            const from = pressed
+            pressed = null
+            if (from && (Math.abs(event.clientX - from.x) > BUBBLE_TAP_SLOP || Math.abs(event.clientY - from.y) > BUBBLE_TAP_SLOP)) return
+            open()
+        })
+        root.addEventListener('keydown', (event: KeyboardEvent) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return
+            event.preventDefault()
+            open()
+        })
+        dragOffs.push(widget.onDragEnd((pos) => {
+            positions = { ...positions, bubble: { x: Math.round(pos.x), y: Math.round(pos.y) } }
+            host.savePositions(positions)
+        }))
+        syncBubble()
+    }
+    /** The disc stands while no box shows (92f): a box opened full-screen would be covered by it otherwise. */
+    function syncBubble(): void {
+        if (!bubble) return
+        const anyShown = Object.values(widgets).some((widget) => widget?.isVisible())
+        bubble.setVisible(!anyShown)
+    }
+    /** The tick's hand on the disc (92f): wanted and on a phone, made; unwanted, taken down. */
+    function setBubble(on: boolean, phone: boolean, open: () => void): void {
+        bubbleWanted = on
+        if (!on) {
+            bubble?.destroy()
+            bubble = null
+            return
+        }
+        if (phone) mountBubble(open)
     }
 
     function mountTabs(): void {
@@ -486,9 +658,31 @@ export function createLayout(host: LayoutHost): Layout {
         panel = host.mount(main.root, { rest: settings.root })
     }
 
+    /** What a box's grip does (47c-bis): the kept size, by the box's name; nothing kept from a phone (91). */
+    const makeResize = (which: WidgetName, widget: LayoutWidget, phone: boolean): Resize => ({
+        size: sizes[which] ?? { width: WIDGETS[which].width, height: WIDGETS[which].height },
+        apply: (size) => { widget.setSize(size.width, size.height) },
+        done: (size) => {
+            // The grip is hidden on a phone (91) and the host sizes a fullscreen box; the kept sizes are the desktop's.
+            if (phone) return
+            sizes = { ...sizes, [which]: size }
+            host.saveSizes(sizes)
+        },
+    })
+    /** What a box's fold does (57): the size to come back to, and the state kept by the box's name. */
+    const makeFold = (which: WidgetName): Fold => ({
+        current: () => sizes[which] ?? { width: WIDGETS[which].width, height: WIDGETS[which].height },
+        changed: (next) => {
+            minimized = { ...minimized, [which]: next }
+            host.saveMinimized(minimized)
+        },
+    })
+
     /** The two widgets and the panel across them. False when the host refused a widget. */
     function mountWidgets(): boolean {
         const made: Partial<Record<WidgetName, LayoutWidget>> = {}
+        // A phone (91): the host's one test, read once here as its components read it at render.
+        const phone = host.isMobile?.() === true
         try {
             for (const which of ['tracker', 'scene'] as const) {
                 const spec = WIDGETS[which]
@@ -503,23 +697,10 @@ export function createLayout(host: LayoutHost): Layout {
         widgets = made
         const tracker = made.tracker as LayoutWidget
         const scene = made.scene as LayoutWidget
-        const resize = (which: WidgetName, widget: LayoutWidget): Resize => ({
-            size: sizes[which] ?? { width: WIDGETS[which].width, height: WIDGETS[which].height },
-            apply: (size) => { widget.setSize(size.width, size.height) },
-            done: (size) => {
-                sizes = { ...sizes, [which]: size }
-                host.saveSizes(sizes)
-            },
-        })
-        const fold = (which: WidgetName): Fold => ({
-            current: () => sizes[which] ?? { width: WIDGETS[which].width, height: WIDGETS[which].height },
-            changed: (next) => {
-                minimized = { ...minimized, [which]: next }
-                host.saveMinimized(minimized)
-            },
-        })
-        const trackerDress = dress(tracker, WIDGETS.tracker.title, () => { tracker.setVisible(false) }, resize('tracker', tracker), fold('tracker'))
-        const sceneDress = dress(scene, WIDGETS.scene.title, () => { scene.setVisible(false) }, resize('scene', scene), fold('scene'))
+        const resize = (which: WidgetName, widget: LayoutWidget): Resize => makeResize(which, widget, phone)
+        const fold = makeFold
+        const trackerDress = dress(tracker, WIDGETS.tracker.title, () => { tracker.setVisible(false); syncBubble() }, resize('tracker', tracker), fold('tracker'))
+        const sceneDress = dress(scene, WIDGETS.scene.title, () => { scene.setVisible(false); syncBubble() }, resize('scene', scene), fold('scene'))
         const trackerBody = trackerDress.body
         const sceneBody = sceneDress.body
         const raise = stacking({ tracker: tracker.root, scene: scene.root })
@@ -530,9 +711,33 @@ export function createLayout(host: LayoutHost): Layout {
         }
         for (const which of ['tracker', 'scene'] as const) {
             dragOffs.push(made[which]!.onDragEnd((pos) => {
+                // A fullscreen box is anchored by the host (91); a place it reports on a phone is not the desktop's to keep.
+                if (phone) return
                 positions = { ...positions, [which]: { x: Math.round(pos.x), y: Math.round(pos.y) } }
                 host.savePositions(positions)
             }))
+        }
+        /**
+         * Show a box (91): on a phone through the host's fullscreen mode first,
+         * so it never lands clamped over the chat; the host's × and ours are
+         * the way out. A host without the mode floats it clamped, as before.
+         */
+        const reveal = (which: WidgetName): void => {
+            if (which === 'one') return
+            const widget = widgets[which]
+            if (!widget) return
+            if (phone && widget.setFullscreen && widget.isFullscreen?.() !== true) widget.setFullscreen(true)
+            widget.setVisible(true)
+            raise(which)
+            syncBubble()
+        }
+        if (phone) {
+            // Both boxes start hidden on a phone (91): the chat is the first thing a phone shows, and the
+            // buttons at the top of the drawer tab bring either box up. The class hides the fold and the grip.
+            for (const which of ['tracker', 'scene'] as const) {
+                made[which]!.root.classList.add('lh-widget--phone')
+                made[which]!.setVisible(false)
+            }
         }
         panel = host.mount(trackerBody, {
             rest: main.root,
@@ -542,24 +747,151 @@ export function createLayout(host: LayoutHost): Layout {
             sceneHead: sceneDress.strip,
             sceneFoot: sceneDress.foot,
             widgets: {
-                show: (which) => { widgets[which]?.setVisible(true); raise(which) },
+                show: (which) => { reveal(which) },
                 toggle: (which) => {
                     const widget = widgets[which]
                     if (!widget) return
-                    const next = !widget.isVisible()
-                    widget.setVisible(next)
-                    if (next) raise(which)
+                    if (widget.isVisible()) { widget.setVisible(false); syncBubble() }
+                    else reveal(which)
                 },
                 reset: () => { reset() },
+                mobileWidget: (on) => { setBubble(on, phone, () => { reveal('tracker') }) },
             },
         })
+        // The mobile widget (92f): on a phone, the disc over the chat opens the Tracker widget.
+        if (phone && bubbleWanted) mountBubble(() => { reveal('tracker') })
         // A box read as folded was sized before the panel filled its strip (57):
         // measure again now the lights are in it, and once more when the host
         // has laid the frame out, so the strip is not clipped on a reload.
         const dressed = { tracker: trackerDress, scene: sceneDress }
         const refold = (): void => {
-            if (destroyed) return
+            // A fold kept on the desktop is left there (91): a phone's box is a page, with no head to fold to.
+            if (destroyed || phone) return
             for (const which of ['tracker', 'scene'] as const) if (minimized[which] === true) dressed[which].setMinimized(true)
+        }
+        refold()
+        setTimeout(refold, 50)
+        return true
+    }
+
+    /**
+     * The one window (92, the maintainer's ask of 2026-11-05): the tracker
+     * and the second box's three tabs as four tabs of one floating box. The
+     * host's widget is a bare frame, so the tab row is ours — the Tracker
+     * button first, then the panel's own strip of three (`tabbed`, placed in
+     * `sceneHead`) — and the box's strip and foot swap with the pane shown:
+     * the tracker's lights row, XP bar and footer with the tracker pane, the
+     * agent's footer with the other three, by a class on the root the
+     * stylesheet reads. A press on one of the panel's three tabs is also the
+     * move to the second pane. The panes carry their own font-size classes,
+     * since the two roots share the box (`sizeRoot`); the tab row takes the
+     * Tracker widget's size whole (92d, the maintainer's ask of 2026-11-06:
+     * the four names at one size, whatever the panes are set to — the agent's
+     * size sized the three and the host's the first before it); and the box
+     * wears the tracker's backdrop. On a phone the box starts hidden and opens
+     * full-screen from one button in the tab (91's path), its tabs drawn as
+     * icons by the stylesheet's phone block. False when the host refused.
+     */
+    function mountOne(): boolean {
+        const phone = host.isMobile?.() === true
+        const spec = WIDGETS.one
+        let widget: LayoutWidget
+        try {
+            const size = sizes.one ?? { width: spec.width, height: spec.height }
+            widget = host.createWidget({ which: 'one', ...spec, ...size, initialPosition: positions.one ?? spec.initialPosition })
+        } catch (error) {
+            console.error('[AdventureTime] the one window could not be made; the two tabs are drawn instead. Is the ui_panels permission granted?', error)
+            return false
+        }
+        widgets = { one: widget }
+        const dressed = dress(widget, spec.title, () => { widget.setVisible(false); syncBubble() }, makeResize('one', widget, phone), makeFold('one'))
+        const root = widget.root
+        const doc = root.ownerDocument
+        const make = (className: string): HTMLElement => {
+            const element = doc.createElement('div')
+            element.className = className
+            return element
+        }
+        const tabs = make('lh-one-tabs lh-size-tracker')
+        tabs.setAttribute('role', 'tablist')
+        const trackerTab = doc.createElement('button')
+        trackerTab.type = 'button'
+        trackerTab.className = 'lh-widget-tab'
+        trackerTab.setAttribute('role', 'tab')
+        trackerTab.setAttribute('data-lh-tab', 'tracker')
+        trackerTab.setAttribute('data-lh-icon', '🎲')
+        trackerTab.setAttribute('data-lh-short', 'Tracker')
+        trackerTab.setAttribute('aria-label', 'Tracker')
+        trackerTab.title = 'Tracker'
+        const trackerTabText = doc.createElement('span')
+        trackerTabText.className = 'lh-widget-tab-text'
+        trackerTabText.textContent = 'Tracker'
+        trackerTab.append(trackerTabText)
+        const sceneTabs = make('lh-one-scene-tabs')
+        tabs.append(trackerTab, sceneTabs)
+        const trackerHead = make('lh-one-tracker-head lh-one-tracker-only lh-size-tracker')
+        dressed.strip.append(tabs, trackerHead)
+        // The lights row in the title row (92e, the maintainer's ask of 2026-11-06): seen from every pane,
+        // with the day/night badge; the buttons and *Last run:* stay in the strip with the Tracker pane.
+        const headLights = make('lh-one-head-lights lh-size-tracker')
+        dressed.intoHead(headLights)
+        root.querySelector('.lh-widget-head')?.classList.add('lh-widget-head--lights')
+        const trackerPane = make('lh-one-pane lh-one-tracker-only')
+        const scenePane = make('lh-one-pane lh-one-scene-only')
+        dressed.body.append(trackerPane, scenePane)
+        const trackerFoot = make('lh-one-tracker-only lh-size-tracker')
+        const sceneFoot = make('lh-one-scene-only lh-size-agent')
+        dressed.foot.append(trackerFoot, sceneFoot)
+        const show = (pane: 'tracker' | 'scene'): void => {
+            root.classList.toggle('lh-one--tracker', pane === 'tracker')
+            root.classList.toggle('lh-one--scene', pane === 'scene')
+            trackerTab.classList.toggle('lh-widget-tab--active', pane === 'tracker')
+            trackerTab.setAttribute('aria-selected', pane === 'tracker' ? 'true' : 'false')
+        }
+        trackerTab.addEventListener('click', () => { show('tracker') })
+        sceneTabs.addEventListener('click', (event) => {
+            const target = event.target as Element | null
+            if (target && typeof target.closest === 'function' && target.closest('.lh-widget-tab')) show('scene')
+        })
+        show('tracker')
+        dragOffs.push(widget.onDragEnd((pos) => {
+            if (phone) return
+            positions = { ...positions, one: { x: Math.round(pos.x), y: Math.round(pos.y) } }
+            host.savePositions(positions)
+        }))
+        const reveal = (): void => {
+            if (phone && widget.setFullscreen && widget.isFullscreen?.() !== true) widget.setFullscreen(true)
+            widget.setVisible(true)
+            syncBubble()
+        }
+        if (phone) {
+            root.classList.add('lh-widget--phone')
+            widget.setVisible(false)
+        }
+        panel = host.mount(trackerPane, {
+            rest: main.root,
+            scene: scenePane,
+            trackerHead,
+            trackerLights: headLights,
+            trackerFoot,
+            sceneHead: sceneTabs,
+            sceneFoot,
+            widgets: {
+                one: true,
+                show: () => { reveal() },
+                toggle: () => {
+                    if (widget.isVisible()) { widget.setVisible(false); syncBubble() }
+                    else reveal()
+                },
+                reset: () => { reset() },
+                mobileWidget: (on) => { setBubble(on, phone, reveal) },
+            },
+        })
+        // The mobile widget (92f): on a phone, the disc over the chat opens the window.
+        if (phone && bubbleWanted) mountBubble(reveal)
+        const refold = (): void => {
+            if (destroyed || phone) return
+            if (minimized.one === true) dressed.setMinimized(true)
         }
         refold()
         setTimeout(refold, 50)
@@ -574,9 +906,10 @@ export function createLayout(host: LayoutHost): Layout {
         host.savePositions(positions)
         host.saveSizes(sizes)
         host.saveMinimized(minimized)
-        if (destroyed || layout !== 'widgets') return
+        if (destroyed || (layout !== 'widgets' && layout !== 'one')) return
+        const wanted = layout
         unmount()
-        if (!mountWidgets()) {
+        if (!(wanted === 'one' ? mountOne() : mountWidgets())) {
             layout = 'tabs'
             mountTabs()
         }
@@ -588,8 +921,8 @@ export function createLayout(host: LayoutHost): Layout {
         layout = next
         if (next === 'tabs') {
             mountTabs()
-        } else if (next === 'widgets') {
-            if (!mountWidgets()) {
+        } else if (next === 'widgets' || next === 'one') {
+            if (!(next === 'one' ? mountOne() : mountWidgets())) {
                 layout = 'tabs'
                 mountTabs()
             }
@@ -598,16 +931,17 @@ export function createLayout(host: LayoutHost): Layout {
         }
     }
 
-    // A value that is not one of the three reads as classic. The backend's
+    // A value that is not one of the four reads as classic. The backend's
     // default is the widgets (47f); classic here is for a read that fails,
     // where nothing is known and the one tab is the shape that needs no grant.
-    const read = (value: unknown): PanelLayout => (value === 'tabs' || value === 'widgets' ? value : 'classic')
+    const read = (value: unknown): PanelLayout => (value === 'tabs' || value === 'widgets' || value === 'one' ? value : 'classic')
 
     host.readLayout()
         .then((result) => {
             positions = result.positions ?? {}
             sizes = result.sizes ?? {}
             minimized = result.minimized ?? {}
+            bubbleWanted = result.mobileWidget !== false
             apply(read(result.layout))
         })
         .catch(() => { apply('classic') })

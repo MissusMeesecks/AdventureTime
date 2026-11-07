@@ -14,9 +14,10 @@ import type { SpindleFrontendContext, SpindleFrontendTeardown } from 'lumiverse-
 
 import { Bridge } from './frontend/bridge.js'
 import { EDITOR_TAB_GUIDE, mountEditorTab, type EditorTab } from './frontend/editor-tab.js'
-import { createLayout } from './frontend/layout.js'
+import { createLayout, layoutForOneWindow } from './frontend/layout.js'
 import { mountMessageCards } from './frontend/message-cards.js'
 import { mountMessageChoices } from './frontend/message-choices.js'
+import { isMobileViewportOrDevice } from './frontend/mobile.js'
 import { mountPanel, PANEL_CSS } from './frontend/panel.js'
 import type { CardChoice, LibraryRecordView, NpcAddResult, NpcDraftResult, PrefsResult } from './protocol.js'
 
@@ -34,20 +35,27 @@ export function setup(ctx: SpindleFrontendContext): SpindleFrontendTeardown {
         registerTab: (options) => ctx.ui.registerDrawerTab(options),
         // The floating widgets (47c). The host draws the frame and the drag;
         // the layout module dresses the inside. Needs the ui_panels grant.
-        createWidget: ({ title, width, height, initialPosition }) => ctx.ui.createFloatWidget({
-            width, height, initialPosition, snapToEdge: true, tooltip: title,
+        // The mobile widget (92f) asks for the host's chromeless frame: no border, background or rounding
+        // around the disc; the boxes keep the host's frame.
+        createWidget: ({ title, width, height, initialPosition, chromeless }) => ctx.ui.createFloatWidget({
+            width, height, initialPosition, snapToEdge: true, tooltip: title, ...(chromeless ? { chromeless: true } : {}),
         }),
         mount: (root, slots) => mountPanel(root, bridge, ctx, slots),
         // The two floating widgets alone since 82 (the maintainer's ask of 2026-10-28): the Layout select is
         // gone and a stored `layout` is not read, so an install on the tabs or the classic tab comes back as
         // the widgets. The two older layouts stay in layout.ts for the day they are wanted, and the fall
         // back to the two tabs when the widgets cannot be made (no ui_panels grant) stays live.
+        // The one window (92) is the one layout choice left: the `oneWindow` preference, read here and
+        // followed below, so the box is made or the two boxes come back as the tick is pressed. Unset,
+        // it is the device's (92b): the one window on a phone, the two boxes on a desktop.
         readLayout: () => bridge.request<PrefsResult>('prefs.get', {})
             .then((result) => ({
-                layout: 'widgets' as const,
+                layout: layoutForOneWindow(result.prefs?.oneWindow, isMobileViewportOrDevice(window)),
                 positions: result.prefs?.widgetPositions ?? {},
                 sizes: result.prefs?.widgetSizes ?? {},
                 minimized: result.prefs?.widgetMinimized ?? {},
+                // The mobile widget (92f): the disc over the chat on a phone, on as the preference ships.
+                mobileWidget: result.prefs?.mobileWidget !== false,
             })),
         savePositions: (widgetPositions) => {
             bridge.request<PrefsResult>('prefs.patch', { patch: { widgetPositions } }).catch(() => undefined)
@@ -58,8 +66,17 @@ export function setup(ctx: SpindleFrontendContext): SpindleFrontendTeardown {
         saveMinimized: (widgetMinimized) => {
             bridge.request<PrefsResult>('prefs.patch', { patch: { widgetMinimized } }).catch(() => undefined)
         },
-        // Nothing writes the preference now (82), so nothing to follow.
-        onLayoutChange: () => () => undefined,
+        // The one-window tick (92) is the one preference that changes the layout; every other change
+        // leaves the layout as it is, and the layout module ignores a layout it already shows.
+        onLayoutChange: (handler) => bridge.on((event) => {
+            if (event.name !== 'prefs.changed') return
+            const prefs = (event.data as { prefs?: { oneWindow?: unknown } } | undefined)?.prefs
+            if (prefs && prefs.oneWindow !== undefined) handler(layoutForOneWindow(prefs.oneWindow, isMobileViewportOrDevice(window)))
+        }),
+        // A phone (91): the host's own test, so the boxes start hidden there and open fullscreen.
+        isMobile: () => isMobileViewportOrDevice(window),
+        // Where the mobile widget first stands (92f): the viewport's bottom-right corner.
+        viewport: () => ({ width: window.innerWidth, height: window.innerHeight }),
     })
 
     /**

@@ -53,4 +53,10 @@ export const CHOICES_BACKING_CSS = `/* The choice buttons' backing (74c-ter, 74c
     background: var(--lh-bg, var(--lumiverse-bg, rgba(20, 22, 30, 0.95)));
 }
 .${choicesBackingClass('hover')} .lh-choice { transition: background-color 0.2s ease; }
+/* Where nothing hovers (92b, the audit's C3), "solid while hovered" means solid: the host's own test for no pointer. */
+@media (hover: none) {
+    .${choicesBackingClass('hover')} .lh-choice {
+        background: var(--lh-bg, var(--lumiverse-bg, rgba(20, 22, 30, 0.95)));
+    }
+}
 `

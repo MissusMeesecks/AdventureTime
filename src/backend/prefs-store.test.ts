@@ -13,6 +13,7 @@ import {
     readWidgetPositions,
     readWidgetSizes,
     readWidgetMinimized,
+    readOneWindow,
     readMaxTurns,
     readRunEvery,
     readWatermarks,
@@ -162,7 +163,7 @@ describe('the preference store', () => {
             agentMaxTurns: DEFAULT_MAX_TURNS, agentRunEvery: DEFAULT_RUN_EVERY,
             agentWatermarks: {},
             trackerConnectionId: '', agentConnectionId: '',
-            trackerLookbackMode: DEFAULT_LOOKBACK_MODE, trackerLookbackCount: DEFAULT_LOOKBACK_COUNT, layout: 'widgets', trackerTheme: 'native', trackerFontSize: 0, agentFontSize: 0, settingsFontSize: 0, customTheme: null, savedThemes: {}, dayNightCycle: false, choicesBacking: 'tinted', xpBarAtBottom: true, animateAllCustomBarChanges: true, panelLayoutMode: 'stack', trackerActiveTab: '', displayGroupsEnabled: false, displayGroupsShowGaps: false, displayGroups: [], mapTheme: { ...DEFAULT_MAP_THEME }, savedMapThemePresets: {}, activeMapThemePresetId: 'factory:ember', trackerBackdrop: { day: '', night: '', strength: 55 }, settingsBackdrop: { day: '', night: '', strength: 55 }, widgetPositions: {}, widgetSizes: {}, widgetMinimized: {}, partyCompact: false, choicesDisplayRegex: true,
+            trackerLookbackMode: DEFAULT_LOOKBACK_MODE, trackerLookbackCount: DEFAULT_LOOKBACK_COUNT, layout: 'widgets', trackerTheme: 'native', trackerFontSize: 0, agentFontSize: 0, settingsFontSize: 0, customTheme: null, savedThemes: {}, dayNightCycle: false, choicesBacking: 'tinted', xpBarAtBottom: true, animateAllCustomBarChanges: true, panelLayoutMode: 'stack', trackerActiveTab: '', displayGroupsEnabled: false, displayGroupsShowGaps: false, displayGroups: [], mapTheme: { ...DEFAULT_MAP_THEME }, savedMapThemePresets: {}, activeMapThemePresetId: 'factory:ember', trackerBackdrop: { day: '', night: '', strength: 55 }, settingsBackdrop: { day: '', night: '', strength: 55 }, widgetPositions: {}, widgetSizes: {}, widgetMinimized: {}, oneWindow: null, mobileWidget: true, partyCompact: false, choicesDisplayRegex: true,
             trackerRunEvery: DEFAULT_TRACKER_RUN_EVERY, trackerWatermarks: {},
             trackerDirectLookback: 5, sceneLookback: 3, agentDirectLookback: 10,
             scenePictureAuto: false, scenePictureTrigger: 'location_change', scenePictureEveryN: 1, scenePicturePresentNpcs: true, scenePictureConnectionId: '', portraitSkipPromptDialog: false, portraitLocationBackground: false, attachBooksToCard: true, attachBooksTarget: 'chat',
@@ -920,6 +921,48 @@ describe('the day/night cycle (74c)', () => {
         expect((await store.load()).bars).toEqual({ c: { color: '#ff8800', animateChanges: true } })
         await store.patch({ bars: { c: { animateChanges: false } } })
         expect((await store.load()).bars).toEqual({})
+    })
+
+    it('keeps the one-window tick in three states (92b): a boolean as pressed, unset as it ships and for anything else', async () => {
+        expect(readOneWindow(true)).toBe(true)
+        expect(readOneWindow(false)).toBe(false)
+        expect(readOneWindow(null)).toBe(null)
+        expect(readOneWindow(undefined)).toBe(null)
+        expect(readOneWindow('true')).toBe(null)
+        expect(readOneWindow(1)).toBe(null)
+        const store = new PrefsStore(fakeStorage().storage)
+        expect((await store.load()).oneWindow).toBe(null)
+        await store.patch({ oneWindow: true })
+        expect((await store.load()).oneWindow).toBe(true)
+        await store.patch({ oneWindow: false })
+        expect((await store.load()).oneWindow).toBe(false)
+        // A patch that names the key with nothing a tick writes puts it back to the device's choice.
+        await store.patch({ oneWindow: 'phone' as never })
+        expect((await store.load()).oneWindow).toBe(null)
+        expect(readPrefs({ version: 1, oneWindow: true }).oneWindow).toBe(true)
+        expect(readPrefs({ version: 1, oneWindow: false }).oneWindow).toBe(false)
+        expect(readPrefs({ version: 1 }).oneWindow).toBe(null)
+        expect(readPrefsPatch({ oneWindow: false })).toEqual({ oneWindow: false })
+        expect(readPrefsPatch({ oneWindow: null })).toEqual({ oneWindow: null })
+        expect(readPrefsPatch({})).toEqual({})
+    })
+
+    it('keeps the mobile widget as a boolean, on as it ships (92f): off is the one value that takes the disc down', async () => {
+        const store = new PrefsStore(fakeStorage().storage)
+        expect((await store.load()).mobileWidget).toBe(true)
+        await store.patch({ mobileWidget: false })
+        expect((await store.load()).mobileWidget).toBe(false)
+        await store.patch({ mobileWidget: true })
+        expect((await store.load()).mobileWidget).toBe(true)
+        // Anything a file could carry but false reads as on: the disc stays as it ships.
+        await store.patch({ mobileWidget: 'no' as never })
+        expect((await store.load()).mobileWidget).toBe(true)
+        const kept = fakeStorage({ [`@self:${PREFS_PATH}`]: { mobileWidget: false } })
+        expect((await new PrefsStore(kept.storage).load()).mobileWidget).toBe(false)
+        expect(readPrefs({ version: 1 }).mobileWidget).toBe(true)
+        expect(readPrefs({ version: 1, mobileWidget: false }).mobileWidget).toBe(false)
+        expect(readPrefsPatch({ mobileWidget: false })).toEqual({ mobileWidget: false })
+        expect(readPrefsPatch({})).toEqual({})
     })
 
     it('keeps the XP bar at the bottom as a boolean, on by default as Multihog ships it (74f)', async () => {
