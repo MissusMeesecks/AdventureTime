@@ -31,7 +31,7 @@ describe('the portraits section after Multihog’s (83)', () => {
     it('lays the two mirrors’ rows out flat in Multihog’s order with the portraits switch, Show location images, the Real-Time box and the connections’ note, every row a search item', () => {
         const { section, portraits, scene } = harness()
         const fields = Array.from(section.header.querySelectorAll('[data-lh-field]')).map((n) => n.getAttribute('data-lh-field'))
-        expect(fields).toEqual(['portraits-enabled', 'mirror-portrait-skip-prompt', 'mirror-portrait-lookback', 'mirror-portrait-lookback-count', 'mirror-portrait-auto-player', 'mirror-portrait-auto-party', 'mirror-portrait-auto-enemies', 'mirror-portrait-auto-npcs', 'portraits-location-images', 'mirror-scene-picture-background', 'mirror-scene-picture-npcs', 'portraits-realtime', 'mirror-scene-picture-auto', 'mirror-scene-picture-trigger', 'mirror-scene-picture-every', 'portraits-connections'])
+        expect(fields).toEqual(['portraits-enabled', 'mirror-portrait-skip-prompt', 'mirror-image-prompt-prefix', 'mirror-portrait-lookback', 'mirror-portrait-lookback-count', 'mirror-portrait-auto-player', 'mirror-portrait-auto-party', 'mirror-portrait-auto-enemies', 'mirror-portrait-auto-npcs', 'portraits-location-images', 'mirror-scene-picture-background', 'mirror-scene-picture-npcs', 'portraits-realtime', 'mirror-scene-picture-auto', 'mirror-scene-picture-trigger', 'mirror-scene-picture-every', 'portraits-connections'])
         // The rows left the mirrors' folds: the fold keeps only what was not taken.
         expect(portraits.root.querySelector('[data-lh-field="mirror-portrait-auto-party"]')).toBeNull()
         expect(portraits.root.querySelector('[data-lh-field="mirror-portrait-skip-prompt"]')).toBeNull()

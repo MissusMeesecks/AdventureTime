@@ -93,3 +93,26 @@ describe('the prompt editor before a draw (73f)', () => {
         expect(await waiting).toEqual({ prompt: 'A yard.', skip: false })
     })
 })
+
+describe('the image prompt prefix in the dialog (94a)', () => {
+    it('says under the intro that the prefix goes in front at the draw, and the box is edited without it; with none the line is hidden', async () => {
+        const h = fakeUi()
+        const waiting = askForPrompt(h.ui, { title: 't', prompt: 'A yard.', prefix: ' <lora:anima-turbo:1> ' })
+        const line = h.root().querySelector('[data-lh-field="prompt-dialog-prefix"]') as HTMLElement
+        expect(line.hidden).toBe(false)
+        expect(line.textContent).toBe('The image prompt prefix “<lora:anima-turbo:1>” is put in front of this as it is drawn; edit the prompt without it.')
+        expect(line.previousElementSibling!.className).toBe('lh-prompt-dialog-intro')
+        expect(line.nextElementSibling).toBe(text(h.root()))
+        expect(text(h.root()).value).toBe('A yard.')
+        button(h.root(), '🎨 Draw').click()
+        expect(await waiting).toEqual({ prompt: 'A yard.', skip: false })
+
+        const none = fakeUi()
+        const second = askForPrompt(none.ui, { title: 't', prompt: 'A yard.' })
+        const hidden = none.root().querySelector('[data-lh-field="prompt-dialog-prefix"]') as HTMLElement
+        expect(hidden.hidden).toBe(true)
+        expect(hidden.textContent).toBe('')
+        button(none.root(), 'Cancel').click()
+        expect(await second).toBeNull()
+    })
+})

@@ -80,7 +80,7 @@ export function promptResetKeys(): string[] {
 }
 
 /** The preference maps keyed by chat id, which a factory reset keeps and an orphan clean-up prunes. */
-export const PER_CHAT_PREF_KEYS = ['campaignNames', 'campaignBooks', 'trackerWatermarks', 'agentWatermarks'] as const
+export const PER_CHAT_PREF_KEYS = ['campaignNames', 'campaignBooks', 'trackerWatermarks', 'agentWatermarks', 'disabledChats'] as const
 
 /**
  * The chat ids with files under `chats/`, from whatever shape the host's

@@ -36,6 +36,8 @@ export interface PortraitAutoPrefs {
     portraitAutoNpcs?: boolean
     portraitStoryLookback?: boolean
     portraitStoryLookbackCount?: number
+    /** The image prompt prefix (94a), put in front as the picture is drawn. */
+    imagePromptPrefix?: string
     /** The host's image connection, `''` for the scene picture's, then the host's default. */
     portraitConnectionId?: string
     scenePictureConnectionId?: string
@@ -98,6 +100,8 @@ export interface PortraitAuto {
     /** What is drawing and queued for the chat, and the last outcome per name; seeds the chat as the panel's first look at it. */
     status(chatId: string, userId: string | undefined): Promise<PortraitAutoStatus>
 }
+
+import { prefixImagePrompt } from './image-prompt.js'
 
 const NO_GRANT = 'This build cannot draw portraits: the host has not granted the image_gen permission.'
 
@@ -216,14 +220,16 @@ export function createPortraitAuto(deps: PortraitAutoDeps): PortraitAuto {
         try {
             if (!deps.imageGen) throw new Error(NO_GRANT)
             const memo = (await deps.memos.load(chatId, userId).catch(() => ({ memo: '' }))).memo
-            const prompt = (job.prompt ?? '').trim() || await writePrompt(chatId, userId, name, job.npc, memo)
+            const written = (job.prompt ?? '').trim() || await writePrompt(chatId, userId, name, job.npc, memo)
             const prefs = await deps.prefs.load(userId)
+            // The image prompt prefix (94a) goes in front here, at the draw, whatever wrote the prompt.
+            const prompt = prefixImagePrompt(prefs.imagePromptPrefix, written)
             // The portrait's own image connection (61); the scene's when none is chosen (the library's rule of 60); else the host's default.
             const wanted = ((prefs.portraitConnectionId ?? '').trim() || (prefs.scenePictureConnectionId ?? '').trim())
             const connections = await deps.imageGen.listConnections(userId).catch(() => [])
             const connection = connections.find((c) => c.id === wanted) ?? connections.find((c) => c.is_default) ?? connections[0] ?? null
             const size = portraitSize(await providerSchema(userId, connection?.provider ?? ''), connection?.default_parameters ?? {})
-            deps.log.info(`portraits: drawing "${name}" for chat ${chatId} (${source})${connection ? ` on "${connection.name}"` : ''}${size.size ? ` at ${size.size}` : ` at the connection's own size (${size.reason})`}`)
+            deps.log.info(`portraits: drawing "${name}" for chat ${chatId} (${source})${connection ? ` on "${connection.name}"` : ''}${size.size ? ` at ${size.size}` : ` at the connection's own size (${size.reason})`}${prompt !== written ? ', with the image prompt prefix' : ''}`)
             const drawn = await deps.imageGen.generate({ prompt, ...(wanted ? { connection_id: wanted } : {}), ...(Object.keys(size.parameters).length ? { parameters: size.parameters } : {}), owner_chat_id: chatId, userId })
             let src = (drawn.imageUrl ?? '').trim()
             if (!src) {

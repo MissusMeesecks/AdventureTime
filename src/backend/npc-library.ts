@@ -51,7 +51,7 @@ export interface NpcLibraryDeps {
     store: NpcLibraryStore
     trackerPass: TrackerPass
     /** The preferences: the direct pass's lookback, the campaign names, and the scene's image connection, which a photo is drawn on too (60). */
-    prefs: { load(userId: string | undefined): Promise<{ trackerDirectLookback: number; campaignNames?: Record<string, string>; scenePictureConnectionId?: string; portraitConnectionId?: string }> }
+    prefs: { load(userId: string | undefined): Promise<{ trackerDirectLookback: number; campaignNames?: Record<string, string>; scenePictureConnectionId?: string; portraitConnectionId?: string; imagePromptPrefix?: string }> }
     /** The campaign's books, for the sources: the NPC book's entries. */
     books: (userId: string | undefined) => {
         listBooks(): Promise<Array<{ id: string; name: string }>>
@@ -115,6 +115,8 @@ export interface NpcLibrary {
 function describe(error: unknown): string {
     return error instanceof Error ? error.message : String(error)
 }
+
+import { prefixImagePrompt } from './image-prompt.js'
 
 const NO_IMAGE_GRANT = 'This build cannot draw pictures: the host has not granted the image_gen permission.'
 
@@ -256,15 +258,17 @@ export function createNpcLibrary(deps: NpcLibraryDeps): NpcLibrary {
     async function drawPhotoOf(record: LibraryRecord, userId: string | undefined, chatId: string | undefined, at: string, given?: string): Promise<LibraryPhotoResult> {
         if (!deps.imageGen) throw new Error(NO_IMAGE_GRANT)
         // The edited prompt (73f) is drawn as given; otherwise one model call writes it.
-        const prompt = (given ?? '').trim() || await writePhotoPrompt(record, userId, chatId)
+        const written = (given ?? '').trim() || await writePhotoPrompt(record, userId, chatId)
         // The portrait's image connection (61), the scene's when none is chosen (49), else the host's default; its provider's schema and its own saved sizes decide the 2:3 pair.
         const chosen = await deps.prefs.load(userId)
+        // The image prompt prefix (94a) goes in front here, at the draw, whatever wrote the prompt.
+        const prompt = prefixImagePrompt(chosen.imagePromptPrefix, written)
         const wanted = (chosen.portraitConnectionId ?? '').trim() || (chosen.scenePictureConnectionId ?? '').trim()
         const connections = await deps.imageGen.listConnections(userId).catch(() => [])
         const connection = connections.find((c) => c.id === wanted) ?? connections.find((c) => c.is_default) ?? connections[0] ?? null
         const schema = await providerSchema(userId, connection?.provider ?? '')
         const size = portraitSize(schema, connection?.default_parameters ?? {})
-        deps.log.info(`library: drawing the photo of "${record.name}"${connection ? ` on "${connection.name}"` : ''}${size.size ? ` at ${size.size}` : ` at the connection's own size (${size.reason})`}`)
+        deps.log.info(`library: drawing the photo of "${record.name}"${connection ? ` on "${connection.name}"` : ''}${size.size ? ` at ${size.size}` : ` at the connection's own size (${size.reason})`}${prompt !== written ? ', with the image prompt prefix' : ''}`)
         const drawn = await deps.imageGen.generate({ prompt, ...(wanted ? { connection_id: wanted } : {}), ...(Object.keys(size.parameters).length ? { parameters: size.parameters } : {}), userId })
         let src = (drawn.imageUrl ?? '').trim()
         if (!src) {

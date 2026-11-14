@@ -26,6 +26,8 @@ export interface PromptDialogOptions {
     prompt: string
     /** Copy to the clipboard; the browser's when absent. */
     copy?: (text: string) => Promise<void>
+    /** The image prompt prefix (94a), put in front at the draw: shown under the intro so the box is edited without it. */
+    prefix?: string
 }
 
 export interface PromptDialogAnswer {
@@ -60,6 +62,11 @@ export function askForPrompt(ui: PromptDialogUi | undefined, options: PromptDial
         const box = el('div', { class: 'adventuretime-panel lh-prompt-dialog' })
         const intro = el('div', { class: 'lh-prompt-dialog-intro' })
         intro.textContent = PROMPT_DIALOG_INTRO
+        // The image prompt prefix (94a): the draw puts it in front of whatever the box holds, so the box shows the prompt without it and this line says so.
+        const prefix = (options.prefix ?? '').trim()
+        const prefixLine = el('div', { class: 'lh-prompt-dialog-prefix', 'data-lh-field': 'prompt-dialog-prefix' })
+        prefixLine.textContent = prefix ? `The image prompt prefix “${prefix}” is put in front of this as it is drawn; edit the prompt without it.` : ''
+        prefixLine.hidden = !prefix
         const text = el('textarea', { class: 'lh-prompt-dialog-text', rows: '10', spellcheck: 'false', 'data-lh-field': 'prompt-dialog-text' })
         text.value = options.prompt
         const skipRow = el('label', { class: 'lh-prompt-dialog-skip' })
@@ -76,7 +83,7 @@ export function askForPrompt(ui: PromptDialogUi | undefined, options: PromptDial
         const cancel = el('button', { type: 'button', class: 'lh-button' })
         cancel.textContent = 'Cancel'
         row.append(draw, copy, cancel)
-        box.append(intro, text, skipRow, note, row)
+        box.append(intro, prefixLine, text, skipRow, note, row)
         modal.root.append(box)
 
         let settled = false

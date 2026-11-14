@@ -34,6 +34,8 @@ export interface SceneArtPrefs {
     scenePictureEveryN?: number
     scenePicturePresentNpcs?: boolean
     scenePictureConnectionId?: string
+    /** The image prompt prefix (94a), put in front as the picture is drawn. */
+    imagePromptPrefix?: string
 }
 
 export interface SceneArtDeps {
@@ -105,6 +107,8 @@ export function settingWords(value: unknown): string {
     return text.length > 40 ? `${text.slice(0, 37)}…` : text
 }
 
+import { prefixImagePrompt } from './image-prompt.js'
+
 const NO_GRANT = 'This build cannot draw pictures: the host has not granted the image_gen permission.'
 
 export function createSceneArt(deps: SceneArtDeps): SceneArt {
@@ -158,7 +162,10 @@ export function createSceneArt(deps: SceneArtDeps): SceneArt {
             const edited = (given ?? '').trim()
             deps.log.info(`scene: drawing the picture of "${path}" for chat ${chatId} (${trigger}${edited ? ', the prompt as edited' : ''})`)
             // The edited prompt (73f) is drawn as given.
-            const { prompt } = edited ? { prompt: edited } : await writePrompt(chatId, userId, scene, prefs.scenePicturePresentNpcs !== false)
+            const { prompt: written } = edited ? { prompt: edited } : await writePrompt(chatId, userId, scene, prefs.scenePicturePresentNpcs !== false)
+            // The image prompt prefix (94a) goes in front here, at the draw, whatever wrote the prompt.
+            const prompt = prefixImagePrompt(prefs.imagePromptPrefix, written)
+            if (prompt !== written) deps.log.info(`scene: the image prompt prefix is in front of the prompt for "${path}"`)
             const connection = (prefs.scenePictureConnectionId ?? '').trim()
             // The picture is the chat's (87): the gallery switch that owned it by the narrator's card is gone, since
             // the host's Gallery tab never listed an extension's images (56-ter); an AdventureTime gallery is the

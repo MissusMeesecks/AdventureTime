@@ -1021,7 +1021,7 @@ describe('the two tabs and the layout select (47b)', () => {
         expect(root.querySelector('.lh-diagnostics')).toBeNull()
         expect(root.querySelector('.lh-body')).toBeNull()
         // The phone row first (91; the stylesheet shows it on a phone alone), then the status, the dice line, the diagnostics.
-        expect(Array.from(rest.children).slice(0, 4).map((n) => n.className.split(' ').pop())).toEqual(['lh-phone-widgets', 'lh-status', 'lh-dice-line', 'lh-diagnostics'])
+        expect(Array.from(rest.children).slice(0, 5).map((n) => n.className.split(' ').pop())).toEqual(['lh-phone-widgets', 'lh-chat-switch', 'lh-status', 'lh-dice-line', 'lh-diagnostics'])
         expect(rest.querySelector('.lh-diagnostics')).not.toBeNull()
         expect(rest.querySelector('.lh-problem')).not.toBeNull()
         // The styles are scoped to this class; without it the second tab is
@@ -1281,7 +1281,7 @@ describe('the settings in Multihog’s categories (63)', () => {
         'settings.get': { settings: createDefaultSettings() },
         'prefs.get': { prefs: PREFS },
         'prefs.patch': { prefs: PREFS },
-        'status.get': { version: '1.0.0-beta.22', host: '1.2.0', checked: true, granted: ['a'], missing: [], dice: { registered: false, mode: 'off' } },
+        'status.get': { version: '1.0.0-beta.24', host: '1.2.0', checked: true, granted: ['a'], missing: [], dice: { registered: false, mode: 'off' } },
         'connections.list': { connections: [{ id: 'conn-1', name: 'Main', model: 'deepseek', isDefault: true }] },
         'scene.connections': { connections: [{ id: 'img-1', name: 'Swarm', provider: 'swarmui', model: 'anima', isDefault: true }] },
     })
@@ -1304,7 +1304,7 @@ describe('the settings in Multihog’s categories (63)', () => {
         expect(titles(category(root, 'world'))).toEqual(['World Progression'])
         const general = category(root, 'general').querySelector('.lh-category-body')!
         expect(general.children[0]!.classList.contains('lh-version-twin')).toBe(true)
-        expect(general.children[0]!.textContent).toContain('AdventureTime 1.0.0-beta.22')
+        expect(general.children[0]!.textContent).toContain('AdventureTime 1.0.0-beta.24')
         // Core & Branching (81), Multihog's first drawer, is the first card; the Layout and Cartridges cards (82) follow.
         expect(general.children[1]!.getAttribute('data-lh-card')).toBe('core-branching')
         expect(general.children[2]!.getAttribute('data-lh-card')).toBe('layout')
@@ -1394,7 +1394,7 @@ describe('the settings in Multihog’s categories (63)', () => {
         expect(section.querySelector('[data-lh-field="mirror-portrait-settings"]')).toBeNull()
         expect(section.querySelector('[data-lh-field="mirror-scene-picture-settings"]')).toBeNull()
         const fields = Array.from(foot.querySelectorAll('[data-lh-field]')).map((n) => n.getAttribute('data-lh-field'))
-        expect(fields).toEqual(['portraits-enabled', 'mirror-portrait-skip-prompt', 'mirror-portrait-lookback', 'mirror-portrait-lookback-count', 'mirror-portrait-auto-player', 'mirror-portrait-auto-party', 'mirror-portrait-auto-enemies', 'mirror-portrait-auto-npcs', 'portraits-location-images', 'mirror-scene-picture-background', 'mirror-scene-picture-npcs', 'portraits-realtime', 'mirror-scene-picture-auto', 'mirror-scene-picture-trigger', 'mirror-scene-picture-every', 'portraits-connections'])
+        expect(fields).toEqual(['portraits-enabled', 'mirror-portrait-skip-prompt', 'mirror-image-prompt-prefix', 'mirror-portrait-lookback', 'mirror-portrait-lookback-count', 'mirror-portrait-auto-player', 'mirror-portrait-auto-party', 'mirror-portrait-auto-enemies', 'mirror-portrait-auto-npcs', 'portraits-location-images', 'mirror-scene-picture-background', 'mirror-scene-picture-npcs', 'portraits-realtime', 'mirror-scene-picture-auto', 'mirror-scene-picture-trigger', 'mirror-scene-picture-every', 'portraits-connections'])
         expect(foot.querySelector('.lh-portraits-realtime-title')!.textContent).toBe('Real-Time Visualization Mode')
         expect((foot.querySelector('[data-lh-field="portraits-enabled"]') as HTMLInputElement).checked).toBe(true)
         expect(section.lastElementChild!.getAttribute('data-lh-field')).toBe('portraits-foot')
@@ -2172,9 +2172,15 @@ describe('the theme layer (74a)', () => {
         expect(tracker.querySelector('.lh-backdrop-note')!.classList.contains('lh-backdrop-note--error')).toBe(true)
         url.value = 'https://host/a.jpg'
         url.dispatchEvent(new Event('change'))
-        expect(requests.at(-1)?.params).toEqual({ patch: { trackerBackdrop: { day: 'https://host/a.jpg', night: '/images/stored/night.png', strength: 70 } } })
+        // An https address is fetched by the backend first (94b); with no fetch answered here, the address is kept as before and the note says what that means.
+        expect(requests.at(-1)?.op).toBe('backdrop.fetch')
+        expect(requests.at(-1)?.params).toEqual({ box: 'tracker', slot: 'day', url: 'https://host/a.jpg' })
+        expect(tracker.querySelector('.lh-backdrop-note')!.textContent).toBe('Fetching the picture…')
         await settle()
-        expect(tracker.querySelector('.lh-backdrop-note')!.textContent).toBe('The Tracker widget’s backdrop is set.')
+        // (The panel's copy followed the strength save's canned answer meanwhile, which gave the cleared day.)
+        expect(requests.at(-1)?.params).toEqual({ patch: { trackerBackdrop: { day: 'https://host/a.jpg', night: '', strength: 40 } } })
+        await settle()
+        expect(tracker.querySelector('.lh-backdrop-note')!.textContent).toBe('The Tracker widget’s backdrop is set. The picture could not be fetched (no canned answer for backdrop.fetch); the address is kept as it is and shows only if the browser can load it from there.')
         // The night row takes an address too (74d-bis), under the same rule, and shows a stored one.
         const nightUrl = tracker.querySelector('[data-lh-backdrop-url="tracker:night"]') as HTMLInputElement
         const beforeNight = requests.length
@@ -2184,12 +2190,14 @@ describe('the theme layer (74a)', () => {
         expect(tracker.querySelector('.lh-backdrop-note')!.textContent).toBe('Use an https image URL or upload a file.')
         nightUrl.value = 'https://host/n.jpg'
         nightUrl.dispatchEvent(new Event('change'))
+        expect(requests.at(-1)?.params).toEqual({ box: 'tracker', slot: 'night', url: 'https://host/n.jpg' })
+        await settle()
         // (The panel's copy follows the save's answer, which the canned one gave as the cleared day.)
         expect(requests.at(-1)?.params).toEqual({ patch: { trackerBackdrop: { day: '', night: 'https://host/n.jpg', strength: 40 } } })
         emit('prefs.changed', { prefs: { trackerBackdrop: { day: 'https://host/a.jpg', night: 'https://host/n.jpg', strength: 70 } } })
         expect(nightUrl.value).toBe('https://host/n.jpg')
         await settle()
-        expect(tracker.querySelector('.lh-backdrop-note')!.textContent).toBe('The Tracker widget’s night backdrop is set.')
+        expect(tracker.querySelector('.lh-backdrop-note')!.textContent).toContain('The Tracker widget’s night backdrop is set. The picture could not be fetched')
 
         // Clear the day image: the answer takes the class off the root.
         ;(tracker.querySelector('[data-lh-backdrop-clear="tracker:day"]') as HTMLButtonElement).click()
@@ -2288,6 +2296,56 @@ describe('a picture large (Phase 64)', () => {
     it('ships the zoom cursor and the large picture\'s size in the panel\'s one stylesheet, which reaches the cards under the messages too', () => {
         expect(PANEL_CSS).toContain('img[data-lh-large] { cursor: zoom-in; }')
         expect(PANEL_CSS).toContain('.lh-large {')
+    })
+})
+
+describe('the per-chat switch (94c)', () => {
+    it('heads the settings tab above the status text, reads the open chat’s standing, writes it through chat.enable and follows the event', async () => {
+        const { bridge, requests, emit } = makeBridge({ 'settings.get': { settings: createDefaultSettings() }, 'prefs.get': { prefs: { bars: {}, disabledChats: { 'chat-1': true } } }, 'chat.enable': { prefs: { bars: {}, disabledChats: {} } } })
+        const root = document.createElement('div')
+        const rest = document.createElement('div')
+        mountPanel(root, bridge, makeHost().host, { rest, scene: document.createElement('div') })
+        await settle()
+
+        const row = rest.querySelector('.lh-chat-switch') as HTMLLabelElement
+        expect(row).not.toBeNull()
+        expect(row.previousElementSibling!.classList.contains('lh-phone-widgets')).toBe(true)
+        expect(row.nextElementSibling!.classList.contains('lh-status')).toBe(true)
+        expect(row.hidden).toBe(false)
+        expect(row.textContent).toBe('AdventureTime is on in this chat')
+        // The tick row keeps its words beside the box (92c's rule).
+        expect(row.classList.contains('lh-tracker-pref')).toBe(true)
+        const tick = row.querySelector('input[data-lh-field="chat-enabled"]') as HTMLInputElement
+        // The file says chat-1 is off.
+        expect(tick.checked).toBe(false)
+        tick.checked = true
+        tick.dispatchEvent(new Event('change'))
+        await settle()
+        expect(requests.filter((r) => r.op === 'chat.enable').map((r) => r.params)).toEqual([{ chatId: 'chat-1', enabled: true }])
+        expect(tick.checked).toBe(true)
+        emit('prefs.changed', { prefs: { disabledChats: { 'chat-1': true } } })
+        expect(tick.checked).toBe(false)
+        emit('prefs.changed', { prefs: { disabledChats: { 'chat-9': true } } })
+        expect(tick.checked).toBe(true)
+        emit('prefs.changed', { prefs: { mobileWidget: false } })
+        expect(tick.checked).toBe(true)
+    })
+
+    it('stands first in the one-root layout too, and a refused write puts the tick back', async () => {
+        const { bridge } = makeBridge({ 'settings.get': { settings: createDefaultSettings() }, 'prefs.get': { prefs: { bars: {} } } })
+        const root = document.createElement('div')
+        mountPanel(root, bridge, makeHost().host)
+        await settle()
+        const row = root.querySelector('.lh-chat-switch') as HTMLLabelElement
+        expect(row.previousElementSibling!.classList.contains('lh-phone-widgets')).toBe(true)
+        expect(row.nextElementSibling!.classList.contains('lh-status')).toBe(true)
+        const tick = row.querySelector('input[data-lh-field="chat-enabled"]') as HTMLInputElement
+        expect(tick.checked).toBe(true)
+        tick.checked = false
+        tick.dispatchEvent(new Event('change'))
+        await settle()
+        // No canned answer for chat.enable: the backend refused, and the tick is back on.
+        expect(tick.checked).toBe(true)
     })
 })
 
@@ -2663,5 +2721,30 @@ describe('the one window in the panel (92)', () => {
             ['Visuals/Map', '🗺️', 'Map', 'Visuals/Map'],
         ])
         for (const tab of tabs) expect((tab.firstElementChild as HTMLElement).className).toBe('lh-widget-tab-text')
+    })
+})
+
+describe('a backdrop from an address (94b)', () => {
+    it('hands an https address to the backend to fetch and store, shows the stored picture, empties the box and says so', async () => {
+        const { bridge, requests } = makeBridge({
+            'settings.get': { settings: createDefaultSettings() },
+            'prefs.get': { prefs: { bars: {}, trackerBackdrop: { day: '', night: '', strength: 55 } } },
+            'backdrop.fetch': { prefs: { bars: {}, trackerBackdrop: { day: '/images/stored/backdrop-tracker-day.jpg', night: '', strength: 55 } } },
+        })
+        const root = document.createElement('div')
+        const rest = document.createElement('div')
+        mountPanel(root, bridge, makeHost().host, { rest, scene: document.createElement('div') })
+        await settle()
+        const tracker = rest.querySelector('[data-lh-backdrop-box="tracker"]') as HTMLElement
+        const url = tracker.querySelector('[data-lh-backdrop-url="tracker:day"]') as HTMLInputElement
+        url.value = 'https://pictures.example/yard.jpg'
+        url.dispatchEvent(new Event('change'))
+        expect(requests.at(-1)?.op).toBe('backdrop.fetch')
+        await settle()
+        expect(requests.filter((r) => r.op === 'prefs.patch')).toEqual([])
+        expect(url.value).toBe('')
+        expect(tracker.querySelector('.lh-backdrop-note')!.textContent).toBe('The Tracker widget’s backdrop is set. The picture is fetched from the address and stored with the host.')
+        expect((tracker.querySelector('.lh-backdrop-preview') as HTMLElement).style.backgroundImage).toContain('backdrop-tracker-day.jpg')
+        expect(root.classList.contains('lh-backdrop')).toBe(true)
     })
 })

@@ -1,5 +1,5 @@
 {
-    "version": "1.0.0-beta.22",
+    "version": "1.0.0-beta.24",
     "name": "AdventureTime",
     "identifier": "adventure_time",
     "author": "MissusMeesecks",
@@ -18,7 +18,8 @@
         "characters",
         "ui_panels",
         "chats",
-        "image_gen"
+        "image_gen",
+        "cors_proxy"
     ],
     "entry_backend": "dist/backend.js",
     "entry_frontend": "dist/frontend.js"

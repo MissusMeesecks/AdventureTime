@@ -222,6 +222,16 @@ describe('a successful pass', () => {
 })
 
 describe('a pass that should change nothing', () => {
+    it('names the blocks re-sent unchanged (95): no copy is appended, nothing is saved, and the reason is not *no blocks*', async () => {
+        const memo = '[TIME]\n06:15 AM\n[/TIME]\n\n[omens_2]\nResolve: 4\n[/omens_2]'
+        const { pass, memos } = harness('<memo>[TIME]\n06:15 AM\n[/TIME]\n[omens_2]\nResolve: 4\n[/omens_2]</memo>')
+        await memos.save('c1', memo)
+        const outcome = await pass.run({ chatId: 'c1' })
+        expect(outcome.status).toBe('no-change')
+        expect(outcome.report.reason).toBe('the tracker re-sent TIME, OMENS_2 unchanged, so the memo was left alone')
+        expect((await memos.load('c1')).memo).toBe(memo)
+    })
+
     it('leaves the memo alone when the model returns prose', async () => {
         const { pass, memos } = harness('Nothing changed this turn.')
         await memos.save('c1', '[TIME]\n06:15 AM\n[/TIME]')

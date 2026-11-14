@@ -37,7 +37,7 @@ export interface PortraitDrawSettings {
      * Multihog's order rather than keeping the fold, so it takes them one by one;
      * a row appended elsewhere leaves the fold, and `applyPrefs` still reaches it.
      */
-    rows: { draw: HTMLElement[]; skip: HTMLElement; lookback: HTMLElement; count: HTMLElement }
+    rows: { draw: HTMLElement[]; skip: HTMLElement; prefix: HTMLElement; lookback: HTMLElement; count: HTMLElement }
 }
 
 /** The legacy's four switches, its words. */
@@ -112,6 +112,16 @@ export function createPortraitDrawSettings(host: PortraitDrawHost, options: Port
     skipRow.title = 'Multihog’s Skip Prompt Edit Dialog. On, a pressed Draw — the scene’s picture, a library photo, a portrait in play — writes the prompt and draws at once. Off, the prompt is shown first, to edit, copy or cancel, before the image is drawn. Draws on their own never ask.'
     skipRow.append(skipInput, skipText)
     skipInput.addEventListener('change', () => { host.savePrefs({ portraitSkipPromptDialog: skipInput.checked }).catch(host.fail) })
+    // The image prompt prefix (94a, the public beta's first ask): put in front of every image prompt by code as
+    // the picture is drawn — a LoRA tag, a trigger word, a quality tag — so a model that needs one on every
+    // prompt gets it without the text model having to copy it. Blank as it ships.
+    const prefixRow = el('label', { class: 'lh-portrait-settings-row lh-portrait-prefix-row' })
+    const prefixLabel = el('span')
+    prefixLabel.textContent = 'Image prompt prefix'
+    const prefixInput = el('input', { type: 'text', class: 'lh-input', placeholder: '<lora:name:1>, a trigger word, a quality tag…', maxlength: '500', 'data-lh-field': field('image-prompt-prefix') }) as HTMLInputElement
+    prefixRow.title = 'Put in front of every image prompt as the picture is drawn — the portraits, the NPC photos and the location pictures, pressed or on their own. A LoRA tag such as <lora:name:1>, a trigger word, a quality tag. The prompt editor shows the prompt without it and says so. Blank changes nothing.'
+    prefixRow.append(prefixLabel, prefixInput)
+    prefixInput.addEventListener('change', () => { host.savePrefs({ imagePromptPrefix: prefixInput.value.trim() }).catch(host.fail) })
     const lookbackRow = el('label', { class: 'lh-portrait-settings-row' })
     const lookbackInput = el('input', { type: 'checkbox', 'data-lh-field': field('portrait-lookback') }) as HTMLInputElement
     const lookbackText = el('span')
@@ -149,7 +159,7 @@ export function createPortraitDrawSettings(host: PortraitDrawHost, options: Port
     const promptHint = el('span', { class: 'lh-conn-hint' })
     promptHint.textContent = 'The text model that writes the image prompt. Blank is the agent’s connection.'
     promptRow.append(promptLabel, promptSelect, promptHint)
-    body.append(skipRow, lookbackRow, countRow)
+    body.append(skipRow, prefixRow, lookbackRow, countRow)
     if (!mirror) body.append(imageRow, promptRow)
     root.append(summary, body)
 
@@ -215,13 +225,14 @@ export function createPortraitDrawSettings(host: PortraitDrawHost, options: Port
 
     return {
         root,
-        rows: { draw: drawRows, skip: skipRow, lookback: lookbackRow, count: countRow },
+        rows: { draw: drawRows, skip: skipRow, prefix: prefixRow, lookback: lookbackRow, count: countRow },
         applyPrefs(prefs) {
             const p = prefs as Record<string, unknown>
             for (const choice of PORTRAIT_DRAW_SWITCHES) {
                 if (p[choice.key] !== undefined) switches.get(choice.key)!.checked = p[choice.key] === true
             }
             if (p.portraitSkipPromptDialog !== undefined) skipInput.checked = p.portraitSkipPromptDialog === true
+            if (p.imagePromptPrefix !== undefined) prefixInput.value = typeof p.imagePromptPrefix === 'string' ? p.imagePromptPrefix : ''
             if (p.portraitStoryLookback !== undefined) {
                 lookbackInput.checked = p.portraitStoryLookback === true
                 countRow.hidden = !lookbackInput.checked

@@ -100,6 +100,14 @@ Multihog's seven categories — *General & visuals*, *Connections & models*,
 model call can run on a connection of its own; the tracker and the agent
 suit a smaller, faster model than the one writing the story.
 
+Two switches worth knowing from the start. **AdventureTime is on in this
+chat**, the first row of the tab, switches the extension off for the open
+chat alone (nothing goes into the narrator's prompt and nothing runs after
+a reply there; the buttons still work). **Image prompt prefix**, under
+*Portraits and location images*, is put in front of every picture's
+prompt as it is drawn — a LoRA tag such as `<lora:name:1>`, a trigger
+word, a quality tag — for an image model that needs one on every prompt.
+
 ## Before you install
 
 **It makes extra model calls.** With the defaults, which are Multihog's:
@@ -159,8 +167,8 @@ calls* above). Your own instructions belong in **Your world rules**, under
 1. In Lumiverse, open the **Extensions** panel, press **Add Extension**,
    and paste this repository's address into **Install from Source**.
    Lumiverse clones it and builds it.
-2. **Approve the permissions.** AdventureTime asks for twelve. Lumiverse
-   grants four on its own and holds eight for your approval: open the
+2. **Approve the permissions.** AdventureTime asks for thirteen. Lumiverse
+   grants a few on its own and holds the rest for your approval: open the
    extension's **Permissions** and press **Enable All**. Each one is
    something a feature needs:
 
@@ -177,12 +185,13 @@ calls* above). Your own instructions belong in **Your world rules**, under
    | `characters` | importing a card; attaching books to the narrator's card |
    | `personas` | making a persona for a new character |
    | `chats` | naming a campaign after its card |
+   | `cors_proxy` | fetching a backdrop picture from an address you paste |
    | `ui_panels` | the two floating boxes |
 
 3. Open a chat. Two floating widgets appear, *AdventureTime — Tracker*
    and *AdventureTime — Lore*, and the d20 tab in the
    drawer holds the settings. The line at the top of that tab reads
-   `AdventureTime <version> · Lumiverse <version> · all 12 permissions
+   `AdventureTime <version> · Lumiverse <version> · all 13 permissions
    granted`, or names any permission still missing. Prefer one box? Tick **One window** under *UI Appearance* in the settings tab: the two become one, with Tracker, Lorebook Agent, Campaign Records and Visuals/Map as its tabs, drawn as icons with their names under them on a phone — where the one box is the default until the tick is pressed.
 
 **Updating:** press **Update** on AdventureTime in the Extensions panel.

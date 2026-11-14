@@ -153,12 +153,30 @@ describe('the lookback and the connections (61)', () => {
         const skip = field<HTMLInputElement>('portrait-skip-prompt')
         expect(skip.checked).toBe(false)
         expect(skip.closest('label')!.textContent).toBe('Skip the prompt editor on a pressed draw')
-        expect(skip.closest('label')!.nextElementSibling).toBe(field('portrait-lookback').closest('label'))
+        // The image prompt prefix's row (94a) stands between it and the lookback.
+        expect(skip.closest('label')!.nextElementSibling).toBe(field('image-prompt-prefix').closest('label'))
         skip.checked = true
         skip.dispatchEvent(new Event('change'))
         await settle()
         expect(calls.at(-1)).toEqual(['savePrefs', { portraitSkipPromptDialog: true }])
         settings.applyPrefs({ portraitSkipPromptDialog: false })
         expect(skip.checked).toBe(false)
+    })
+
+    it('the image prompt prefix (94a) is a text box under the prompt editor switch, saved trimmed on change, following the preferences', async () => {
+        const { calls, field, settle, settings } = harness()
+        const prefix = field<HTMLInputElement>('image-prompt-prefix')
+        expect(prefix.value).toBe('')
+        expect(prefix.closest('label')!.textContent).toBe('Image prompt prefix')
+        expect(prefix.closest('label')!.previousElementSibling).toBe(field('portrait-skip-prompt').closest('label'))
+        expect(prefix.closest('label')!.nextElementSibling).toBe(field('portrait-lookback').closest('label'))
+        prefix.value = '  <lora:anima-turbo:1>  '
+        prefix.dispatchEvent(new Event('change'))
+        await settle()
+        expect(calls.at(-1)).toEqual(['savePrefs', { imagePromptPrefix: '<lora:anima-turbo:1>' }])
+        settings.applyPrefs({ imagePromptPrefix: 'masterpiece,' })
+        expect(prefix.value).toBe('masterpiece,')
+        settings.applyPrefs({ imagePromptPrefix: '' })
+        expect(prefix.value).toBe('')
     })
 })

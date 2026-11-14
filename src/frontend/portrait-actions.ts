@@ -36,10 +36,10 @@ export interface PromptEditorDeps {
 export function createPromptEditor(deps: PromptEditorDeps): (write: () => Promise<{ title: string; prompt: string }>) => Promise<{ prompt?: string } | null> {
     return async (write) => {
         if (!deps.ui?.showModal) return {}
-        const skip = await deps.request<PrefsResult>('prefs.get', {}).then((r) => r.prefs?.portraitSkipPromptDialog === true).catch(() => false)
-        if (skip) return {}
+        const read = await deps.request<PrefsResult>('prefs.get', {}).then((r) => r.prefs).catch(() => undefined)
+        if (read?.portraitSkipPromptDialog === true) return {}
         const written = await write()
-        const answer = await askForPrompt(deps.ui, { title: written.title, prompt: written.prompt })
+        const answer = await askForPrompt(deps.ui, { title: written.title, prompt: written.prompt, prefix: typeof read?.imagePromptPrefix === 'string' ? read.imagePromptPrefix : '' })
         if (!answer) return null
         if (answer.skip) await deps.request<PrefsResult>('prefs.patch', { patch: { portraitSkipPromptDialog: true } }).catch(() => undefined)
         return { prompt: answer.prompt }

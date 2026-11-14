@@ -163,7 +163,7 @@ describe('the preference store', () => {
             agentMaxTurns: DEFAULT_MAX_TURNS, agentRunEvery: DEFAULT_RUN_EVERY,
             agentWatermarks: {},
             trackerConnectionId: '', agentConnectionId: '',
-            trackerLookbackMode: DEFAULT_LOOKBACK_MODE, trackerLookbackCount: DEFAULT_LOOKBACK_COUNT, layout: 'widgets', trackerTheme: 'native', trackerFontSize: 0, agentFontSize: 0, settingsFontSize: 0, customTheme: null, savedThemes: {}, dayNightCycle: false, choicesBacking: 'tinted', xpBarAtBottom: true, animateAllCustomBarChanges: true, panelLayoutMode: 'stack', trackerActiveTab: '', displayGroupsEnabled: false, displayGroupsShowGaps: false, displayGroups: [], mapTheme: { ...DEFAULT_MAP_THEME }, savedMapThemePresets: {}, activeMapThemePresetId: 'factory:ember', trackerBackdrop: { day: '', night: '', strength: 55 }, settingsBackdrop: { day: '', night: '', strength: 55 }, widgetPositions: {}, widgetSizes: {}, widgetMinimized: {}, oneWindow: null, mobileWidget: true, partyCompact: false, choicesDisplayRegex: true,
+            trackerLookbackMode: DEFAULT_LOOKBACK_MODE, trackerLookbackCount: DEFAULT_LOOKBACK_COUNT, layout: 'widgets', trackerTheme: 'native', trackerFontSize: 0, agentFontSize: 0, settingsFontSize: 0, customTheme: null, savedThemes: {}, dayNightCycle: false, choicesBacking: 'tinted', xpBarAtBottom: true, animateAllCustomBarChanges: true, panelLayoutMode: 'stack', trackerActiveTab: '', displayGroupsEnabled: false, displayGroupsShowGaps: false, displayGroups: [], mapTheme: { ...DEFAULT_MAP_THEME }, savedMapThemePresets: {}, activeMapThemePresetId: 'factory:ember', trackerBackdrop: { day: '', night: '', strength: 55 }, settingsBackdrop: { day: '', night: '', strength: 55 }, widgetPositions: {}, widgetSizes: {}, widgetMinimized: {}, oneWindow: null, mobileWidget: true, disabledChats: {}, imagePromptPrefix: '', partyCompact: false, choicesDisplayRegex: true,
             trackerRunEvery: DEFAULT_TRACKER_RUN_EVERY, trackerWatermarks: {},
             trackerDirectLookback: 5, sceneLookback: 3, agentDirectLookback: 10,
             scenePictureAuto: false, scenePictureTrigger: 'location_change', scenePictureEveryN: 1, scenePicturePresentNpcs: true, scenePictureConnectionId: '', portraitSkipPromptDialog: false, portraitLocationBackground: false, attachBooksToCard: true, attachBooksTarget: 'chat',
@@ -945,6 +945,29 @@ describe('the day/night cycle (74c)', () => {
         expect(readPrefsPatch({ oneWindow: false })).toEqual({ oneWindow: false })
         expect(readPrefsPatch({ oneWindow: null })).toEqual({ oneWindow: null })
         expect(readPrefsPatch({})).toEqual({})
+    })
+
+    it('keeps the chats switched off as a map of true alone (94c), pruned of anything else, and a factory reset keeps it with the other per-chat maps', async () => {
+        const store = new PrefsStore(fakeStorage().storage)
+        expect((await store.load()).disabledChats).toEqual({})
+        await store.patch({ disabledChats: { a: true, b: false, c: 'x' } as never })
+        expect((await store.load()).disabledChats).toEqual({ a: true })
+        // A file written by hand, or by another build, is read as defensively on load as a patch is.
+        const dirty = new PrefsStore(fakeStorage({ [`@self:${PREFS_PATH}`]: { version: 1, disabledChats: { a: true, b: false, c: 'x', '': true } } }).storage)
+        expect((await dirty.load()).disabledChats).toEqual({ a: true })
+        const reset = await store.resetInstall()
+        expect(reset.disabledChats).toEqual({ a: true })
+        await store.patch({ disabledChats: {} })
+        expect((await store.load()).disabledChats).toEqual({})
+    })
+
+    it('keeps the image prompt prefix as a trimmed string, blank as it ships (94a)', async () => {
+        const store = new PrefsStore(fakeStorage().storage)
+        expect((await store.load()).imagePromptPrefix).toBe('')
+        await store.patch({ imagePromptPrefix: '  <lora:anima-turbo:1>  ' })
+        expect((await store.load()).imagePromptPrefix).toBe('<lora:anima-turbo:1>')
+        await store.patch({ imagePromptPrefix: 7 as never })
+        expect((await store.load()).imagePromptPrefix).toBe('')
     })
 
     it('keeps the mobile widget as a boolean, on as it ships (92f): off is the one value that takes the disc down', async () => {

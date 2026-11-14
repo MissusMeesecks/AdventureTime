@@ -171,6 +171,26 @@ describe.skipIf(!available)('the memo merge against the pinned legacy build', ()
         expect(disagreements).toEqual([])
     })
 
+    it('departs where the legacy appends a block re-sent unchanged (95, departure 160), and only there', () => {
+        // The legacy's no-op replace reads as "not there" and appends; its dedupe hides that for a tag of
+        // letters and underscores and cannot for one with a digit, a space or a hyphen.
+        const prior = `${PRIOR}\n\n[omens_2]\nResolve: 4\n[/omens_2]`
+        const output = '[omens_2]\nResolve: 4\n[/omens_2]'
+        const copies = (memo: string) => memo.split('[omens_2]').length - 1
+        let theirs = prior
+        let mine = prior
+        for (let turn = 0; turn < 3; turn++) {
+            theirs = legacy.mergeMemo(theirs, output)
+            mine = mergeMemo(mine, output)
+        }
+        expect(copies(theirs)).toBe(4)
+        expect(copies(mine)).toBe(1)
+        expect(mine).toBe(prior)
+        // A changed block merges as the legacy merges it.
+        const changed = '[omens_2]\nResolve: 5\n[/omens_2]'
+        expect(mergeMemo(prior, changed)).toBe(legacy.mergeMemo(prior, changed))
+    })
+
     it('deduplicates exactly as the legacy build does', () => {
         const cases = [
             PRIOR,

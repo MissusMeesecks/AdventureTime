@@ -413,3 +413,23 @@ describe('a card\'s photo (60)', () => {
         expect(log.at(-1)).toBe('library: the photo of "Kestrel" removed')
     })
 })
+
+describe('the image prompt prefix (94a)', () => {
+    it('goes in front of the library photo\'s prompt at the draw, the log line saying so', async () => {
+        const calls: unknown[][] = []
+        const { library, log } = harness({
+            settings: { load: async () => ({ portraitNpcSystemPrompt: 'Draw {{name}} in {{wordtarget}} words.', portraitPromptWordTarget: 90 }) },
+            prefs: { load: async () => ({ trackerDirectLookback: 5, scenePictureConnectionId: 'img-slow', imagePromptPrefix: ' <lora:anima-turbo:1> ' }) },
+            generate: async () => '  A wary human scout in leathers.  ',
+            imageGen: {
+                generate: async (input) => { calls.push(['imageGen', input]); return { imageDataUrl: 'data:image/png;base64,AAAA', imageUrl: 'https://host/drawn.png', model: 'sdxl', provider: 'swarm' } },
+                listConnections: async () => [{ id: 'img-slow', name: 'Slow', provider: 'swarm', model: 'sdxl', is_default: true, default_parameters: { width: 1024, height: 1024, steps: 30 } }],
+                getProviders: async () => [{ id: 'swarm', capabilities: { parameters: { width: { type: 'integer' }, height: { type: 'integer' } } } }],
+            },
+        }, {}, [{ ...kestrel(), portraitPath: '' }])
+        const result = await library.drawPhoto({ userId: 'u1', id: 'k1' })
+        expect(calls).toEqual([['imageGen', { prompt: '<lora:anima-turbo:1> A wary human scout in leathers.', connection_id: 'img-slow', parameters: { width: 896, height: 1344 }, userId: 'u1' }]])
+        expect(result.prompt).toBe('<lora:anima-turbo:1> A wary human scout in leathers.')
+        expect(log).toContain('library: drawing the photo of "Kestrel" on "Slow" at 896×1344, with the image prompt prefix')
+    })
+})

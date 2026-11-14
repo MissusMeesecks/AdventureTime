@@ -19,6 +19,7 @@ import { findByMessage } from '../tracker/history-view.js'
 import { isFactoryPortraitPresetId, isFactoryPortraitPresetName, locationPromptForToggle, resolvePortraitPresetBundle, savedPresetId, type SavedPortraitPreset } from '../tracker/portrait-presets.js'
 import type { SettingsBag } from '../settings/schema.js'
 import { readBackdrop } from '../protocol.js'
+import { withChatEnabled } from './chat-switch.js'
 import { readMapTheme } from '../tracker/map-themes.js'
 import type {
     CancelResult,
@@ -274,6 +275,13 @@ export interface RequestDeps {
             userId: string | undefined,
         ): Promise<{ url: string }>
     }
+    /**
+     * The backend's own fetch of an https address (94b), for a backdrop pasted
+     * as a URL: the bytes are stored with the host as an upload's are, so the
+     * picture shows whatever the address's site thinks of hotlinks. Absent
+     * where the runtime offers no fetch, and the op says so.
+     */
+    fetch?: (url: string) => Promise<FetchedImage>
     /**
      * Absent in tests that do not exercise it, and absent if the backend ever
      * runs without generation permission — `tracker.run` then reports that
@@ -1870,6 +1878,93 @@ async function sceneConnections(deps: RequestDeps, userId: string | undefined): 
     return requireSceneArt(deps).connections(userId)
 }
 
+/** A picture fetched through the host's CORS proxy (94b-bis): its answer, the bytes as base64. */
+export interface FetchedImage {
+    ok: boolean
+    status: number
+    contentType: string
+    base64: string
+}
+
+/**
+ * The CORS proxy's answer read as a picture. The host answers
+ * `{ status, headers, body, encoding: 'base64' }` for `responseType:
+ * 'arraybuffer'`; anything else is refused here rather than stored.
+ */
+export function readCorsImage(answer: unknown): FetchedImage {
+    const record = (answer && typeof answer === 'object' ? answer : {}) as Record<string, unknown>
+    const status = typeof record.status === 'number' ? record.status : 0
+    const headers = (record.headers && typeof record.headers === 'object' ? record.headers : {}) as Record<string, unknown>
+    const typeKey = Object.keys(headers).find((key) => key.toLowerCase() === 'content-type')
+    const contentType = typeKey && typeof headers[typeKey] === 'string' ? (headers[typeKey] as string) : ''
+    if (record.encoding !== 'base64' || typeof record.body !== 'string') throw new Error('The host\'s proxy did not return the picture\'s bytes.')
+    return { ok: status >= 200 && status < 300, status, contentType, base64: record.body.replace(/\s+/g, '') }
+}
+
+/** The bytes a base64 text holds, without decoding it. */
+export function base64ByteLength(base64: string): number {
+    const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0
+    return Math.floor((base64.length * 3) / 4) - padding
+}
+
+/** As big a fetched backdrop may be: the picker's own cap (`MAX_PORTRAIT_BYTES`). */
+export const MAX_FETCHED_IMAGE_BYTES = 8 * 1024 * 1024
+
+/**
+ * A backdrop from an https address (94b, the maintainer's report of
+ * 2026-11-12: an address pasted and kept, the note saying it was set, and
+ * nothing drawn). The browser was asked to load the address itself, from a
+ * site that may refuse a hotlink, expire the link or sit outside the host
+ * page's policy; an upload goes through the host's store and always draws.
+ * So an address is fetched here, in the backend, through the host's CORS
+ * proxy (never the runtime's own `fetch`, which the host refuses to load,
+ * 94b-bis), and stored exactly as an upload is. The picture is kept at its own size: the legacy scales an
+ * upload in the browser, which has a canvas, and this has none.
+ */
+async function fetchBackdrop(
+    deps: RequestDeps,
+    userId: string | undefined,
+    params: Record<string, unknown> | undefined,
+): Promise<PrefsResult> {
+    if (!deps.prefs) throw new Error('Display preferences are not available in this build.')
+    const box = params?.box
+    const slot = params?.slot
+    const url = typeof params?.url === 'string' ? params.url.trim() : ''
+    if (box !== 'tracker' && box !== 'settings') throw new Error('backdrop.fetch requires a box: tracker or settings')
+    if (slot !== 'day' && slot !== 'night') throw new Error('backdrop.fetch requires a slot: day or night')
+    if (!/^https?:\/\//i.test(url)) throw new Error('backdrop.fetch requires an https address')
+    if (!deps.fetch) throw new Error('This build cannot fetch an address from the backend.')
+    if (!deps.images) throw new Error('This build cannot store images.')
+
+    const got = await deps.fetch(url)
+    if (!got.ok) throw new Error(`The address answered ${got.status}.`)
+    const type = got.contentType.split(';')[0]!.trim().toLowerCase()
+    if (!/^image\/(png|jpeg|webp|gif)$/.test(type)) throw new Error(`The address did not answer with a picture (${type || 'no content type'}).`)
+    const size = base64ByteLength(got.base64)
+    if (size > MAX_FETCHED_IMAGE_BYTES) throw new Error(`The picture is ${(size / (1024 * 1024)).toFixed(1)} MB; the most that can be stored is ${MAX_FETCHED_IMAGE_BYTES / (1024 * 1024)} MB.`)
+    const dataUrl = `data:${type};base64,${got.base64}`
+    const extension = type === 'image/jpeg' ? 'jpg' : type.slice('image/'.length)
+    const stored = await deps.images.uploadFromDataUrl(dataUrl, `backdrop-${box}-${slot}.${extension}`, userId)
+    if (!stored?.url) throw new Error('The picture was stored but the host returned no address for it.')
+
+    const key = box === 'tracker' ? 'trackerBackdrop' : 'settingsBackdrop'
+    const current = readBackdrop((await deps.prefs.load(userId))[key])
+    return { prefs: await deps.prefs.patch({ [key]: { ...current, [slot]: stored.url } }, userId) }
+}
+
+/** The per-chat switch (94c): one chat on or off in `disabledChats`, the map patched whole. */
+async function chatEnable(
+    deps: RequestDeps,
+    userId: string | undefined,
+    params: Record<string, unknown> | undefined,
+): Promise<PrefsResult> {
+    if (!deps.prefs) throw new Error('Display preferences are not available in this build.')
+    const chatId = requireChatId(params, 'chat.enable')
+    if (typeof params?.enabled !== 'boolean') throw new Error('chat.enable requires enabled: true or false')
+    const current = await deps.prefs.load(userId)
+    return { prefs: await deps.prefs.patch({ disabledChats: withChatEnabled(current.disabledChats, chatId, params.enabled) }, userId) }
+}
+
 function requireCampaignBooks(deps: RequestDeps): CampaignBooks {
     if (!deps.campaignBooks) throw new Error('This build cannot list the campaign’s lorebooks.')
     return deps.campaignBooks
@@ -2122,7 +2217,7 @@ export function writesSettings(op: string): boolean {
 
 /** The ops that write the preferences (72a), announced as `prefs.changed`; each answers with the preferences whole. */
 export function writesPrefs(op: string): boolean {
-    return op === 'prefs.patch' || op === 'backdrop.upload' || op === 'maintenance.factoryReset' || op === 'maintenance.cleanOrphans' || op === 'maintenance.removeAllChats' || op === 'settings.npcWords'
+    return op === 'prefs.patch' || op === 'backdrop.upload' || op === 'backdrop.fetch' || op === 'chat.enable' || op === 'maintenance.factoryReset' || op === 'maintenance.cleanOrphans' || op === 'maintenance.removeAllChats' || op === 'settings.npcWords'
 }
 
 export async function handleRequest(
@@ -2177,6 +2272,10 @@ export async function handleRequest(
             return setPortrait(deps, userId, request.params)
         case 'backdrop.upload':
             return uploadBackdrop(deps, userId, request.params)
+        case 'backdrop.fetch':
+            return fetchBackdrop(deps, userId, request.params)
+        case 'chat.enable':
+            return chatEnable(deps, userId, request.params)
         case 'portraits.upload':
             return uploadPortrait(deps, userId, request.params)
         case 'portraits.draw':

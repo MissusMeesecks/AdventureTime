@@ -362,3 +362,17 @@ describe('a tick, a press and the status (61)', () => {
         expect(h.calls).toEqual([])
     })
 })
+
+describe('the image prompt prefix (94a)', () => {
+    it('goes in front of the portrait prompt at the draw, the log line saying so', async () => {
+        const h = harness({ initial: { portraitAutoParty: true, portraitConnectionId: 'img-1', imagePromptPrefix: ' <lora:anima-turbo:1> ' }, memo: '[PARTY]\n[/PARTY]' })
+        await h.auto.check('chat-1', 'u1')
+        h.setMemo(MEMO)
+        await h.auto.check('chat-1', 'u1')
+        await settle()
+        const draw = h.calls.find((c) => c[0] === 'imageGen')!
+        expect(draw[1]).toMatchObject({ prompt: '<lora:anima-turbo:1> A lean ranger.' })
+        expect(h.log).toContain('portraits: drawing "Perrin O\'Dwyer (Ranger)" for chat chat-1 (party) on "Fast" at 896×1344, with the image prompt prefix')
+        expect(h.events.find((e) => e[0] === 'finished')![1]).toMatchObject({ prompt: '<lora:anima-turbo:1> A lean ranger.' })
+    })
+})

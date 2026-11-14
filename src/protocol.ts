@@ -109,6 +109,10 @@ export type RequestOp =
     | 'portraits.upload'
     /** A backdrop's image (74d), picked and stored with the host, then written into the box's preference; answers as `prefs.patch` does. */
     | 'backdrop.upload'
+    /** A backdrop's image fetched from an https address by the backend and stored with the host (94b), as an upload is; answers as `prefs.patch` does. */
+    | 'backdrop.fetch'
+    /** The per-chat switch (94c): one chat switched on or off; answers as `prefs.patch` does. */
+    | 'chat.enable'
     /** The portraits drawn as they appear (61): one name drawn on a press; what is drawing and queued, the chat seeded on the first ask; the check a ticked switch asks for. */
     | 'portraits.draw'
     | 'portraits.auto.status'
@@ -613,6 +617,10 @@ export interface PrefsResult {
         oneWindow?: boolean | null
         /** The mobile widget (92f): the round d20 button over the chat on a phone that opens the window. On, as it ships. */
         mobileWidget?: boolean
+        /** The chats switched off (94c), keyed by chat id: AdventureTime leaves them alone as the master power leaves every chat. */
+        disabledChats?: Record<string, boolean>
+        /** The image prompt prefix (94a): put in front of every image prompt as it is drawn. Blank as it ships. */
+        imagePromptPrefix?: string
         /** The PARTY card compact: portrait, name and HP only (47e-ter). Absent reads as off. */
         partyCompact?: boolean
         /** The display regex that hides the `<choices>` block in the host's library (65). Absent reads as on. */

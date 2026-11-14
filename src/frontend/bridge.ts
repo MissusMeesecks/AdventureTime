@@ -45,6 +45,8 @@ export const DEFAULT_TIMEOUT_MS = 15_000
  * finishes whatever this side decided to stop waiting.
  */
 export const OP_TIMEOUT_MS: Partial<Record<RequestOp, number>> = {
+    // A backdrop fetched from a site by the backend (94b): no model call, but a slow site and a few MB are not 15 s either.
+    'backdrop.fetch': 60_000,
     'tracker.run': 180_000,
     // The send bar's pass is the same pass with an instruction (Phase 30).
     'tracker.instruct': 180_000,

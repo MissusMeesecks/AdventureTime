@@ -864,7 +864,11 @@ export function createTrackerPass(deps: TrackerPassDeps): TrackerPass {
                     status: 'no-change',
                     reason: delta.unmatched.length
                         ? `the tracker asked to bench or unbench ${delta.unmatched.join(', ')}, but nobody on the roster has that name`
-                        : 'the reply carried no [TAG] blocks, so the memo was left alone',
+                        : delta.unchanged.length
+                          // A block re-sent word for word changes nothing (95); before it, the merge
+                          // appended it again and the report said *added*.
+                          ? `the tracker re-sent ${delta.unchanged.join(', ')} unchanged, so the memo was left alone`
+                          : 'the reply carried no [TAG] blocks, so the memo was left alone',
                     memo: record.memo,
                     delta,
                 },

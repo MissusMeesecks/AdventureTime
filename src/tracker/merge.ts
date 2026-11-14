@@ -21,6 +21,18 @@
  *     `REMOVED`/`EXPIRED`/`CLEARED`/`NONE`/`END_COMBAT`, or for an empty pair —
  *     which carries no information and would otherwise be written into the
  *     memo as literal clutter.
+ *
+ * One departure from the legacy (Phase 95, departure 160): **a block the pass
+ * re-sends unchanged stays one block.** The legacy decides "was the block
+ * there?" by whether its replace changed the memo's text, so a block re-sent
+ * word for word — a no-op replace — reads as missing and a copy is appended.
+ * Its dedupe collapses that copy for a tag of letters and underscores, so the
+ * slip is invisible there; a tag with a digit, a space or a hyphen
+ * (`[omens_2]`, say — the maintainer's report of 2026-11-14) gained a copy on
+ * every unchanged turn, the merge updating the first copy while the card drew
+ * the last. Here the block is looked for before it is replaced, and any extra
+ * copies of a tag the pass touches are collapsed into the one written, which
+ * repairs a memo that already holds them.
  */
 
 import {
@@ -87,6 +99,12 @@ export interface MergeResult {
     added: string[]
     /** Tags the pass explicitly erased. */
     removed: string[]
+    /**
+     * Tags the pass re-sent word for word (95), which change nothing. Named so
+     * a pass of nothing but these reads as *re-sent unchanged*, not as a
+     * reply with no blocks in it.
+     */
+    unchanged: string[]
     /**
      * Members who joined the benched roster this merge, and members who left
      * it, by name. Read off the memo before and after rather than off the
@@ -157,18 +175,20 @@ export function mergeMemoDetailed(currentMemo: string, aiOutput: string, opts: M
                 replaced: memo === currentMemo ? [] : ['PARTY'],
                 added: [],
                 removed: [],
+                unchanged: [],
                 ...rosterMoves(currentMemo, memo),
                 unmatched: unmatchedBenchCommands(memo, benchCommands),
                 noChange: memo === currentMemo,
             }
         }
-        return { memo: currentMemo, replaced: [], added: [], removed: [], benched: [], unbenched: [], unmatched: [], noChange: true }
+        return { memo: currentMemo, replaced: [], added: [], removed: [], unchanged: [], benched: [], unbenched: [], unmatched: [], noChange: true }
     }
 
     let memo = currentMemo
     const replaced: string[] = []
     const added: string[] = []
     const removed: string[] = []
+    const unchanged: string[] = []
 
     for (const match of matches) {
         const tag = match[1].trim()
@@ -182,23 +202,40 @@ export function mergeMemoDetailed(currentMemo: string, aiOutput: string, opts: M
 
         // The leading \s* takes the blank line above the block with it, so
         // removing a block does not leave a gap behind.
-        const existingPattern = new RegExp(`\\s*\\[${escapedTag}\\][\\s\\S]*?\\[\\/${escapedTag}\\]`, 'i')
+        const blockSource = `\\s*\\[${escapedTag}\\]([\\s\\S]*?)\\[\\/${escapedTag}\\]`
+        const existingPattern = new RegExp(blockSource, 'i')
+        const everyCopy = new RegExp(blockSource, 'gi')
 
         if (newContent === '' || REMOVAL_RE.test(newContent)) {
+            // Every copy goes (95): a memo holding repeats of a tag the dedupe
+            // cannot see would otherwise keep the rest.
             const before = memo
-            memo = memo.replace(existingPattern, '').trim()
+            memo = memo.replace(everyCopy, '').trim()
             if (memo !== before) removed.push(tag.toUpperCase())
             continue
         }
 
         const fullBlock = `[${tag}]\n${newContent}\n[/${tag}]`
-        const before = memo
+        // Looked for, not inferred from whether the text changed (95): a block
+        // re-sent word for word is a no-op replace, which the legacy read as
+        // missing and appended again.
+        const found = existingPattern.exec(memo)
 
-        // Replaced via a function so that a `$&` or `$1` in the model's output
-        // is written literally instead of being read as a substitution.
-        memo = memo.replace(existingPattern, () => `\n\n${fullBlock}`)
-
-        if (memo !== before) {
+        if (found) {
+            const head = memo.slice(0, found.index)
+            const tail = memo.slice(found.index + found[0].length)
+            // Further copies of the same tag are folded into this one (95), the
+            // repair for a memo the legacy's slip already filled.
+            const tailWithoutCopies = tail.replace(everyCopy, '')
+            const collapsed = tailWithoutCopies !== tail
+            const same = found[1].trim() === newContent
+            if (same && !collapsed) {
+                if (!unchanged.includes(tag.toUpperCase())) unchanged.push(tag.toUpperCase())
+                continue
+            }
+            // Joined, not replaced, so a `$&` or `$1` in the model's output is
+            // written literally instead of being read as a substitution.
+            memo = `${head}\n\n${fullBlock}${tailWithoutCopies}`
             replaced.push(tag.toUpperCase())
         } else {
             memo = `${memo.trimEnd()}\n\n${fullBlock}`
@@ -222,6 +259,7 @@ export function mergeMemoDetailed(currentMemo: string, aiOutput: string, opts: M
         replaced,
         added,
         removed,
+        unchanged: unchanged.filter((tag) => !replaced.includes(tag) && !added.includes(tag) && !removed.includes(tag)),
         ...rosterMoves(currentMemo, memoOut),
         unmatched: hasBenchWork ? unmatchedBenchCommands(memoOut, benchCommands) : [],
         // Every block was a command-only one and no command moved anyone.

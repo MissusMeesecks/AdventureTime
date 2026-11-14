@@ -107,6 +107,14 @@ export const REQUIRED_PERMISSIONS: RequiredPermission[] = [
         needs: 'drawing the scene\'s picture through Lumiverse\'s image generation',
     },
     {
+        name: 'cors_proxy',
+        // A backdrop pasted as an https address (94b), fetched through the
+        // host's proxy since 94b-bis: Lumiverse refuses to load a backend that
+        // calls the runtime's own fetch. Without the grant the address is
+        // kept as typed and drawn only if the browser can load it itself.
+        needs: 'fetching a backdrop picture from an address you paste, through Lumiverse\'s proxy',
+    },
+    {
         name: 'ui_panels',
         // The two floating widgets (47c): the tracker, and the map, scene and
         // relationships. Both example extensions declare it for theirs. Without

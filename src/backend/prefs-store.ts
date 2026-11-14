@@ -23,6 +23,8 @@
 import { DEFAULT_AUDIT_TOKENS, DEFAULT_CLEANUP_EVERY, DEFAULT_CLEANUP_THRESHOLD, MAX_AUDIT_TOKENS, MAX_CLEANUP_EVERY, MAX_CLEANUP_THRESHOLD, MIN_AUDIT_TOKENS, MIN_CLEANUP_THRESHOLD } from '../agent/cleanup.js'
 import { DEFAULT_THEME, readFontSize, readThemeId, readBackdrop, DEFAULT_BACKDROP_STRENGTH, type Backdrop, type TerminalSource, type ThemeId } from '../protocol.js'
 import { readCustomTheme, readSavedThemes, type CustomTheme } from '../tracker/theme-wizard.js'
+import { readDisabledChats } from './chat-switch.js'
+import { readImagePromptPrefix } from './image-prompt.js'
 import { DEFAULT_MAP_THEME, DEFAULT_MAP_THEME_PRESET_ID, readMapTheme, readMapThemePresetId, readSavedMapThemePresets, type MapTheme } from '../tracker/map-themes.js'
 import { readBarPref, readBarPrefs, type BarPrefs } from '../tracker/bars.js'
 import { readDisplayGroups, type DisplayGroup } from '../tracker/display-groups.js'
@@ -121,6 +123,14 @@ export interface UiPrefs {
      * prefix. Old books stay writable; new ones take the new name.
      */
     campaignNames: Record<string, string>
+    /**
+     * The chats AdventureTime is switched off in (94c), keyed by chat id and
+     * holding `true` alone: the tick at the top of the settings tab. Off,
+     * the chat is left alone as the master power (`frameworkEnabled`) leaves
+     * every chat — nothing injected, no pass on its own, the buttons still
+     * working. A per-chat map, pruned with the others (`PER_CHAT_PREF_KEYS`).
+     */
+    disabledChats: Record<string, true>
     /**
      * How many messages back the Lorebook Agent reads. `0` means the whole chat.
      *
@@ -447,6 +457,13 @@ export interface UiPrefs {
     scenePictureConnectionId: string
     /** Multihog's *Skip Prompt Edit Dialog* (73f), off as the legacy ships it: a pressed draw shows the prompt for editing first. */
     portraitSkipPromptDialog: boolean
+    /**
+     * The image prompt prefix (94a, the public beta's first ask): put in front
+     * of every image prompt by code as the picture is drawn — a LoRA tag, a
+     * trigger word, a quality tag — the portraits, the library's photos and
+     * the location pictures alike. Blank as it ships, which changes nothing.
+     */
+    imagePromptPrefix: string
     /** Multihog's *Use Location Images as Chat Background* (73f), off as the legacy ships it. */
     portraitLocationBackground: boolean
     /** A campaign book attached as it is made (55). On: a book nobody can see is the bug this answers. */
@@ -763,6 +780,7 @@ export const DEFAULT_PREFS: UiPrefs = {
     bars: {},
     campaignBooks: {},
     campaignNames: {},
+    disabledChats: {},
     agentLookback: 0,
     agentMaxTurns: DEFAULT_MAX_TURNS,
     trackerConnectionId: '',
@@ -838,6 +856,7 @@ export const DEFAULT_PREFS: UiPrefs = {
     scenePicturePresentNpcs: true,
     scenePictureConnectionId: '',
     portraitSkipPromptDialog: false,
+    imagePromptPrefix: '',
     portraitLocationBackground: false,
     attachBooksToCard: true,
     attachBooksTarget: 'chat',
@@ -1101,6 +1120,7 @@ function readScenePicturePrefs(source: Record<string, unknown>, target: Partial<
     if (source.scenePicturePresentNpcs !== undefined) target.scenePicturePresentNpcs = source.scenePicturePresentNpcs !== false
     if (source.scenePictureConnectionId !== undefined) target.scenePictureConnectionId = typeof source.scenePictureConnectionId === 'string' ? source.scenePictureConnectionId.trim() : ''
     if (source.portraitSkipPromptDialog !== undefined) target.portraitSkipPromptDialog = source.portraitSkipPromptDialog === true
+    if (source.imagePromptPrefix !== undefined) target.imagePromptPrefix = readImagePromptPrefix(source.imagePromptPrefix)
     if (source.portraitLocationBackground !== undefined) target.portraitLocationBackground = source.portraitLocationBackground === true
     if (source.attachBooksToCard !== undefined) target.attachBooksToCard = source.attachBooksToCard !== false
     if (source.choicesDisplayRegex !== undefined) target.choicesDisplayRegex = source.choicesDisplayRegex !== false
@@ -1246,6 +1266,7 @@ export function readPrefs(stored: unknown): UiPrefs {
     if (typeof source.partyCompact === 'boolean') prefs.partyCompact = source.partyCompact
     if (source.campaignBooks) prefs.campaignBooks = readCampaignBooks(source.campaignBooks)
     if (source.campaignNames) prefs.campaignNames = readCampaignNames(source.campaignNames)
+    if (source.disabledChats !== undefined) prefs.disabledChats = readDisabledChats(source.disabledChats)
     if (Number.isFinite(source.agentLookback)) prefs.agentLookback = readLookback(source.agentLookback)
     if (source.agentMaxTurns !== undefined) prefs.agentMaxTurns = readMaxTurns(source.agentMaxTurns)
     if (source.trackerConnectionId !== undefined) {
@@ -1406,6 +1427,7 @@ export function readPrefsPatch(patch: unknown): Partial<UiPrefs> {
     if (source.bars && typeof source.bars === 'object') clean.bars = source.bars
     if (source.campaignBooks !== undefined) clean.campaignBooks = readCampaignBooks(source.campaignBooks)
     if (source.campaignNames !== undefined) clean.campaignNames = readCampaignNames(source.campaignNames)
+    if (source.disabledChats !== undefined) clean.disabledChats = readDisabledChats(source.disabledChats)
     if (source.agentLookback !== undefined) clean.agentLookback = readLookback(source.agentLookback)
     if (source.agentMaxTurns !== undefined) clean.agentMaxTurns = readMaxTurns(source.agentMaxTurns)
     if (source.trackerConnectionId !== undefined) {
@@ -1595,6 +1617,7 @@ export class PrefsStore {
                     campaignNames: current.campaignNames,
                     trackerWatermarks: current.trackerWatermarks,
                     agentWatermarks: current.agentWatermarks,
+                    disabledChats: current.disabledChats,
                 }
                 const record: PrefsRecord = { version: PREFS_VERSION, ...next }
                 this.#cache.set(key, next)

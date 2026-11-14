@@ -170,3 +170,62 @@ describe('escapeRegex', () => {
         expect(new RegExp(escapeRegex('A+B[C]')).test('A+B[C]')).toBe(true)
     })
 })
+
+describe('a block re-sent unchanged stays one block (95)', () => {
+    // The maintainer's report of 2026-11-14: a game system tagged [omens_2] gained a copy on every turn
+    // its block came back word for word, the merge updating the first copy while the card drew the last.
+    const START = '[TIME]\nDay 1\n[/TIME]\n\n[omens_2]\nResolve: 4\n[/omens_2]\n\n[WAYSTONE]\nSteward: Odile\n[/WAYSTONE]'
+    const copies = (memo: string) => memo.split('[omens_2]').length - 1
+
+    it('keeps one copy over unchanged turns, reports nothing for it, and the card draws the change when it comes', () => {
+        let memo = START
+        for (let turn = 0; turn < 4; turn++) {
+            const result = mergeMemoDetailed(memo, '[omens_2]\nResolve: 4\n[/omens_2]')
+            expect(result).toMatchObject({ replaced: [], added: [], unchanged: ['OMENS_2'], noChange: true })
+            expect(result.memo).toBe(memo)
+            memo = result.memo
+        }
+        expect(copies(memo)).toBe(1)
+        const changed = mergeMemoDetailed(memo, '[omens_2]\nResolve: 7\n[/omens_2]')
+        expect(changed).toMatchObject({ replaced: ['OMENS_2'], added: [], unchanged: [], noChange: false })
+        expect(copies(changed.memo)).toBe(1)
+        expect(parseMemoBlocks(changed.memo)['OMENS_2']).toBe('Resolve: 7')
+    })
+
+    it('leaves an unchanged block where it stands, a plain tag too, where the legacy moved it to the end', () => {
+        const result = mergeMemoDetailed(START, '[TIME]\nDay 1\n[/TIME]\n[WAYSTONE]\nSteward: Corin\n[/WAYSTONE]')
+        expect(result).toMatchObject({ replaced: ['WAYSTONE'], added: [], unchanged: ['TIME'] })
+        expect(result.memo.startsWith('[TIME]\nDay 1\n[/TIME]')).toBe(true)
+    })
+
+    it('repairs a memo that already holds copies: the pass’s block takes the first copy’s place and the rest go, changed or not', () => {
+        const filled = `${START}\n\n[omens_2]\nResolve: 2\n[/omens_2]\n\n[omens_2]\nResolve: 2\n[/omens_2]`
+        expect(copies(filled)).toBe(3)
+        const changed = mergeMemoDetailed(filled, '[omens_2]\nResolve: 9\n[/omens_2]')
+        expect(copies(changed.memo)).toBe(1)
+        expect(parseMemoBlocks(changed.memo)['OMENS_2']).toBe('Resolve: 9')
+        expect(changed.replaced).toEqual(['OMENS_2'])
+        // The block keeps the first copy's place, before the waystone.
+        expect(changed.memo.indexOf('[omens_2]')).toBeLessThan(changed.memo.indexOf('[WAYSTONE]'))
+        // Re-sent as the first copy reads, the copies still go, and the pass says it touched the block.
+        const same = mergeMemoDetailed(filled, '[omens_2]\nResolve: 4\n[/omens_2]')
+        expect(copies(same.memo)).toBe(1)
+        expect(parseMemoBlocks(same.memo)['OMENS_2']).toBe('Resolve: 4')
+        expect(same).toMatchObject({ replaced: ['OMENS_2'], unchanged: [], noChange: false })
+        expect(same.memo).toContain('[WAYSTONE]\nSteward: Odile\n[/WAYSTONE]')
+    })
+
+    it('erases every copy of a tag, not the first alone', () => {
+        const filled = `${START}\n\n[omens_2]\nResolve: 2\n[/omens_2]`
+        const result = mergeMemoDetailed(filled, '[omens_2]\nREMOVED\n[/omens_2]')
+        expect(copies(result.memo)).toBe(0)
+        expect(result.removed).toEqual(['OMENS_2'])
+        expect(result.memo).toContain('[WAYSTONE]')
+    })
+
+    it('still writes a $& in the model’s output literally when it repairs', () => {
+        const filled = `${START}\n\n[omens_2]\nx\n[/omens_2]`
+        const result = mergeMemoDetailed(filled, '[omens_2]\nCost: $& $1 $`\n[/omens_2]')
+        expect(parseMemoBlocks(result.memo)['OMENS_2']).toBe('Cost: $& $1 $`')
+    })
+})

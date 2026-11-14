@@ -212,6 +212,32 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
     if (slots.scene && slots.scene.closest('.lh-widget') !== root.closest('.lh-widget')) backdropTargets.push(backdropRoot(slots.scene, 'settings'))
 
     const status = el('div', { class: 'lh-status', role: 'status' })
+    // The per-chat switch (94c, the maintainer's ask of 2026-11-12): the first row of the settings tab, above
+    // the status text. Off, AdventureTime leaves this chat alone as the master power (72b) leaves every chat:
+    // nothing injected, no pass on its own, the buttons still working. The map of the chats switched off is
+    // `disabledChats`; the row follows the active chat and the preference events.
+    const chatSwitch = el('label', { class: 'lh-layout-row lh-tracker-pref lh-chat-switch' })
+    const chatSwitchInput = el('input', { type: 'checkbox', 'data-lh-field': 'chat-enabled' }) as HTMLInputElement
+    chatSwitchInput.checked = true
+    const chatSwitchText = el('span')
+    chatSwitchText.textContent = 'AdventureTime is on in this chat'
+    chatSwitch.title = 'Off, AdventureTime leaves this chat alone: nothing is put into the narrator’s prompt and no pass runs after a reply — no tracker, agent, map, world or picture. The buttons still work, and other chats are not affected. Enable the framework, under State tracker & modules, is the same switch for every chat at once.'
+    chatSwitch.append(chatSwitchInput, chatSwitchText)
+    let disabledChats: Record<string, boolean> = {}
+    const showChatSwitch = (): void => {
+        const chatId = host.getActiveChat().chatId
+        chatSwitch.hidden = !chatId
+        chatSwitchInput.checked = !(chatId && disabledChats[chatId] === true)
+    }
+    chatSwitchInput.addEventListener('change', () => {
+        const chatId = host.getActiveChat().chatId
+        if (!chatId) return
+        const enabled = chatSwitchInput.checked
+        bridge.request<PrefsResult>('chat.enable', { chatId, enabled })
+            .then((result) => { if (result.prefs?.disabledChats !== undefined) disabledChats = result.prefs.disabledChats; showChatSwitch() })
+            .catch((error: unknown) => { chatSwitchInput.checked = !enabled; fail(error) })
+    })
+    showChatSwitch()
     const actions = el('div', { class: 'lh-actions' })
     const importButton = el('button', { type: 'button', class: 'lh-button' })
     importButton.textContent = 'Import cartridge…'
@@ -931,7 +957,18 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
                 if (!value) { save({ ...backdrops[box], [slot]: '' }, slot === 'day' ? 'The backdrop is cleared.' : 'The night image is cleared.'); return }
                 // The legacy's rule: an https address, or a file.
                 if (!/^https?:\/\//i.test(value)) { say('Use an https image URL or upload a file.', true); return }
-                save({ ...backdrops[box], [slot]: value }, slot === 'day' ? `The ${boxName}’s backdrop is set.` : `The ${boxName}’s night backdrop is set.`)
+                const done = slot === 'day' ? `The ${boxName}’s backdrop is set.` : `The ${boxName}’s night backdrop is set.`
+                // The address is fetched by the backend and stored with the host as an upload is (94b): the
+                // browser loading it from the site itself drew nothing where the site refused a hotlink or the
+                // link expired. When the fetch fails the address is kept as before, and the note says what that
+                // means.
+                say('Fetching the picture…')
+                bridge.request<PrefsResult>('backdrop.fetch', { box, slot, url: value })
+                    .then((result) => { showBackdrop(box, result.prefs?.[BACKDROP_PREF[box]]); url.value = ''; say(`${done} The picture is fetched from the address and stored with the host.`) })
+                    .catch((error: unknown) => {
+                        const reason = error instanceof Error ? error.message : String(error)
+                        save({ ...backdrops[box], [slot]: value }, `${done} The picture could not be fetched (${reason}); the address is kept as it is and shows only if the browser can load it from there.`)
+                    })
             })
             fields.append(url)
             row.append(preview, fields)
@@ -983,9 +1020,9 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
     if (slots.rest && trackerRest) {
         // The dice line under the status line of the settings tab since 78d (the maintainer's ask); it headed the play tab before.
         root.append(trackerRoot)
-        slots.rest.append(phoneWidgets, status, diceLine, diagnostics, problem, trackerRest, body)
+        slots.rest.append(phoneWidgets, chatSwitch, status, diceLine, diagnostics, problem, trackerRest, body)
     } else {
-        root.append(phoneWidgets, status, diagnostics, diceLine, problem, trackerRoot, body)
+        root.append(phoneWidgets, chatSwitch, status, diagnostics, diceLine, problem, trackerRoot, body)
     }
 
     function say(message: string, tone: 'ok' | 'error' = 'ok'): void {
@@ -1635,6 +1672,8 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
             cardsToggle.checked = result.prefs?.messageCards === true
             if (result.prefs?.oneWindow !== undefined) oneWindowToggle.checked = layoutForOneWindow(result.prefs?.oneWindow, isMobileViewportOrDevice(window)) === 'one'
             if (result.prefs?.mobileWidget !== undefined) showMobileWidget(result.prefs.mobileWidget)
+            if (result.prefs?.disabledChats !== undefined) disabledChats = result.prefs.disabledChats
+            showChatSwitch()
             connections.applyPrefs((result.prefs ?? {}) as Record<string, unknown>)
             mirrorPortraits.applyPrefs((result.prefs ?? {}) as Record<string, unknown>)
             mirrorScene.applyPrefs((result.prefs ?? {}) as Record<string, unknown>)
@@ -1657,6 +1696,7 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
             if (prefs.messageCards !== undefined) cardsToggle.checked = prefs.messageCards === true
  if (prefs.oneWindow !== undefined) oneWindowToggle.checked = layoutForOneWindow(prefs.oneWindow, isMobileViewportOrDevice(window)) === 'one'
             if (prefs.mobileWidget !== undefined) showMobileWidget(prefs.mobileWidget)
+            if (prefs.disabledChats !== undefined) { disabledChats = prefs.disabledChats; showChatSwitch() }
             if (prefs.customTheme !== undefined) customTheme = readCustomTheme(prefs.customTheme)
             if (prefs.savedThemes !== undefined) { savedThemes = readSavedThemes(prefs.savedThemes); drawLibrary() }
             if (prefs.trackerTheme !== undefined) showTheme(prefs.trackerTheme)
@@ -1690,6 +1730,7 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
 
     return {
         refreshTracker(): void {
+            showChatSwitch()
             tracker?.refresh().catch(fail)
         },
         destroy(): void {
@@ -1917,6 +1958,8 @@ export const PANEL_CSS = `
 .adventuretime-panel .lh-layout-row.lh-tracker-pref { flex-wrap: nowrap; align-items: flex-start; }
 .adventuretime-panel .lh-layout-row.lh-tracker-pref > input { flex: 0 0 auto; margin-top: 0.2em; }
 .adventuretime-panel .lh-layout-row.lh-tracker-pref > span { flex: 1 1 auto; min-width: 0; }
+.adventuretime-panel .lh-chat-switch { margin: 0 0 6px; font-weight: 600; }
+.adventuretime-panel .lh-portrait-prefix-row > input[type="text"] { flex: 1 1 12em; min-width: 0; }
 /* Every other tick row that wraps (92g, the maintainer's finding after 92c): the day/night, XP bar and animated
    bars rows here, the portraits' and the scene's rows, the wizard's options — each a label whose words stood after
    the box at their own width, so a label longer than the row dropped whole under the box. The words take a basis
@@ -2799,6 +2842,7 @@ export const PANEL_CSS = `
 /* The dialog's box carries the panel's root class too, since the host's modal is outside the panel (73g-bis). */
 .adventuretime-panel.lh-prompt-dialog { display: flex; flex-direction: column; gap: 8px; padding: 4px 0; border: var(--lh-border, none); box-shadow: var(--lh-shadow, none); }
 .lh-prompt-dialog-intro { font-size: 0.8em; opacity: 0.7; line-height: 1.4; }
+.lh-prompt-dialog-prefix { font-size: 0.8em; opacity: 0.85; line-height: 1.4; }
 .lh-prompt-dialog-text { width: 100%; box-sizing: border-box; font: inherit; font-size: 0.85em; resize: vertical; min-height: 9em; }
 .lh-prompt-dialog-skip { display: inline-flex; align-items: center; gap: 6px; font-size: 0.78em; opacity: 0.85; cursor: pointer; }
 .lh-prompt-dialog-note { font-size: 0.78em; opacity: 0.75; min-height: 1em; }

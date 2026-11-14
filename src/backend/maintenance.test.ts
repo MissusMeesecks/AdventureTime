@@ -57,11 +57,12 @@ describe('the reset keys (72a)', () => {
     })
 
     it('prunes the per-chat preference maps of the orphans and counts them', () => {
-        const prefs = { ...DEFAULT_PREFS, campaignNames: { a: 'A', b: 'B' }, campaignBooks: { a: ['A_NPC'] }, trackerWatermarks: { b: 3 }, agentWatermarks: { c: 1 } }
+        const prefs = { ...DEFAULT_PREFS, campaignNames: { a: 'A', b: 'B' }, campaignBooks: { a: ['A_NPC'] }, trackerWatermarks: { b: 3 }, agentWatermarks: { c: 1 }, disabledChats: { a: true as const, b: true as const } }
         const { pruned, count } = orphanPrefEntries(prefs, new Set(['b']))
-        expect(count).toBe(3)
-        expect(pruned).toEqual({ campaignNames: { b: 'B' }, campaignBooks: {}, trackerWatermarks: { b: 3 }, agentWatermarks: {} })
-        expect(PER_CHAT_PREF_KEYS).toEqual(['campaignNames', 'campaignBooks', 'trackerWatermarks', 'agentWatermarks'])
+        expect(count).toBe(4)
+        expect(pruned).toEqual({ campaignNames: { b: 'B' }, campaignBooks: {}, trackerWatermarks: { b: 3 }, agentWatermarks: {}, disabledChats: { b: true } })
+        // The per-chat switch's map (94c) is pruned with the others.
+        expect(PER_CHAT_PREF_KEYS).toEqual(['campaignNames', 'campaignBooks', 'trackerWatermarks', 'agentWatermarks', 'disabledChats'])
     })
 })
 

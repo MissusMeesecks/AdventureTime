@@ -168,10 +168,10 @@ export function mountTrackerPanel(
      */
     async function editedPrompt(write: () => Promise<{ title: string; prompt: string }>): Promise<{ prompt?: string } | null> {
         if (!host.ui?.showModal) return {}
-        const skip = await bridge.request<PrefsResult>('prefs.get', {}).then((r) => r.prefs?.portraitSkipPromptDialog === true).catch(() => false)
-        if (skip) return {}
+        const read = await bridge.request<PrefsResult>('prefs.get', {}).then((r) => r.prefs).catch(() => undefined)
+        if (read?.portraitSkipPromptDialog === true) return {}
         const written = await write()
-        const answer = await askForPrompt(host.ui, { title: written.title, prompt: written.prompt })
+        const answer = await askForPrompt(host.ui, { title: written.title, prompt: written.prompt, prefix: typeof read?.imagePromptPrefix === 'string' ? read.imagePromptPrefix : '' })
         if (!answer) return null
         if (answer.skip) await bridge.request<PrefsResult>('prefs.patch', { patch: { portraitSkipPromptDialog: true } }).catch(() => undefined)
         return { prompt: answer.prompt }

@@ -104,7 +104,7 @@ export function createPortraitsSection(host: PortraitsSectionHost, portraits: Po
 
     header.append(
         enabled.row,
-        mark(portraits.rows.skip), mark(portraits.rows.lookback), mark(portraits.rows.count),
+        mark(portraits.rows.skip), mark(portraits.rows.prefix), mark(portraits.rows.lookback), mark(portraits.rows.count),
         group('Auto-generate for:'), ...portraits.rows.draw.map(mark),
         group('Location images & visualisation'), locationLead,
         locations.row, mark(scene.named.background), mark(scene.named.npcs),

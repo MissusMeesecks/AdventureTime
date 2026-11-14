@@ -25,7 +25,8 @@ import type { SpindleAPI } from 'lumiverse-spindle-types'
 import { CHANNEL, isRequest, type ResponseMessage } from './protocol.js'
 import { SettingsStore } from './backend/settings-store.js'
 import { MemoStore } from './backend/memo-store.js'
-import { handleRequest, writesPrefs, writesSettings } from './backend/requests.js'
+import { handleRequest, readCorsImage, writesPrefs, writesSettings } from './backend/requests.js'
+import { frameworkOff } from './backend/chat-switch.js'
 import { createMaintenance } from './backend/maintenance.js'
 import { createStockUpgrade } from './backend/stock-upgrade.js'
 import { getFactoryCartridgePayload } from './state/factory.js'
@@ -543,8 +544,10 @@ const disposeInterceptor = registerStateInterceptor({
         narratorConnection.seen(context as Parameters<typeof narratorConnection.seen>[0])
         // The master power (72b, the legacy's ⏻): off, nothing is injected and
         // the map tool is taken back; the dice tool stays registered, harmless.
-        if (prefs.snapshot(context.userId)?.frameworkEnabled === false) {
-            if (!context.isDryRun) spindle.log.info('framework: off; nothing injected into this reply')
+        const off = frameworkOff(prefs.snapshot(context.userId), context.chatId)
+        if (off) {
+            // The per-chat tick (94c) reads as the master power does, naming the chat.
+            if (!context.isDryRun) spindle.log.info(off === 'chat' ? `framework: off for chat ${context.chatId}; nothing injected into this reply` : 'framework: off; nothing injected into this reply')
             mapTool.sync(false)
             return null
         }
@@ -1113,8 +1116,9 @@ const disposeGenerationHook = spindle.on('GENERATION_ENDED', (payload, userId) =
     // automatic pass wrote the stale watermark back over the primed one.
     void (async () => {
         // The master power (72b): off, no pass runs on its own; the buttons still do.
-        if ((await prefs.load(userId)).frameworkEnabled === false) {
-            spindle.log.info('framework: off; no pass runs after this reply')
+        const off = frameworkOff(await prefs.load(userId), agentChatId)
+        if (off) {
+            spindle.log.info(off === 'chat' ? `framework: off for chat ${agentChatId}; no pass runs after this reply` : 'framework: off; no pass runs after this reply')
             return
         }
         // The text opener first (46): a [CREATE_AREA_MAP] block is stripped
@@ -2097,6 +2101,19 @@ function reply(id: string, ok: boolean, data: unknown, error: string | undefined
     spindle.sendToFrontend(message, userId)
 }
 
+/**
+ * A backdrop pasted as an https address, fetched through the host (94b): the
+ * host's CORS proxy, `spindle.cors`, asked for an image's bytes. Never the
+ * runtime's own `fetch`: Lumiverse refuses to load a backend that calls it
+ * ("uses blocked backend capabilities: direct fetch API usage", the staging
+ * host of 2026-11-14, 94b-bis), and the proxy checks the content type and the
+ * picture's first bytes itself. Without the `cors_proxy` grant the call fails
+ * with the grant named, and the panel keeps the address on the old path.
+ */
+const fetchAddress = typeof (spindle as { cors?: unknown }).cors === 'function'
+    ? async (url: string) => readCorsImage(await spindle.cors(url, { method: 'GET', responseType: 'arraybuffer', mediaType: 'image' }))
+    : undefined
+
 spindle.onFrontendMessage(async (payload: unknown, userId: string) => {
     if (!isRequest(payload)) return
     void syncChoicesDisplay(userId)
@@ -2326,6 +2343,7 @@ spindle.onFrontendMessage(async (payload: unknown, userId: string) => {
                         forUser: string | undefined,
                     ) => spindle.images.uploadFromDataUrl(dataUrl, filename, forUser),
                 },
+                fetch: fetchAddress,
                 trackerPass,
                 library: npcLibrary,
                 npcCreator,

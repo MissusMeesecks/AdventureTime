@@ -297,3 +297,24 @@ describe('drawing on its own after a reply (49): the legacy’s Real-Time Mode',
         expect(h.events.filter((e) => e[0] === 'started')).toHaveLength(1)
     })
 })
+
+describe('the image prompt prefix (94a)', () => {
+    it('goes in front of the written prompt at the draw, is what is reported, and says so in the log', async () => {
+        const { art, calls, log } = harness({ initial: { scenePictureConnectionId: 'img-1', imagePromptPrefix: ' <lora:anima-turbo:1> ' } })
+        const result = await art.draw('chat-1', 'u1')
+        expect(calls.find((c) => c[0] === 'imageGen')![1]).toEqual({ prompt: '<lora:anima-turbo:1> A sunlit cloister yard.', connection_id: 'img-1', owner_chat_id: 'chat-1', userId: 'u1' })
+        expect(result.prompt).toBe('<lora:anima-turbo:1> A sunlit cloister yard.')
+        expect(log).toContain('scene: the image prompt prefix is in front of the prompt for "Monastery :: Courtyard"')
+    })
+
+    it('goes in front of an edited prompt too, once, and a blank prefix changes nothing', async () => {
+        const edited = harness({ initial: { imagePromptPrefix: '<lora:x:1>' } })
+        await edited.art.draw('chat-1', 'u1', '<lora:x:1> A hand-written yard.')
+        expect(edited.calls.find((c) => c[0] === 'imageGen')![1]).toMatchObject({ prompt: '<lora:x:1> A hand-written yard.' })
+        expect(edited.log.some((line) => line.includes('image prompt prefix'))).toBe(false)
+        const blank = harness({ initial: { imagePromptPrefix: '   ' } })
+        await blank.art.draw('chat-1', 'u1')
+        expect(blank.calls.find((c) => c[0] === 'imageGen')![1]).toMatchObject({ prompt: 'A sunlit cloister yard.' })
+        expect(blank.log.some((line) => line.includes('image prompt prefix'))).toBe(false)
+    })
+})
