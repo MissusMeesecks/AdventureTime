@@ -10,10 +10,10 @@ choices and a game-system wizard; a character creator, portraits,
 relationships and World Progression. The game cartridges Multihog exports
 load here as they are.
 
-> **Public beta.** Everything listed below is in and playable, and what was
-> carried over from Multihog is held to Multihog's own source by tests, but
-> it has only been played on one setup so far. Reports from people who know
-> Multihog are the most useful thing right now: see
+> **Version 1.0.** Everything listed below is in and playable, and what was
+> carried over from Multihog is held to Multihog's own source by tests. It
+> came through a public beta, but it has still been played on few setups.
+> Reports from people who know Multihog are the most useful thing: see
 > [Reporting problems](#reporting-problems).
 
 AdventureTime is a reimplementation of
@@ -27,7 +27,7 @@ please report them here rather than upstream.
 
 ## Status
 
-**Public beta**, on the way to 1.0. The focus until then:
+**Version 1.0**, out of the public beta. The reports that help most:
 
 - **Parity with Multihog.** Anything Multihog does that this doesn't, or
   does differently, is the most valuable report. Some differences are
@@ -45,8 +45,8 @@ over the story with what you choose to show it, and can update the
 character sheet, the lore and the map when you ask. It can take your turn
 too, and shows you the message first.
 
-Feature requests are welcome and get logged, but they wait until the work
-above is done. Reports are worked through in batches, not in real time.
+Feature requests are welcome and get logged. Reports are worked through in
+batches, not in real time.
 
 ## What it does
 

@@ -1369,7 +1369,7 @@ describe('the settings in Multihog’s categories (63)', () => {
         'settings.get': { settings: createDefaultSettings() },
         'prefs.get': { prefs: PREFS },
         'prefs.patch': { prefs: PREFS },
-        'status.get': { version: '1.0.0-beta.54', host: '1.2.0', checked: true, granted: ['a'], missing: [], dice: { registered: false, mode: 'off' } },
+        'status.get': { version: '1.0.0', host: '1.2.0', checked: true, granted: ['a'], missing: [], dice: { registered: false, mode: 'off' } },
         'connections.list': { connections: [{ id: 'conn-1', name: 'Main', model: 'deepseek', isDefault: true }] },
         'scene.connections': { connections: [{ id: 'img-1', name: 'Swarm', provider: 'swarmui', model: 'anima', isDefault: true }] },
     })
@@ -1393,7 +1393,7 @@ describe('the settings in Multihog’s categories (63)', () => {
         const general = category(root, 'general').querySelector('.lh-category-body')!
         // One version line, at the top of the tab (96, finding 1): the twin under General is gone.
         expect(root.querySelector('.lh-version-twin')).toBeNull()
-        expect(root.querySelector('.lh-diagnostics')!.textContent).toContain('AdventureTime 1.0.0-beta.54')
+        expect(root.querySelector('.lh-diagnostics')!.textContent).toContain('AdventureTime 1.0.0')
         // Core & Branching (81), Multihog's first drawer, is the first card; the Layout and Cartridges cards (82) follow.
         expect(general.children[0]!.getAttribute('data-lh-card')).toBe('core-branching')
         expect(general.children[1]!.getAttribute('data-lh-card')).toBe('layout')
