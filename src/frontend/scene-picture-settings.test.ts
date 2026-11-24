@@ -71,7 +71,7 @@ describe('the scene picture’s five dials (49, shared by 63b)', () => {
     it('the chat background switch (73f) is the fifth row since 87, saves its preference and follows it', async () => {
         const { settings, calls, field, settle } = harness()
         expect(settings.rows).toHaveLength(5)
-        expect(settings.rows[4]!.textContent).toBe('Use the location picture as the chat background')
+        expect(settings.rows[4]!.querySelector('label')!.textContent).toBe('Use location image as chat background')
         expect(field<HTMLInputElement>('scene-picture-background').checked).toBe(false)
         field<HTMLInputElement>('scene-picture-background').checked = true
         field('scene-picture-background').dispatchEvent(new Event('change'))
@@ -81,5 +81,31 @@ describe('the scene picture’s five dials (49, shared by 63b)', () => {
         expect(field<HTMLInputElement>('scene-picture-background').checked).toBe(false)
         settings.applyPrefs({ portraitLocationBackground: true })
         expect(field<HTMLInputElement>('scene-picture-background').checked).toBe(true)
+    })
+
+    it('speaks of location images, and puts each switch’s help behind a [?] beside its label with no tooltip left (96)', () => {
+        const { settings, field } = harness()
+        expect(SCENE_PICTURE_TRIGGERS.map((t) => t.label)).toEqual(['On arrival at a location with no picture', 'When the location changes', 'Every N replies and when the location changes'])
+        expect(field('scene-picture-trigger').closest('label')!.firstElementChild!.textContent).toBe('Trigger')
+        const helps: Array<[string, string, string]> = [
+            ['scene-picture-auto', 'Draw location images automatically', 'When on, the location image is drawn automatically after a reply, when the trigger below is met. If one automatic draw fails, this turns itself off. Turn it on again to retry. Default: off.'],
+            ['scene-picture-npcs', 'Include present NPCs in the picture', 'When on, the location image includes every NPC named in the newest replies. Your character is always in the picture when you have a Player Card. If the location prompt is still an unedited art style, it switches to the matching variant. Default: on.'],
+            ['scene-picture-background', 'Use location image as chat background', 'When on, the picture of the party’s current location is shown behind the chat. A picture drawn or set for the current location shows at once. Default: off.'],
+        ]
+        for (const [name, label, help] of helps) {
+            const row = field(name).closest('.lh-scene-picture-row') as HTMLElement
+            expect(field(name).closest('label')!.textContent).toBe(label)
+            const tip = row.querySelector('.lh-help-tip') as HTMLButtonElement
+            const note = row.querySelector('.lh-help-note') as HTMLElement
+            expect(note.textContent).toBe(help)
+            expect(note.hidden).toBe(true)
+            expect(tip.closest('label')).toBeNull()
+            expect(row.title).toBe('')
+            const before = field<HTMLInputElement>(name).checked
+            tip.click()
+            expect(note.hidden).toBe(false)
+            expect(field<HTMLInputElement>(name).checked).toBe(before)
+        }
+        expect(settings.rows.map((row) => row.textContent).join(' ')).not.toMatch(/Multihog|legacy|the host/)
     })
 })

@@ -82,6 +82,8 @@ export function diceToolRegistrations(settings: DiceToolSettings): ToolRegistrat
                       required: ['who', 'for', 'formula', 'dc'],
                   },
             inline_available: true,
+            // The narrator's tool alone, never a Council member's (as the map tool).
+            council_eligible: false,
         })
     }
 
@@ -102,6 +104,8 @@ export function diceToolRegistrations(settings: DiceToolSettings): ToolRegistrat
                 required: ['who', 'for', 'formula', 'dc'],
             },
             inline_available: true,
+            // The narrator's tool alone, never a Council member's (as the map tool).
+            council_eligible: false,
         })
     }
 

@@ -48,6 +48,7 @@ import {
     type TrackerModuleSettings,
 } from '../settings/tracker-modules.js'
 import { moveDisplayGroupInOrder, type DisplayGroup } from '../tracker/display-groups.js'
+import { createHelpTip } from './help-tip.js'
 
 export interface TrackerModulesHost {
     createElement: <K extends keyof HTMLElementTagNameMap>(
@@ -105,7 +106,14 @@ export function mountTrackerModulesEditor(
     const summary = el('div', { class: 'lh-tm-summary' })
     const list = el('div', { class: 'lh-tm-list' })
     const foot = el('div', { class: 'lh-tm-foot' })
-    root.replaceChildren(summary, list, foot)
+    // The foot is built once (96): its [?] would not survive a redraw, and the list is redrawn on every move.
+    const orderState = el('span', { class: 'lh-tm-state' })
+    const resetOrder = el('button', { type: 'button', class: 'lh-button lh-button--quiet' })
+    resetOrder.textContent = 'Reset to stock order'
+    resetOrder.addEventListener('click', () => { writeOrder(stockBlockOrder(settings as BlockOrderSettings)) })
+    const resetOrderTip = createHelpTip(el as never, 'Reset to stock order', 'Puts the built-in modules back in their stock order. Your custom fields go after them.')
+    foot.append(orderState, resetOrder, resetOrderTip.button)
+    root.replaceChildren(summary, list, foot, resetOrderTip.note)
 
     function setEnabled(row: ModuleRow, enabled: boolean): void {
         const next = setModuleEnabled(settings, row.key, enabled)
@@ -159,8 +167,6 @@ export function mountTrackerModulesEditor(
 
     function renderEditor(row: ModuleRow): HTMLElement {
         const box = el('div', { class: 'lh-tm-editor' })
-        const hint = el('div', { class: 'lh-tm-hint' })
-        hint.textContent = `What the tracker is told about ${row.tag}; the narrator reads it only where a world-rule section carries {{modulesText}}. {{user}} stands for the player’s name. Save writes it into the cartridge; Reset to stock puts the factory’s text back.`
         const area = el('textarea', { class: 'lh-input lh-tm-text', rows: '12', spellcheck: 'false', 'data-lh-field': `module-text-${row.key}` })
         area.value = editing?.draft ?? row.prompt
         area.addEventListener('input', () => { if (editing) editing.draft = area.value })
@@ -175,11 +181,17 @@ export function mountTrackerModulesEditor(
         reset.textContent = 'Reset to stock'
         const stock = factory[row.key] ?? ''
         reset.disabled = !stock || area.value.trim() === stock.trim()
-        reset.title = stock ? 'Put the factory’s text in the box; Save keeps it.' : 'The factory’s text for this module is not to hand.'
         reset.addEventListener('click', () => { area.value = stock; if (editing) editing.draft = stock; reset.disabled = true })
         area.addEventListener('input', () => { reset.disabled = !stock || area.value.trim() === stock.trim() })
-        buttons.append(save, cancel, reset)
-        box.append(hint, area, buttons)
+        // One [?] for the open editor (96): what the text is, then what Reset to stock does, or why it cannot.
+        const tip = createHelpTip(
+            el as never,
+            `${row.tag} text`,
+            `This text is what the tracker is told about ${row.tag}. The narrator reads it only where a world rule section contains {{modulesText}}. {{user}} stands for the player’s name.\n\n` +
+                (stock ? 'Reset to stock: puts the stock text in the box. Press Save to keep it.' : 'The stock text for this module is not available.'),
+        )
+        buttons.append(save, cancel, reset, tip.button)
+        box.append(area, buttons, tip.note)
         return box
     }
 
@@ -187,7 +199,6 @@ export function mountTrackerModulesEditor(
     function renderRow(row: ModuleRow, place: Place | null): HTMLElement {
         const item = el('div', { class: `lh-tm-row lh-tm-row--${row.verdict}` })
         if (place) item.setAttribute('data-lh-order', place.tag)
-        if (row.verdict === 'off') item.title = 'Switched off: its card is drawn only while the memo still holds the block.'
 
         const head = el('div', { class: 'lh-tm-head' })
 
@@ -197,7 +208,7 @@ export function mountTrackerModulesEditor(
         if (row.switchable) {
             const toggle = el('input', { type: 'checkbox', id: switchId() })
             toggle.checked = row.verdict === 'on' || row.verdict === 'no-prompt'
-            toggle.title = `Maintain the ${row.tag} block`
+            toggle.title = `Keep the ${row.tag} block updated`
             toggle.addEventListener('change', () => { setEnabled(row, toggle.checked) })
             head.append(toggle)
             name.setAttribute('for', toggle.id)
@@ -209,19 +220,19 @@ export function mountTrackerModulesEditor(
         name.textContent = row.label
         head.append(name)
 
-        // Only the two states that are not simply on or off get a badge. An
+        // Only the one state that is not simply on or off gets a badge. An
         // ordinary switched-off row is a normal choice, not a fault, and
-        // badging it would put a chip on most of the list.
-        if (row.verdict === 'unsupported' || row.verdict === 'no-prompt') {
-            const badge = el('span', { class: `lh-tm-badge lh-tm-badge--${row.verdict}` })
-            badge.textContent = row.verdict === 'unsupported' ? 'engine off' : 'no instructions'
+        // badging it would put a chip on most of the list. (The *engine off*
+        // badge went with 96: no module is engine-disabled.)
+        if (row.verdict === 'no-prompt') {
+            const badge = el('span', { class: 'lh-tm-badge lh-tm-badge--no-prompt' })
+            badge.textContent = 'No text'
             head.append(badge)
         }
 
         if (row.edited) {
             const badge = el('span', { class: 'lh-tm-badge lh-tm-badge--edited' })
             badge.textContent = 'edited'
-            badge.title = 'This module’s text differs from the factory’s.'
             head.append(badge)
         }
 
@@ -231,9 +242,8 @@ export function mountTrackerModulesEditor(
 
         if (row.switchable) {
             const edit = el('button', { type: 'button', class: 'lh-button lh-button--quiet lh-tm-edit' })
-            edit.textContent = editing?.key === row.key ? 'Editing…' : 'Edit the text'
+            edit.textContent = editing?.key === row.key ? 'Editing…' : 'Edit text'
             edit.disabled = editing?.key === row.key
-            edit.title = `Open ${row.tag}’s text to change it.`
             edit.addEventListener('click', () => { editing = { key: row.key, draft: row.prompt }; render() })
             head.append(edit)
         }
@@ -243,8 +253,7 @@ export function mountTrackerModulesEditor(
         } else {
             // No card of its own, so no place in the order: the one case is benched party, drawn inside the Party card.
             const note = el('span', { class: 'lh-tm-noplace' })
-            note.textContent = 'drawn inside the Party card'
-            note.title = 'This block has no card of its own, so it has no place in the order.'
+            note.textContent = 'In the Party card'
             head.append(note)
         }
 
@@ -268,11 +277,6 @@ export function mountTrackerModulesEditor(
      */
     function renderCustomRow(row: BlockOrderRow, place: Place): HTMLElement {
         const item = el('div', { class: `lh-tm-row${row.custom ? ' lh-tm-row--custom' : ''}${row.enabled ? '' : ' lh-tm-row--off'}`, 'data-lh-order': place.tag })
-        if (row.custom) {
-            item.title = row.enabled
-                ? 'A custom field. Its switch and its text are under Custom fields; its place in the cards is here.'
-                : 'A custom field, switched off under Custom fields: its card is drawn only while the memo still holds the block.'
-        }
         const head = el('div', { class: 'lh-tm-head' })
         const icon = el('span', { class: 'lh-tm-icon', 'aria-hidden': 'true' })
         icon.textContent = row.icon
@@ -299,14 +303,13 @@ export function mountTrackerModulesEditor(
         const lastIndex = indices[indices.length - 1] ?? -1
         const active = displayGroupsEnabled && group.enabled
         const item = el('div', { class: `lh-tm-row lh-tm-group${active ? '' : ' lh-tm-row--off'}`, 'data-lh-group': group.id })
-        item.title = 'Display-only group. Its arrows move all listed member modules together.'
         const head = el('div', { class: 'lh-tm-head' })
         const icon = el('span', { class: 'lh-tm-icon', 'aria-hidden': 'true' })
         icon.textContent = '🗂️'
         const name = el('span', { class: 'lh-tm-name' })
         name.textContent = `${group.icon} ${group.name} (${group.members.length})`
         const badge = el('span', { class: 'lh-tm-badge lh-tm-badge--group' })
-        badge.textContent = 'DISPLAY GROUP'
+        badge.textContent = 'display group'
         const moveGroup = (direction: 'up' | 'down'): void => {
             writeOrder(moveDisplayGroupInOrder(order, group.members, direction))
         }
@@ -329,13 +332,12 @@ export function mountTrackerModulesEditor(
 
         summary.replaceChildren()
 
-        const lead = el('div', { class: 'lh-tm-lead' })
-        lead.textContent = view.summary
-        summary.append(lead)
-
-        const orderLead = el('div', { class: 'lh-tm-order-lead' })
-        orderLead.textContent = 'Top first: the arrows set the order the cards are drawn in, in the panel and under each message. A switched-off block keeps its place, dimmed, since its card is drawn while the memo holds the block. The tracker’s prompt is not ordered by it.'
-        summary.append(orderLead)
+        // The list's help is behind the [?] on its heading (96); only the empty state is said here.
+        if (view.summary) {
+            const lead = el('div', { class: 'lh-tm-lead' })
+            lead.textContent = view.summary
+            summary.append(lead)
+        }
 
         if (view.counts) {
             const counts = el('div', { class: 'lh-tm-counts' })
@@ -375,14 +377,8 @@ export function mountTrackerModulesEditor(
         for (const module of view.rows) if (!placed.has(module.key)) rows.push(renderRow(module, null))
         list.replaceChildren(...rows)
 
-        const state = el('span', { class: 'lh-tm-state' })
-        state.textContent = order.stock ? 'The stock order.' : 'Changed from the stock order.'
-        const resetButton = el('button', { type: 'button', class: 'lh-button lh-button--quiet' })
-        resetButton.textContent = 'Reset to stock order'
-        resetButton.disabled = order.stock
-        resetButton.title = 'The factory’s order, with your own blocks after it.'
-        resetButton.addEventListener('click', () => { writeOrder(stockBlockOrder(settings as BlockOrderSettings)) })
-        foot.replaceChildren(state, resetButton)
+        orderState.textContent = order.stock ? 'Stock order.' : 'Custom order.'
+        resetOrder.disabled = order.stock
     }
 
     render()

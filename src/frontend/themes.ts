@@ -54,7 +54,8 @@ export function themeOptions(): ThemeOption[] {
         const id = readThemeId(option.value)
         return {
             id,
-            label: id === 'native' ? 'Match Lumiverse' : option.label,
+            // The generated labels are Multihog's; the Custom entry's is shown in the pane's own case (96).
+            label: id === 'native' ? 'Match Lumiverse' : id === 'custom' ? '✨ Custom (AI wizard)' : option.label,
             available: true,
         }
     })
@@ -129,16 +130,16 @@ export function applyCustomTheme(body: HTMLElement, theme: CustomTheme | null): 
 export const THEME_WIZARD_CSS = `
 .adventuretime-panel .lh-theme-wizard { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border: 1px solid var(--lh-accent-dim, var(--lumiverse-border, rgba(127,127,127,0.25))); border-radius: var(--lumiverse-radius, 6px); background: var(--lh-card-bg, rgba(127,127,127,0.04)); }
 .adventuretime-panel .lh-theme-wizard[hidden] { display: none; }
-.adventuretime-panel .lh-theme-wizard-title { font-weight: 600; }
+.adventuretime-panel .lh-theme-wizard-title { font-weight: 600; display: flex; align-items: center; gap: 4px; }
 .adventuretime-panel .lh-theme-wizard textarea { width: 100%; box-sizing: border-box; resize: vertical; min-height: 3.2em; }
 .adventuretime-panel .lh-theme-wizard-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .adventuretime-panel .lh-theme-wizard-row .lh-button { flex: 1 1 auto; }
 .adventuretime-panel .lh-theme-wizard-name { flex: 2 1 8em; min-width: 0; }
-.adventuretime-panel .lh-theme-wizard-status { font-size: 0.85em; opacity: 0.85; min-height: 1.2em; font-style: italic; }
+.adventuretime-panel .lh-theme-wizard-status { font-size: 0.8em; opacity: 0.85; min-height: 1.2em; font-style: italic; }
 .adventuretime-panel .lh-theme-wizard-status--error { color: var(--lumiverse-danger, #d9534f); opacity: 1; font-style: normal; }
 .adventuretime-panel .lh-theme-library { display: flex; flex-direction: column; gap: 4px; padding-top: 6px; border-top: 1px solid var(--lh-accent-dim, var(--lumiverse-border, rgba(127,127,127,0.25))); }
 .adventuretime-panel .lh-theme-library[hidden] { display: none; }
-.adventuretime-panel .lh-theme-library-title { font-size: 0.85em; opacity: 0.75; }
+.adventuretime-panel .lh-theme-library-title { font-size: 0.8em; opacity: 0.75; }
 .adventuretime-panel .lh-theme-library-row { display: flex; align-items: center; gap: 6px; }
 .adventuretime-panel .lh-theme-library-name { flex: 1; text-align: left; }
 `

@@ -404,7 +404,7 @@ export function createRecordsFold(host: RecordsFoldHost): RecordsFold {
     let playerCard: PlayerCardView | null = null
     /** The Full NPC Card open in the modal, or a gear: closed on a chat change and when its entry goes. */
     let modal: { id: string | null; box: DetailsModal } | null = null
-    let fullCard: { id: string; sections: HTMLElement; log: HTMLElement; bars: HTMLElement; note: HTMLElement; aiOpen: boolean } | null = null
+    let fullCard: { id: string; sections: HTMLElement; log: HTMLElement; bars: HTMLElement; note: HTMLElement; aiOpen: boolean; noteAtOpen: { text: string; error: boolean } | null } | null = null
 
     function say(text: string, error = false): void {
         last = { text, error }
@@ -1102,7 +1102,9 @@ export function createRecordsFold(host: RecordsFoldHost): RecordsFold {
         box.append(head, aiPane, sections, bars, log, note)
         // The modal first: opening one closes whatever was open, the Full card's record with it.
         if (!openModal(entry.id, `${entry.title || 'NPC'} — Full NPC Card`, [box], 820)) { openEntries.add(entry.id); draw(); return }
-        fullCard = { id: entry.id, sections, log, bars, note, aiOpen: false }
+        // The card's note is what was said while it is open (the maintainer's report of 2026-11-22: a + MAP note from
+        // before stood under every NPC's relationship history), so the panel's note at the opening is not its.
+        fullCard = { id: entry.id, sections, log, bars, note, aiOpen: false, noteAtOpen: last }
         refreshFullCard()
     }
 
@@ -1117,8 +1119,9 @@ export function createRecordsFold(host: RecordsFoldHost): RecordsFold {
         if (!found) { closeModal(); return }
         const { entry, book } = found
         fullCard.sections.replaceChildren(drawEntryBody(entry, book, false))
-        fullCard.note.textContent = last?.text ?? ''
-        fullCard.note.classList.toggle('lh-npc-full-note--error', !!last?.error)
+        const said = last !== fullCard.noteAtOpen ? last : null
+        fullCard.note.textContent = said?.text ?? ''
+        fullCard.note.classList.toggle('lh-npc-full-note--error', !!said?.error)
         const view = relations
         fullCard.bars.replaceChildren()
         fullCard.log.replaceChildren()
@@ -1306,7 +1309,7 @@ export function createRecordsFold(host: RecordsFoldHost): RecordsFold {
             if (panels?.npcSettings && host.modal) head.append(gearButton('NPC and PC Card Settings', 'records-npc-settings', panels.npcSettings))
         }
         if (book.kind === 'location') {
-            if (panels?.mapsGuide && host.modal) head.append(headButton('ℹ️ Maps Guide', 'Learn how Persistent Maps work', 'records-maps-guide', () => { openModal(null, 'Maps Guide', [panels.mapsGuide!], 720) }))
+            if (panels?.mapsGuide && host.modal) head.append(headButton('ℹ️ Maps guide', 'Maps guide', 'records-maps-guide', () => { openModal(null, 'Maps guide', [panels.mapsGuide!], 720) }))
             if (result?.mapping) {
                 const add = headButton('+ Add Mapped Location', 'Create a new location root and generate its private map', 'records-add-mapped', () => { openFolders.add(book.name); mapForm = { bookName: book.name, entry: null }; draw() })
                 head.append(add)

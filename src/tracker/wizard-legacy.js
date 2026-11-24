@@ -701,3 +701,32 @@ function buildGameSystemWizardModuleExamplesContext(settings) {
         buildGameSystemWizardModuleExamplesContext,
     };
 }
+
+/**
+ * The export of one system as Multihog's shareable text. `getSettings`
+ * returns the settings holding the system's GM section and custom field;
+ * `normalizeDrivers` is the wizard factory's.
+ * @param {() => any} getSettings
+ * @param {(obj: any) => { time: boolean, gmAnnotation: boolean, statedFact: boolean }} normalizeDrivers
+ */
+export function createWizardExportLegacy(getSettings, normalizeDrivers) {
+// ── game-systems.js: /** Serializes a bundle back into the shareable  ──
+/** Serializes a bundle back into the shareable tag-based text blob. */
+function exportGameSystemToText(gs) {
+    const settings = getSettings();
+    const lib = gs.syspromptLibraryId ? (settings.customSyspromptLibrary || []).find(p => p.id === gs.syspromptLibraryId) : null;
+    const field = gs.customFieldTag ? (settings.customFields || []).find(f => f.tag.toUpperCase() === gs.customFieldTag) : null;
+    const d = normalizeDrivers(gs);
+
+    let out = `<meta name="${gs.name.replace(/"/g, '&quot;')}" icon="${(gs.icon || '').replace(/"/g, '&quot;')}" needs_tracker="${!!field}" driver_time="${d.time}" driver_gm_annotation="${d.gmAnnotation}" driver_stated_fact="${d.statedFact}" effect_owner="${gs.effectOwner || 'tracker'}"/>\n`;
+    if (lib) {
+        out += `<gm_section tag="${lib.tag}">\n${lib.content}\n</gm_section>\n`;
+    }
+    if (field) {
+        out += `<tracker_module tag="${field.tag.toUpperCase()}" label="${(field.label || '').replace(/"/g, '&quot;')}" icon="${(field.icon || '').replace(/"/g, '&quot;')}">\n${field.prompt}\n</tracker_module>\n`;
+    }
+    return out.trim();
+}
+
+    return { exportGameSystemToText };
+}

@@ -59,7 +59,7 @@ export function applyFontSizes(body: HTMLElement, sizes: Partial<Record<FontSize
 
 /** What a size reads as beside its slider. */
 export function fontSizeLabel(size: number): string {
-    return size > 0 ? `${size}px` : 'the host’s'
+    return size > 0 ? `${size}px` : 'Lumiverse default'
 }
 
 /** The three rules: a root's font size is its box's token, the host's when unset. */

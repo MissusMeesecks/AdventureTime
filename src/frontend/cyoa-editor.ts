@@ -14,6 +14,7 @@
  * cursor, because a re-seed redraws only when the value differs).
  */
 
+import { createHelpTip } from './help-tip.js'
 import { buildCyoaPrompt, CYOA_SLOT_TYPES, DEFAULT_CYOA_SLOTS, effectiveCyoaSlots, type CyoaConfig, type CyoaSlot } from '../tracker/cyoa.js'
 
 export interface CyoaEditorHost {
@@ -29,7 +30,7 @@ export interface CyoaEditor {
 }
 
 const SLOT_LABELS: Record<string, string> = {
-    narrative: 'Narrative-decided',
+    narrative: 'Decided by the narrator',
     normal: 'Plain action',
     trait: 'Trait or ability',
     prefix: 'Prefixed',
@@ -50,12 +51,24 @@ export function mountCyoaEditor(
     let modeOn = initial.syspromptModules?.CYOA_mode === true
 
     root.classList.add('lh-cyoa')
+    // Help is behind a [?] after the text it explains, its note directly under (96).
+    const elAny = el as unknown as (tag: string, attrs?: Record<string, string>) => HTMLElement
+    const helped = (line: HTMLElement, label: string, help: string): { text: HTMLElement; note: HTMLElement } => {
+        const text = el('span')
+        text.textContent = label
+        const tip = createHelpTip(elAny, label, help)
+        line.append(text, tip.button)
+        return { text, note: tip.note }
+    }
     const summary = el('div', { class: 'lh-cyoa-summary' })
+    const summaryHelp = helped(summary, 'Choices', 'The choices instruction is sent to the narrator as its own message. Each choice becomes a button under the reply. Press a button to send that choice as your message.')
+    const summaryText = summaryHelp.text
     const slotsHead = el('div', { class: 'lh-cyoa-head' })
-    slotsHead.textContent = 'The choices, in order'
+    // The custom kind's rule was a placeholder that vanished as typing began (audit finding 28).
+    const slotsHelp = helped(slotsHead, 'Choices, in order', '"Your own text" is sent word for word, and {{user}} stands for your name.')
     const slotList = el('div', { class: 'lh-cyoa-slots' })
     const addSlot = el('button', { type: 'button', class: 'lh-button' })
-    addSlot.textContent = 'Add a choice'
+    addSlot.textContent = 'Add choice'
     addSlot.addEventListener('click', () => {
         const slots = effectiveCyoaSlots(config)
         if (slots.length >= MAX_CYOA_SLOTS) return
@@ -65,12 +78,11 @@ export function mountCyoaEditor(
     // Presets: a saved slot list, by name. The maintainer's cartridge carries
     // eleven, so this is not a nicety.
     const presetsHead = el('div', { class: 'lh-cyoa-head' })
-    presetsHead.textContent = 'Presets'
+    const presetsHelp = helped(presetsHead, 'Presets', 'Load replaces the choices above with the ones saved in this preset.')
     const presetRow = el('div', { class: 'lh-cyoa-row' })
     const presetSelect = el('select', { class: 'lh-select', 'data-lh-field': 'cyoa-preset' })
     const applyPreset = el('button', { type: 'button', class: 'lh-button' })
-    applyPreset.textContent = 'Use'
-    applyPreset.title = 'Replace the choices above with this preset’s'
+    applyPreset.textContent = 'Load'
     applyPreset.addEventListener('click', () => {
         const slots = config.presets?.[presetSelect.value]
         if (slots) commit({ slots: slots.map((s) => ({ ...s })) })
@@ -86,7 +98,7 @@ export function mountCyoaEditor(
     })
     presetRow.append(presetSelect, applyPreset, deletePreset)
     const saveRow = el('div', { class: 'lh-cyoa-row' })
-    const presetName = el('input', { type: 'text', class: 'lh-input', placeholder: 'Name for the choices above', 'data-lh-field': 'cyoa-preset-name' })
+    const presetName = el('input', { type: 'text', class: 'lh-input', placeholder: 'Preset name', 'aria-label': 'Preset name', 'data-lh-field': 'cyoa-preset-name' })
     const savePreset = el('button', { type: 'button', class: 'lh-button' })
     savePreset.textContent = 'Save as preset'
     savePreset.addEventListener('click', () => {
@@ -99,28 +111,36 @@ export function mountCyoaEditor(
 
     const switches = el('div', { class: 'lh-cyoa-switches' })
     const switchRow = (key: keyof CyoaConfig, label: string, hint: string): HTMLInputElement => {
-        const row = el('label', { class: 'lh-cyoa-switch' })
+        // The [?] and its note stay outside the <label>, or a press would tick the box.
+        const row = el('div', { class: 'lh-cyoa-switch-row' })
+        const line = el('div', { class: 'lh-cyoa-line' })
+        const tick = el('label', { class: 'lh-cyoa-switch' })
         const box = el('input', { type: 'checkbox', 'data-lh-field': `cyoa-${String(key)}` })
         const text = el('span')
         text.textContent = label
-        row.title = hint
-        row.append(box, text)
+        tick.append(box, text)
+        const tip = createHelpTip(elAny, label, hint)
+        line.append(tick, tip.button)
+        row.append(line, tip.note)
         box.addEventListener('change', () => { commit({ [key]: box.checked } as Partial<CyoaConfig>) })
         switches.append(row)
         return box
     }
-    const emojiBox = switchRow('useEmojis', 'An emoji on each choice', 'The narrator is asked to prefix every choice with a fitting emoji.')
-    const xmlBox = switchRow('useXmlTag', 'Wrap the choices in a <choices> block', 'Off, the buttons under each reply cannot be drawn: the block is how they are found.')
-    const buttonBox = switchRow('useButtonTags', 'Wrap each choice in a <button> tag', 'Off, the choices are read one per line inside the block.')
-    const stripBox = switchRow('stripOldChoicesFromPrompt', 'Trim older choice lists out of the prompt', 'Keeps the newest four replies’ choices as examples and drops the rest from what the narrator sees, as Multihog does.')
+    const emojiBox = switchRow('useEmojis', 'Emoji on each choice', 'When on, the narrator is asked to start every choice with a fitting emoji. Default: on.')
+    const xmlBox = switchRow('useXmlTag', 'Wrap choices in a <choices> block', 'When on, the narrator wraps its choices in a <choices> block. AdventureTime finds the choices by this block, so the buttons under each reply cannot be drawn when it is off. Default: on.')
+    const buttonBox = switchRow('useButtonTags', 'Wrap each choice in a <button> tag', 'When on, the narrator wraps each choice in a <button> tag. When off, AdventureTime reads one choice per line inside the block. Default: on.')
+    const stripBox = switchRow('stripOldChoicesFromPrompt', 'Trim old choices from the prompt', 'When on, only the four newest choice lists in the chat are sent to the narrator, as examples. Older choice lists are left out of the prompt. Default: on.')
 
     const customHead = el('div', { class: 'lh-cyoa-head' })
-    customHead.textContent = 'The prompt'
-    const customRow = el('label', { class: 'lh-cyoa-switch' })
+    customHead.textContent = 'Prompt'
+    const customRow = el('div', { class: 'lh-cyoa-line' })
+    const customTick = el('label', { class: 'lh-cyoa-switch' })
     const customBox = el('input', { type: 'checkbox', 'data-lh-field': 'cyoa-useCustomPrompt' })
     const customLabel = el('span')
-    customLabel.textContent = 'Write the CYOA instruction myself'
-    customRow.append(customBox, customLabel)
+    customLabel.textContent = 'Write the instruction myself'
+    customTick.append(customBox, customLabel)
+    const customTip = createHelpTip(elAny, 'Write the instruction myself', 'When off, the instruction is built from the choices above. When on, your own text replaces the built instruction, including the choice list. Default: off.')
+    customRow.append(customTick, customTip.button)
     const customText = el('textarea', { class: 'lh-cyoa-prompt', rows: '8', spellcheck: 'false', 'data-lh-field': 'cyoa-customPromptText' })
     customBox.addEventListener('change', () => {
         // Switching to a custom prompt starts from the builder's text, so
@@ -131,9 +151,8 @@ export function mountCyoaEditor(
         })
     })
     customText.addEventListener('change', () => { commit({ customPromptText: customText.value }) })
-    const customHint = el('div', { class: 'lh-cyoa-hint' })
 
-    root.append(summary, slotsHead, slotList, addSlot, presetsHead, presetRow, saveRow, switches, customHead, customRow, customText, customHint)
+    root.append(summary, summaryHelp.note, slotsHead, slotsHelp.note, slotList, addSlot, presetsHead, presetsHelp.note, presetRow, saveRow, switches, customHead, customRow, customTip.note, customText)
 
     function commit(patch: Partial<CyoaConfig>): void {
         config = { ...config, ...patch }
@@ -159,13 +178,13 @@ export function mountCyoaEditor(
         const detail = el('input', { type: 'text', class: 'lh-input' })
         const kind = type.value
         if (kind === 'trait' || kind === 'prefix') {
-            detail.placeholder = kind === 'trait' ? 'Trait name, or blank for any' : 'The prefix, or blank for any'
+            detail.placeholder = kind === 'trait' ? 'Trait name (optional)' : 'Prefix (optional)'
             detail.value = slot.label ?? ''
             detail.addEventListener('change', () => {
                 commit({ slots: slots.map((s, i) => (i === index ? { type: kind, label: detail.value } : s)) })
             })
         } else if (kind === 'custom') {
-            detail.placeholder = 'The choice, word for word ({{user}} is your name)'
+            detail.placeholder = '{{user}} looks around'
             detail.value = slot.text ?? [slot.left, slot.right].filter(Boolean).join(' ')
             detail.addEventListener('change', () => {
                 commit({ slots: slots.map((s, i) => (i === index ? { type: kind, text: detail.value } : s)) })
@@ -175,7 +194,6 @@ export function mountCyoaEditor(
         }
         const remove = el('button', { type: 'button', class: 'lh-button lh-button--quiet' })
         remove.textContent = 'Remove'
-        remove.title = 'Ask for one choice fewer'
         remove.disabled = slots.length <= 1
         remove.addEventListener('click', () => {
             commit({ slots: slots.filter((_, i) => i !== index) })
@@ -186,9 +204,9 @@ export function mountCyoaEditor(
 
     function render(): void {
         const slots = effectiveCyoaSlots(config)
-        summary.textContent = modeOn
-            ? `The narrator is asked for ${slots.length} choice${slots.length === 1 ? '' : 's'} at the end of every reply, sent as its own message before the dice. Each becomes a button under the reply; press one to take it.`
-            : 'CYOA mode is off. Switch it on under The rulebook above (the CYOA mode row) and the narrator ends every reply with choices you can press.'
+        summaryText.textContent = modeOn
+            ? `The narrator offers ${slots.length} choice${slots.length === 1 ? '' : 's'} after every reply.`
+            : 'CYOA mode is off. Turn it on with the CYOA mode switch on the Narrator card, under Game systems & rulebook.'
         slotList.replaceChildren(...slots.map((slot, index) => renderSlot(slot, index, slots)))
         addSlot.disabled = slots.length >= MAX_CYOA_SLOTS
 
@@ -196,7 +214,7 @@ export function mountCyoaEditor(
         const current = presetSelect.value
         presetSelect.replaceChildren()
         const blank = el('option', { value: '' })
-        blank.textContent = names.length ? 'Choose a preset' : 'No presets saved'
+        blank.textContent = names.length ? 'Choose a preset' : 'No saved presets'
         presetSelect.append(blank)
         for (const name of names) {
             const option = el('option', { value: name })
@@ -217,9 +235,6 @@ export function mountCyoaEditor(
         customText.hidden = !customBox.checked
         const text = config.useCustomPrompt ? (config.customPromptText ?? '') : buildCyoaPrompt(config)
         if (customText.value !== text) customText.value = text
-        customHint.textContent = customBox.checked
-            ? 'Your text replaces the built instruction entirely, slots included. Untick to go back to the builder.'
-            : 'The instruction is built from the choices above. Tick to write your own instead.'
     }
 
     render()

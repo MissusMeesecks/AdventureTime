@@ -239,6 +239,10 @@ export type RequestOp =
     /** Every book the host has, by name (73h): the tracker's lorebook filter picks from it. */
     | 'books.list'
     | 'theme.generate'
+    | 'companion.get'
+    | 'companion.send'
+    | 'companion.clear'
+    | 'companion.confirm'
     | 'lore.attach'
     /** A book named as the campaign's but owned by no chat of ours, or another, made this campaign's (56). */
     | 'lore.adopt'
@@ -1273,6 +1277,30 @@ export interface RelationshipAward {
     delta: number
 }
 
+/** One message of the Adventure Companion's conversation (100a). */
+export interface CompanionChatMessage {
+    role: 'user' | 'assistant'
+    content: string
+    at: string
+    /** What the Companion did while writing this reply (100c): one receipt per action, in order. */
+    actions?: Array<{ action: string; success: boolean; message: string }>
+}
+
+/**
+ * The Adventure Companion's conversation for one chat (100a): the messages
+ * oldest first, whether a reply is being written, and the guide's standing
+ * (attached by the install's preference, and about how many tokens it adds).
+ */
+export interface CompanionState {
+    chatId: string
+    messages: CompanionChatMessage[]
+    busy: boolean
+    guideAttached: boolean
+    guideTokens: number
+    /** A turn the Companion proposes to send as the player, waiting for their answer (100c); null when none is. */
+    pending?: { text: string } | null
+}
+
 export interface ThemeGenerateResult {
     theme: Record<string, string>
     iterated: boolean
@@ -1455,7 +1483,6 @@ export interface MapEvolutionStatus {
     randomize: boolean
     selectedRoots: string
     worldReportLookback: number
-    systemPrompt: string
     compressEnabled: boolean
     compressThreshold: number
     narratorCommitTokens: number
@@ -1550,10 +1577,10 @@ export interface MapStatusResult {
     syncedAt: string
     problem?: string
     /** The architect (34a): whether its tool is registered, its opener (46), its two settings, and its last run. */
-    architect: { toolRegistered: boolean; opener: 'tool' | 'text'; lookback: number; systemPrompt: string }
+    architect: { toolRegistered: boolean; opener: 'tool' | 'text'; lookback: number }
     lastArchitect?: MapArchitectResult
     /** The updater (34b): its switch and settings, whether a pass is running now, and its last pass. */
-    updater: { enabled: boolean; runEvery: number; lookback: number; systemPrompt: string; running: boolean }
+    updater: { enabled: boolean; runEvery: number; lookback: number; running: boolean }
     lastUpdater?: MapUpdaterResult
     /** Evolution (34c): its standing, and its last pass. */
     evolution: MapEvolutionStatus
@@ -1693,6 +1720,20 @@ export interface StatusResult {
     stockUpgrade?: StockUpgradeStatusDTO
     /** The connection a blank row runs on (89), with the reason. Absent from an older backend. */
     passes?: PassConnectionStatusDTO
+    /** The narrator card and the open chat (98). Absent when the cards cannot be listed, or from an older backend. */
+    narrator?: NarratorStatusDTO
+}
+
+/** Whether the narrator card exists and the open chat is from it (98): the checklist's and the starting area's evidence. */
+export interface NarratorStatusDTO {
+    /** The name looked for: the *Narrator card name* preference. */
+    name: string
+    /** A card of that name is in Lumiverse's list. */
+    exists: boolean
+    /** The open chat's card: the narrator card; another card; no chat open; or not readable. */
+    chat: 'narrator' | 'other' | 'none' | 'unknown'
+    /** The other card's name, when the chat is from one and it could be named. */
+    chatCardName: string
 }
 
 /** What a blank connection row resolves to (89): the checklist's evidence. */

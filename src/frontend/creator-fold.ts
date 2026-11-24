@@ -13,6 +13,7 @@
  */
 import type { CreatorResult } from '../protocol.js'
 import { createCardWordsControl } from './card-words.js'
+import { createHelpTip, withHelp } from './help-tip.js'
 import { describeCardSteps, reasonText } from './player-card-fold.js'
 import {
     CLASS_OTHER,
@@ -90,22 +91,45 @@ export function describeCreatorResult(result: CreatorResult, when: (iso: string)
     return `The sheet was not written: ${reasonText(result.reason)}.${tail}`
 }
 
+/**
+ * The gear tiers in the words the settings show them in. The list is the generated file's; the one
+ * tier worded otherwise is relabelled here, never there, and shared with the other ways to begin.
+ */
+export const GEAR_TIER_DISPLAY: Readonly<Record<string, string>> = { none: 'None (skip gear guidance)' }
+
+export function gearTierLabel(tier: { value: string; label: string }): string {
+    return GEAR_TIER_DISPLAY[tier.value] ?? tier.label
+}
+
+/** The level select's first option, in the settings' words. */
+export const NO_LEVELS_LABEL = 'No levels (custom system)'
+
+/** The help the form shares with its twins under Connections & models, in the same words. */
+export const CREATOR_HELP = {
+    level: 'The level the Character creator offers for the next character. Default: level 1.',
+    scalingGuide: 'When on, the character prompt includes a d20-style reference for how combat and skill ability grow with level. Turn it off for a homebrew system that should not read like D&D. Default: on.',
+    playerCard: 'When on, one more model call writes the character’s appearance, personality, habits and backstory into a Player Card. The narrator sees the Player Card on every reply. Default: off. Recommended.',
+    persona: 'When on, AdventureTime creates a Lumiverse persona with the character’s name and no description, and switches to it. Your messages then carry the character’s name, and the Player Card stays the only biography. Default: on. Recommended.',
+    startDay: 'The day the in-world clock starts on. Default: Day 1.',
+    startTime: 'The time the in-world clock starts at. Default: 08:00 AM.',
+    connection: 'The model that writes a character sheet. The Character creator, Instant Action and the other ways to begin all use it.',
+} as const
+
 export const CREATOR_FOLD_CSS = `
-.lh-creator > summary { cursor: pointer; font-size: 0.85em; opacity: 0.8; }
 .lh-creator-body { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
 .lh-creator-row { display: flex; gap: 8px; flex-wrap: wrap; }
 .lh-creator-field { display: flex; flex-direction: column; gap: 2px; flex: 1 1 9em; min-width: 0; }
 .lh-creator-field--wide { flex-basis: 100%; }
-.lh-creator-field > label { font-size: 0.78em; opacity: 0.75; display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+.lh-creator-field > label { font-size: 0.78em; opacity: 0.75; display: flex; align-items: center; gap: 4px; }
 .lh-creator-field .lh-input { width: 100%; min-width: 0; box-sizing: border-box; }
 .lh-creator-field textarea.lh-input { resize: vertical; font: inherit; font-size: 0.85em; }
-.lh-creator-roll { background: none; border: none; color: inherit; cursor: pointer; padding: 0; font-size: 1em; line-height: 1; opacity: 0.85; }
+.lh-creator-roll { margin-left: auto; background: none; border: none; color: inherit; cursor: pointer; padding: 0; font-size: 1em; line-height: 1; opacity: 0.85; }
 .lh-creator-roll:hover { opacity: 1; }
 .lh-creator-presets { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: 0.8em; padding-bottom: 4px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
 .lh-creator-presets .lh-input { flex: 1 1 8em; min-width: 0; }
 .lh-creator-presets[hidden] { display: none; }
-.lh-creator-hint { font-size: 0.75em; opacity: 0.65; }
 .lh-creator-card-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.lh-creator-buttons { align-items: center; }
 .lh-creator-note:empty { display: none; }
 .lh-creator [hidden] { display: none; }
 `
@@ -121,22 +145,19 @@ export function createCreatorFold(host: CreatorFoldHost): CreatorFold {
     const random = host.random ?? Math.random
     const createId = host.createId ?? (() => Date.now().toString(36) + Math.floor(random() * 1e6).toString(36))
 
-    const root = el('details', { class: 'lh-creator' }) as HTMLDetailsElement
-    // The summary is Multihog's hero button since 83 (the starting area after its onboarding): the
-    // glowing button and the sub-line under it, the form folding open under them.
+    // One of the option cards of the starting area: the icon, the name, the line saying who it is for, the chevron.
+    const root = el('details', { class: 'lh-creator lh-start-option', 'data-lh-option': 'creator' }) as HTMLDetailsElement
     const summary = el('summary')
-    const heroButton = el('span', { class: 'lh-start-hero-btn' })
-    heroButton.textContent = '🎲 Character Creator'
-    // Folded as it ships since 84 (the maintainer's ask), with the drawers' chevron at the button's right edge.
-    const heroChevron = el('span', { class: 'lh-start-drawer-chevron lh-start-fold-chevron', 'aria-hidden': 'true' })
-    heroChevron.textContent = '▸'
-    heroButton.append(heroChevron)
-    const heroSub = el('span', { class: 'lh-start-hero-sub' })
-    heroSub.textContent = 'Build your character step by step — presets, a Player Card, and full stat generation.'
-    summary.append(heroButton, heroSub)
+    const optionIcon = el('span', { class: 'lh-start-option-icon', 'aria-hidden': 'true' })
+    optionIcon.textContent = '🎲'
+    const optionLabel = el('span', { class: 'lh-start-option-label' })
+    const optionTitle = el('span', { class: 'lh-start-option-title' })
+    optionTitle.textContent = 'Character creator'
+    const optionSub = el('small', { class: 'lh-start-option-sub' })
+    optionSub.textContent = 'Full control: class, level, gear and saved presets.'
+    optionLabel.append(optionTitle, optionSub)
+    summary.append(optionIcon, optionLabel, el('span', { class: 'lh-chevron', 'aria-hidden': 'true' }))
     const body = el('div', { class: 'lh-creator-body' })
-    const lead = el('div', { class: 'lh-world-lead' })
-    lead.textContent = 'Describe the character you want — as much or as little as you like — and one model call writes the complete sheet into the tracker: every block the modules keep, at the level and gear tier chosen, in the genre’s idiom. What you leave blank, the model invents. The sheet appears in the tracker’s cards as soon as it is written.'
 
     // ── presets ──────────────────────────────────────────────────────────
     const presetsRow = el('div', { class: 'lh-creator-presets', 'data-lh-field': 'creator-presets' })
@@ -150,8 +171,8 @@ export function createCreatorFold(host: CreatorFoldHost): CreatorFold {
     const presetName = el('input', { type: 'text', class: 'lh-input', 'data-lh-field': 'creator-preset-name', placeholder: 'Name this preset' }) as HTMLInputElement
     const saveButton = el('button', { type: 'button', class: 'lh-button lh-button--quiet' }) as HTMLButtonElement
     saveButton.textContent = 'Save'
-    saveButton.title = 'Save the form as a preset under this name. A preset of the same name is replaced.'
-    presetsRow.append(presetsLabel, presetSelect, loadButton, deleteButton, presetName, saveButton)
+    const presetsHelp = createHelpTip(el, 'Presets', 'A preset is the whole form, kept under a name. Save keeps the form as it is now under the name typed. A preset with the same name is replaced.')
+    presetsRow.append(presetsLabel, presetsHelp.button, presetSelect, loadButton, deleteButton, presetName, saveButton, presetsHelp.note)
 
     // ── the form ─────────────────────────────────────────────────────────
     const fields: Record<string, HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement> = {}
@@ -161,9 +182,12 @@ export function createCreatorFold(host: CreatorFoldHost): CreatorFold {
         const caption = el('span')
         caption.textContent = label
         text.append(caption)
+        // The help is a [?] after the label and a note under the control, in the form from the first paint.
+        const tip = options.hint ? createHelpTip(el, label, options.hint) : null
+        if (tip) text.append(tip.button)
         if (options.extra) text.append(options.extra)
-        if (options.hint) text.title = options.hint
         wrap.append(text, control)
+        if (tip) wrap.append(tip.note)
         fields[name] = control
         return wrap
     }
@@ -172,7 +196,7 @@ export function createCreatorFold(host: CreatorFoldHost): CreatorFold {
     const select = (name: string): HTMLSelectElement => el('select', { class: 'lh-input', 'data-lh-field': `creator-${name}-input` }) as HTMLSelectElement
     const row = (...children: HTMLElement[]): HTMLElement => { const r = el('div', { class: 'lh-creator-row' }); r.append(...children); return r }
 
-    const rollButton = el('button', { type: 'button', class: 'lh-creator-roll', title: 'Roll a name from the genre’s pool, or from every pool when no genre is chosen' }) as HTMLButtonElement
+    const rollButton = el('button', { type: 'button', class: 'lh-creator-roll', title: 'Roll a name', 'aria-label': 'Roll a name' }) as HTMLButtonElement
     rollButton.textContent = '🎲'
     const name = input('name')
     const gender = input('gender')
@@ -183,32 +207,29 @@ export function createCreatorFold(host: CreatorFoldHost): CreatorFold {
     const genre = select('genre')
     for (const g of CREATOR_GENRES) genre.append(option(el, g.value, g.label))
     const level = select('level')
-    level.append(option(el, 'none', 'N/A — No Levels (Custom System)'))
+    level.append(option(el, 'none', NO_LEVELS_LABEL))
     for (let i = 1; i <= 20; i++) level.append(option(el, String(i), `Level ${i}`))
     const gearTier = select('gear-tier')
-    for (const t of GEAR_TIERS) gearTier.append(option(el, t.value, t.label))
+    for (const t of GEAR_TIERS) gearTier.append(option(el, t.value, gearTierLabel(t)))
     const combatRow = el('label', { class: 'lh-world-switch', 'data-lh-field': 'creator-combat-guide' })
     const combat = el('input', { type: 'checkbox' }) as HTMLInputElement
     const combatText = el('span')
-    combatText.textContent = 'Use the combat and skill scaling guide'
-    combatRow.title = 'A classic d20-style reference for how competence grows with level. Switch it off for a homebrew system that should not read like D&D.'
+    combatText.textContent = 'Use the scaling guide'
     combatRow.append(combat, combatText)
     // The Player Card and the persona (35b): the legacy's two checkboxes and its word count.
     const cardRow = el('div', { class: 'lh-creator-card-row', 'data-lh-field': 'creator-card' })
     const cardLabel = el('label', { class: 'lh-world-switch' })
     const playerCard = el('input', { type: 'checkbox', 'data-lh-field': 'creator-player-card-input' }) as HTMLInputElement
     const cardText = el('span')
-    cardText.textContent = 'Write a Player Card (recommended)'
-    cardLabel.title = 'A second model call writes the character’s appearance, personality, habits and backstory into a Player Card the narrator sees every turn. It appears in the Player Card fold, where it can be edited or written again.'
+    cardText.textContent = 'Write a Player Card'
     cardLabel.append(playerCard, cardText)
     const cardWords = createCardWordsControl(el, 'creator-card-words', (n) => { host.savePrefs({ creatorCardWords: n }).catch(host.fail) })
-    cardRow.append(cardLabel, cardWords.root)
+    cardRow.append(withHelp(el, cardLabel, 'Write a Player Card', CREATOR_HELP.playerCard), cardWords.root)
     const personaRow = el('label', { class: 'lh-world-switch', 'data-lh-field': 'creator-persona' })
     const persona = el('input', { type: 'checkbox', 'data-lh-field': 'creator-persona-input' }) as HTMLInputElement
     persona.checked = true
     const personaText = el('span')
-    personaText.textContent = 'Create a persona with the character’s name (recommended)'
-    personaRow.title = 'A persona with the character’s name and no description, made and switched to, so your messages carry the name while the Player Card stays the one biography.'
+    personaText.textContent = 'Create a matching persona'
     personaRow.append(persona, personaText)
     const startDate = input('start-date')
     startDate.placeholder = 'Day 1 or DD/MM/YYYY'
@@ -225,36 +246,42 @@ export function createCreatorFold(host: CreatorFoldHost): CreatorFold {
 
     const form = el('div', { class: 'lh-creator-form' })
     form.append(
-        row(field('name', 'Name', name, { extra: rollButton }), field('gender', 'Gender', gender), field('age', 'Age', age)),
-        row(field('orientation', 'Sexual orientation', orientation, { hint: 'For the relationship system and romantic choices; without it the narrator guesses.' }), field('species', 'Species', species), field('ethnicity', 'Ethnicity', ethnicity)),
-        row(field('genre', 'Genre', genre, { hint: 'A genre lists its classes below; none leaves the class to the model and the story.' }), field('level', 'Level', level, { hint: 'N/A for a system without numeric levels: no level, no XP block.' }), field('gear-tier', 'Gear tier', gearTier, { hint: 'How well-equipped: from a mundane starter kit to named heroic gear. Auto scales with the level.' })),
-        combatRow,
-        row(field('start-date', 'Starting date', startDate, { hint: 'The first [TIME] block’s date: Day 1, or a calendar date when the cartridge uses DD/MM/YYYY.' }), field('start-time', 'Starting time', startTime, { hint: 'The first [TIME] block’s time of day.' })),
+        row(field('name', 'Name', name, { extra: rollButton, hint: 'The dice button rolls a name from the genre’s pool, or from every pool when no genre is chosen.' }), field('gender', 'Gender', gender), field('age', 'Age', age)),
+        row(field('orientation', 'Sexual orientation', orientation, { hint: 'Used by the relationship system and for romantic choices. Without it, the narrator guesses.' }), field('species', 'Species', species), field('ethnicity', 'Ethnicity', ethnicity)),
+        row(field('genre', 'Genre', genre, { hint: 'A genre lists its classes under Class. With no genre, the class is left to the model and the story.' }), field('level', 'Starting level', level, { hint: `${CREATOR_HELP.level} ${NO_LEVELS_LABEL}: the sheet has no level and no XP block.` }), field('gear-tier', 'Starting gear', gearTier, { hint: 'How well equipped the character starts, from a mundane starter kit to named heroic gear. Auto scales with the level.' })),
+        withHelp(el, combatRow, 'Use the scaling guide', CREATOR_HELP.scalingGuide),
+        row(field('start-date', 'Starting day', startDate, { hint: `${CREATOR_HELP.startDay} Use a calendar date when the State Tracker writes DD/MM/YYYY dates.` }), field('start-time', 'Starting time', startTime, { hint: CREATOR_HELP.startTime })),
         field('class', 'Class', classSelect, { wide: true }),
         field('class-other', 'Your own class', classOther, { wide: true }),
         row(field('traits', 'Traits', traits), field('abilities', 'Abilities', abilities)),
-        row(field('background', 'Background', background, { hint: 'A hint is enough: “ex-soldier”, “noble exile”. Blank, and the model invents one.' }), field('appearance', 'Appearance', appearance, { hint: 'A hint is enough: “tall, red hair, scar on one cheek”.' })),
+        row(field('background', 'Background', background, { hint: 'A few words are enough, such as “ex-soldier” or “noble exile”. If blank, the model invents one.' }), field('appearance', 'Appearance', appearance, { hint: 'A few words are enough, such as “tall, red hair, scar on one cheek”. If blank, the model invents one.' })),
         field('additional', 'Additional', additional, { wide: true }),
         cardRow,
-        personaRow,
+        withHelp(el, personaRow, 'Create a matching persona', CREATOR_HELP.persona),
     )
 
     // ── the connection, the buttons, the note ────────────────────────────
     const connectionRow = el('div', { class: 'lh-conn', 'data-lh-field': 'creator-connection' })
     const connectionLabel = el('label', { class: 'lh-conn-label' })
-    connectionLabel.textContent = 'Connection the sheet is written on'
+    connectionLabel.textContent = 'Connection'
+    const connectionLine = el('div', { class: 'lh-conn-label-line' })
+    const connectionHelp = createHelpTip(el, 'Connection', CREATOR_HELP.connection)
+    connectionLine.append(connectionLabel, connectionHelp.button)
     const connection = el('select', { class: 'lh-input' }) as HTMLSelectElement
-    const connectionHint = el('div', { class: 'lh-conn-hint' })
-    connectionRow.append(connectionLabel, connection, connectionHint)
-    const buttons = el('div', { class: 'lh-world-buttons' })
+    // A status line: it shows only when there is something to say.
+    const connectionHint = el('div', { class: 'lh-conn-hint', hidden: 'hidden' })
+    connectionRow.append(connectionLine, connectionHelp.note, connection, connectionHint)
+    const buttons = el('div', { class: 'lh-world-buttons lh-creator-buttons' })
     const generateButton = el('button', { type: 'button', class: 'lh-button' }) as HTMLButtonElement
     generateButton.textContent = 'Generate the character'
     const resetButton = el('button', { type: 'button', class: 'lh-button lh-button--quiet' }) as HTMLButtonElement
     resetButton.textContent = 'Clear the form'
-    buttons.append(generateButton, resetButton)
+    // What was the lead paragraph: what a press of Generate does, behind the button's own [?].
+    const generateHelp = createHelpTip(el, 'Generate the character', 'Fill in as much or as little as you like. One model call writes the complete character sheet into the tracker’s cards, at the level and gear chosen, in the genre’s style. Anything left blank is invented by the model.')
+    buttons.append(generateButton, generateHelp.button, resetButton, generateHelp.note)
     const live = el('div', { class: 'lh-world-running', hidden: 'hidden' })
     const note = el('div', { class: 'lh-world-note lh-creator-note' })
-    body.append(lead, presetsRow, form, connectionRow, buttons, live, note)
+    body.append(presetsRow, form, connectionRow, buttons, live, note)
     root.append(summary, body)
 
     // ── state ────────────────────────────────────────────────────────────
@@ -321,7 +348,7 @@ export function createCreatorFold(host: CreatorFoldHost): CreatorFold {
         if (running) live.textContent = playerCard.checked ? 'Writing the sheet, then the Player Card. Two model calls; the tracker’s cards fill in after the first…' : 'Writing the sheet now. One model call; the tracker’s cards fill in when it is done…'
         note.textContent = last ? describeCreatorResult(last, host.when) : ''
         note.classList.toggle('lh-world-note--error', last?.status === 'failed')
-        generateButton.title = chatId ? 'Write the sheet into this chat’s tracker.' : 'Open a chat first.'
+        generateButton.title = chatId ? '' : 'Open a chat first.'
     }
 
     const saveDraft = (): void => {
@@ -438,11 +465,12 @@ export function createCreatorFold(host: CreatorFoldHost): CreatorFold {
             connection.value = id
         },
         setConnections(choices, unavailable) {
-            connection.replaceChildren(option(el, '', 'The tracker’s connection'))
+            connection.replaceChildren(option(el, '', 'Use the State Tracker connection'))
             for (const c of choices) connection.append(option(el, c.id, c.model ? `${c.name} — ${c.model}` : c.name))
             if (connectionId && !choices.some((c) => c.id === connectionId)) connection.append(option(el, connectionId, 'The connection you chose is no longer listed'))
             connection.value = connectionId
-            connectionHint.textContent = unavailable || (choices.length ? 'Blank runs the sheet on whatever the tracker runs on.' : 'No connections are listed; the sheet runs on the tracker’s.')
+            connectionHint.textContent = unavailable || (choices.length ? '' : 'No connections are listed. The sheet is written on the State Tracker connection.')
+            connectionHint.hidden = !connectionHint.textContent
         },
         setChat(id, memoEmpty) {
             chatId = id

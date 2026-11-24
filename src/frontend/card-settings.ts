@@ -9,7 +9,7 @@
  * portraits switch of *General & visuals* (off, the NPCs draw as the compact
  * list, as the legacy's do); the two word targets are the NPC word targets
  * card's; *Relationship system* is the cartridge's `npcRelationshipBars`, the
- * switch under Character Sheets; *Values move by* and *Scale* are the
+ * switch under Character sheets; *Values move by* and *Scale* are the
  * relationship preferences the Relationships fold held until 78b; *Add as is*
  * is the NPC creator's mode. Multihog's *Show Relationship Float Feedback*
  * has no counterpart here (the floater is not built) and is left out.
@@ -139,16 +139,16 @@ export function createCardSettings(host: CardSettingsHost, locationNodes: HTMLEl
         say('Saving…')
         host.saveWordTargets(a, b)
             .then((result) => say(result.applied
-                ? `Saved: ${a} words for a major NPC, ${b} for a minor one, written into the NPC instruction.`
-                : `Saved as ${a} and ${b}, but the NPC instruction no longer carries the two length sentences, so nothing was written into it. Reset the instruction to stock under Agent modules to have them back.`, !result.applied))
+                ? `Saved: ${a} words for a major NPC, ${b} for a minor NPC. The NPC instruction is updated.`
+                : `Saved as ${a} and ${b}, but the NPC instruction no longer contains the two length sentences, so it was not changed. To restore them, reset the NPC instruction to stock under Agent modules in the Lore widget.`, !result.applied))
             .catch((error: unknown) => { say(`Could not save: ${error instanceof Error ? error.message : String(error)}`, true); host.fail(error) })
             .finally(() => { saving = false })
     }
     major.input.addEventListener('change', saveWords)
     minor.input.addEventListener('change', saveWords)
 
-    // Relationship system: the cartridge's switch under Character Sheets.
-    const relations = tickRow('npc-card-relationships', 'Relationship system', 'Shows the friendship and affection bars on the NPC cards and the Full NPC Card, and asks the narrator for the awards; it is the Relationship system switch under Character Sheets.', (on) => {
+    // Relationship system: the cartridge's switch under Character sheets.
+    const relations = tickRow('npc-card-relationships', 'Relationship system', 'Shows the friendship and affection bars on the NPC cards and the Full NPC Card, and asks the narrator for the awards; it is the Relationship system switch under Character sheets.', (on) => {
         save(() => host.saveSettings({ npcRelationshipBars: on }), on ? 'The relationship system is on.' : 'The relationship system is off.')
     })
 

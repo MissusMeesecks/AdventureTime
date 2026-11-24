@@ -65,6 +65,59 @@ export const DEFAULT_PORTRAIT_PRESET_ID: string = legacy.DEFAULT_PORTRAIT_PROMPT
 /** The seven factory art styles, in the legacy's order. */
 export const FACTORY_PORTRAIT_PRESETS: readonly PortraitPreset[] = legacy.FACTORY_PORTRAIT_PROMPT_PRESETS
 
+/**
+ * How a style is shown (96, the copy deck's review note 1): the generated
+ * file keeps Multihog's names and descriptions, which are also the names a
+ * saved setup may not take, and the pane shows these in their place. `from`
+ * is the generated text each was written against: `portrait-presets.test.ts`
+ * fails when a pin move changes one, so the display text is re-read with it.
+ * Display only: every comparison (the active id, the reserved names) stays
+ * on the generated values.
+ */
+export const PORTRAIT_PRESET_DISPLAY: Readonly<Record<string, { name: string; description: string; from: { name: string; description: string } }>> = {
+    fantasy: {
+        name: 'Fantasy (default)',
+        description: 'High-quality fantasy art with dramatic lighting. This is the default style.',
+        from: { name: 'Fantasy (Default)', description: 'High-quality fantasy art with dramatic lighting — the Multihog factory default.' },
+    },
+    anime: {
+        name: 'Anime',
+        description: 'Clean anime illustration look with expressive features and vibrant color.',
+        from: { name: 'Anime', description: 'Clean anime/illustration look with expressive features and vibrant color.' },
+    },
+    photorealistic: {
+        name: 'Photorealistic',
+        description: 'Photographic realism with natural lighting and fine detail.',
+        from: { name: 'Photorealistic', description: 'Photographic realism with natural lighting and fine detail.' },
+    },
+    oil_painting: {
+        name: 'Oil painting',
+        description: 'Classical oil-painting look with rich brushwork.',
+        from: { name: 'Oil Painting', description: 'Classical oil-painting look with rich brushwork and museum finish.' },
+    },
+    comic: {
+        name: 'Comic book',
+        description: 'Bold comic-book illustration with strong inks and dynamic shading.',
+        from: { name: 'Comic Book', description: 'Bold comic/graphic-novel illustration with strong inks and dynamic shading.' },
+    },
+    watercolor: {
+        name: 'Watercolor',
+        description: 'Soft watercolor washes with delicate color.',
+        from: { name: 'Watercolor', description: 'Soft watercolor washes with atmospheric edges and delicate color.' },
+    },
+    dark_fantasy: {
+        name: 'Dark fantasy',
+        description: 'Grim gothic fantasy with a muted palette and heavy shadows.',
+        from: { name: 'Dark Fantasy', description: 'Grim, gothic fantasy with muted palette and heavy chiaroscuro.' },
+    },
+}
+
+/** A style's name and description as the pane shows them; a style with no override shows the generated text. */
+export function portraitPresetDisplay(preset: Pick<PortraitPreset, 'id' | 'name' | 'description'>): { name: string; description: string } {
+    const shown = PORTRAIT_PRESET_DISPLAY[preset.id]
+    return shown ? { name: shown.name, description: shown.description } : { name: preset.name, description: preset.description }
+}
+
 /** The style by id; an unknown id is the default, as the legacy reads it. */
 export function factoryPortraitPreset(id?: string): PortraitPreset {
     return legacy.getFactoryPortraitPromptPreset(id)

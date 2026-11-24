@@ -65,6 +65,8 @@ describe('the tool', () => {
         expect(tool.name).toBe(CREATE_AREA_MAP_TOOL_NAME)
         expect(tool.display_name).toBe('Map Architect')
         expect(tool.inline_available).toBe(true)
+        // The narrator's alone: said outright, so no build of Lumiverse offers it to its Council (96).
+        expect(tool.council_eligible).toBe(false)
         expect(tool.description).toContain('Create and save one private objective map.')
         const params = tool.parameters as { required: string[]; properties: Record<string, { enum?: string[] }> }
         expect(params.required).toEqual(['site', 'entrance', 'kind', 'scale', 'threat', 'prompt', 'brief_description'])

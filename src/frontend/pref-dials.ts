@@ -1,7 +1,8 @@
 /**
  * The other mirrored dials (Phase 63c, roadmap row 63): the preferences
  * the folds hold — the tracker's window and cadence, the agent's cadence,
- * window and turns, the wizard's context, the Map Architect's, the
+ * window and turns (the wizard's context until 96, audit D6: its six rows
+ * were the wizard's own controls drawn twice), the Map Architect's, the
  * Updater's and Evolution's dials, World Progression's and the skeleton's,
  * the character creator's starting choices — each drawn again in its
  * Multihog category, as a declarative row bound to the same preference key
@@ -15,8 +16,10 @@
  * on screen.
  */
 
+import { setCardIcon } from './icons.js'
 import type { SettingsCategoryId } from '../settings/schema.js'
 import { CARD_WORDS_MAX, CARD_WORDS_MIN, GEAR_TIERS } from '../tracker/creator.js'
+import { attachCardHelp, createHelpTip } from './help-tip.js'
 
 /** `books` (73h): a list of the host's lorebooks with a tick each, saved as the ticked names. */
 export type DialKind = 'switch' | 'number' | 'select' | 'text' | 'prompt' | 'books'
@@ -56,7 +59,16 @@ export function dialRows(groups: readonly DialGroup[] = PREF_DIAL_GROUPS): DialR
     return groups.flatMap((g) => g.sections.flatMap((s) => [...s.rows]))
 }
 
-const LEVELS: Array<{ value: string; label: string }> = [{ value: 'none', label: 'N/A — No Levels (Custom System)' }]
+/**
+ * A dial's label and help by its preference key (96): the Lore widget draws some of the same dials in
+ * its drawers, and a twin reads the table's words rather than a second copy of them.
+ */
+export function dialCopy(key: string): { label: string; hint: string } {
+    const row = dialRows().find((r) => r.key === key)
+    return { label: row?.label ?? '', hint: row?.hint ?? '' }
+}
+
+const LEVELS: Array<{ value: string; label: string }> = [{ value: 'none', label: 'No levels (custom system)' }]
 for (let i = 1; i <= 20; i++) LEVELS.push({ value: String(i), label: `Level ${i}` })
 
 /** The groups, one per category that has dials of its own; the folds' labels and hints. */
@@ -68,20 +80,20 @@ export const PREF_DIAL_GROUPS: readonly DialGroup[] = [
             {
                 id: 'choices',
                 icon: '🔀',
-                title: 'The choices in the bubble',
-                lead: 'How the raw <choices> block is kept out of the reply while the buttons stand under it.',
+                title: 'Choices block in replies',
+                lead: '',
                 rows: [
-                    { key: 'choicesDisplayRegex', kind: 'switch', label: 'Hide the block with a regex script in the host’s library', hint: 'On, a display-only script (AdventureTime — hide the choices block) in Lumiverse’s regex library takes the block out of every reply as it is drawn; nothing stored or sent changes. Off, the script is removed and AdventureTime hides the lines itself after each reply, which can leave the block showing until the next refresh. Switch it off if a long chat slows down.' },
+                    { key: 'choicesDisplayRegex', kind: 'switch', label: 'Hide with a Lumiverse regex script', hint: 'When on, AdventureTime installs a display-only regex script in Lumiverse that hides the raw <choices> block in every reply. When off, the script is removed and AdventureTime hides the block itself after each reply, so the block can show until the next refresh. Turn it off if a long chat becomes slow. Default: on.' },
                 ],
             },
             {
                 id: 'display',
                 icon: '🎒',
-                title: 'Inventory settings',
-                lead: 'How an item’s worth is drawn on the Inventory card.',
+                title: 'Inventory',
+                lead: '',
                 rows: [
-                    { key: 'inventoryShowTotal', kind: 'switch', label: 'Show the total inventory value', hint: 'Every item’s worth and every sum of money in the Inventory card added up in its header, in the currency most lines use.' },
-                    { key: 'inventoryWorthMode', kind: 'select', label: 'Item worth', hint: 'An item’s (~120 GP) or (Worth: 120 GP): hover keeps it as a tooltip, display draws it as a coin badge beside the item.', options: [{ value: 'hover', label: 'Hover (tooltip only)' }, { value: 'display', label: 'Display (inline badge)' }] },
+                    { key: 'inventoryShowTotal', kind: 'switch', label: 'Show total inventory value', hint: 'When on, the Inventory card’s header shows the sum of every item’s worth and all money. The total uses the currency most lines use. Default: off.' },
+                    { key: 'inventoryWorthMode', kind: 'select', label: 'Item worth', hint: 'Sets how an item’s worth, such as (~120 GP) or (Worth: 120 GP), is shown on the Inventory card. "Tooltip on hover" shows it when you point at the item. "Badge beside the item" shows it as a coin badge. Default: tooltip on hover.', options: [{ value: 'hover', label: 'Tooltip on hover' }, { value: 'display', label: 'Badge beside the item' }] },
                 ],
             },
         ],
@@ -93,20 +105,20 @@ export const PREF_DIAL_GROUPS: readonly DialGroup[] = [
             {
                 id: 'advanced',
                 icon: '🎛️',
-                title: 'Advanced options',
-                lead: 'The tracker’s window and cadence. The same dials are under Tracker settings, instruction and the last report; a change in either place shows in the other.',
+                title: 'Advanced tracker',
+                lead: 'How much story the tracker reads, how often it runs and what goes into its prompt.',
                 rows: [
-                { key: 'trackerLookbackMode', kind: 'select', label: 'Story the tracker reads', hint: 'The current exchange: your last message and the reply to it, usually two. Less to send, and the tracker is only ever asked what changed this turn.', options: [{ value: 'since-last-user', label: 'The current exchange (recommended)' }, { value: 'fixed', label: 'A fixed number of messages' }] },
-                { key: 'trackerLookbackCount', kind: 'number', label: 'Messages a pass reads', hint: 'When a fixed number: the last N messages, 1 to 50.', min: 1, max: 50, visibleWhen: (p) => p.trackerLookbackMode === 'fixed' },
-                { key: 'trackerRunEvery', kind: 'number', label: 'Replies between tracker passes', hint: 'Every reply is the recommended setting. More: fewer model calls, but the memo lags, a pass reads back to the previous one, and only the turns a pass ran on get a card.', min: 1, max: 20 },
-                { key: 'trackerDirectLookback', kind: 'number', label: 'Messages an instructed tracker pass reads', hint: 'The send bar’s window, 0 to 50. 0 reads none.', min: 0, max: 50 },
-                { key: 'frameworkEnabled', kind: 'switch', label: 'Enable the framework', hint: 'The master power, Multihog’s ⏻: off, nothing is injected into the prompt and no pass runs on its own — no tracker, agent, map, world or picture after a reply. The buttons still work. The narrator then plays without the rulebook.' },
-                { key: 'trackerFullReviewMode', kind: 'switch', label: 'Full Review Mode (recommended for weaker/local models)', hint: 'Forces the State Model to output the COMPLETE, verified state for every enabled module on every pass, instead of only the changed sections. Trades tokens/latency for reliability — recommended for weaker/local models that struggle to keep delta-tracked state consistent. While enabled, the Extractor system prompt and the User prompt suffix are replaced by built-in Full Review versions on every pass; your own text stays saved and is used again when you turn this off. Raise the response length generously: a full memo dump is larger than a delta update.' },
-                { key: 'trackerHistoryStates', kind: 'number', label: 'History context (states)', hint: 'How many memo states the tracker is shown, the current one included: 1 shows the prior memo alone; 3 shows the two before it too, as TRACKER STATE -2 and -1. More context, more tokens.', min: 1, max: 10 },
-                { key: 'trackerInjectLorebooks', kind: 'switch', label: 'Inject lorebooks', hint: 'Multihog’s Context & Lorebooks: every enabled entry of the books ticked below — the books linked to this chat when none is ticked — opens the tracker’s prompt as a WORLD LORE section on every pass, so the tracker knows the world’s names and places. Read afresh each pass; a big book is a lot of tokens, so tick the books that matter.' },
-                { key: 'trackerLorebookFilter', kind: 'books', label: 'Books the tracker reads', hint: 'None ticked: the books linked to this chat — attached to the chat, its narrator’s card, the persona or the global list — and never the whole library (Multihog sends every book; AdventureTime does not, by the maintainer’s decision). Books are matched by name, as Multihog matches them, so a renamed book drops out of the filter until ticked again.', visibleWhen: (p) => p.trackerInjectLorebooks === true },
-                { key: 'trackerUserPromptSuffix', kind: 'prompt', label: 'User prompt suffix', hint: 'The line that closes every tracker prompt, after the story and the instruction: Multihog’s User Prompt Suffix. Blank, the stock line — ## OUTPUT ONLY CHANGED SECTIONS: — closes both the automatic and the instructed pass, as it does in Multihog.', placeholder: 'Blank: ## OUTPUT ONLY CHANGED SECTIONS:' },
-                { key: 'trackerSwipeRollback', kind: 'switch', label: 'Roll the memo back on a swipe', hint: 'A swipe or a regenerate reads from the memo as it stood before the replaced reply’s pass, so a turn is never counted twice. Off, the pass merges onto the memo as it stands.' },
+                { key: 'trackerLookbackMode', kind: 'select', label: 'Story the tracker reads', hint: 'Current exchange: the tracker reads your last message and the reply to it. This sends less text and asks the tracker only what changed this turn. Default: current exchange.', options: [{ value: 'since-last-user', label: 'Current exchange (recommended)' }, { value: 'fixed', label: 'Fixed number of messages' }] },
+                { key: 'trackerLookbackCount', kind: 'number', label: 'Messages per pass', hint: 'Used with "Fixed number of messages". The tracker reads the last N messages, from 1 to 50. Default: 2.', min: 1, max: 50, visibleWhen: (p) => p.trackerLookbackMode === 'fixed' },
+                { key: 'trackerRunEvery', kind: 'number', label: 'Replies between tracker passes', hint: '1 runs a tracker pass after every reply, which is recommended. A higher number makes fewer model calls, and each pass reads back to the previous one. The memo lags in between, and only the replies a pass ran on get a card under the message. Default: 1.', min: 1, max: 20 },
+                { key: 'trackerDirectLookback', kind: 'number', label: 'Messages an instructed pass reads', hint: 'How many messages the tracker reads when you send it an instruction from the Tracker widget or the terminal. The range is 0 to 50. 0 reads no messages. Default: 5.', min: 0, max: 50 },
+                { key: 'frameworkEnabled', kind: 'switch', label: 'AdventureTime is on in every chat', hint: 'When off, nothing is added to the narrator’s prompt, so the narrator plays without the rulebook. No tracker, agent, map, world or picture pass runs on its own after a reply. Buttons that run a pass still work. Default: on.' },
+                { key: 'trackerFullReviewMode', kind: 'switch', label: 'Full Review Mode', hint: 'When on, every tracker pass writes the complete memo for every module that is on, not only the changed sections. This is more reliable for weaker or local models, but it uses more tokens and time, so raise the output length. Built-in prompts replace the tracker system prompt and the user prompt suffix while it is on, and your own texts are kept. Default: off.' },
+                { key: 'trackerHistoryStates', kind: 'number', label: 'Memo states shown', hint: 'How many memo states the tracker is shown, counting the current one, from 1 to 10. 1 shows only the current memo. 3 also shows the two states before it. More states use more tokens. Default: 1.', min: 1, max: 10 },
+                { key: 'trackerInjectLorebooks', kind: 'switch', label: 'Send lorebooks to the tracker', hint: 'When on, every tracker pass starts with a WORLD LORE section, so the tracker knows the world’s names and places. The section holds every enabled entry of the lorebooks selected below, or of the lorebooks linked to this chat when none is selected. Large lorebooks use many tokens, so select only the ones that matter. Default: off.' },
+                { key: 'trackerLorebookFilter', kind: 'books', label: 'Lorebooks the tracker reads', hint: 'With none selected, the tracker reads the lorebooks linked to this chat. Those are the lorebooks attached to the chat, the narrator’s character card, the persona or the global list. Lorebooks are matched by name. A renamed lorebook drops out of the selection until you select it again.\n\nDifferent from Multihog: with none selected, Multihog sends every lorebook in the library. AdventureTime sends only the lorebooks linked to the chat.', visibleWhen: (p) => p.trackerInjectLorebooks === true },
+                { key: 'trackerUserPromptSuffix', kind: 'prompt', label: 'User prompt suffix', hint: 'The last line of every tracker prompt, after the story and any instruction. Leave blank to use the stock line, "## OUTPUT ONLY CHANGED SECTIONS:", on both automatic and instructed passes. While Full Review Mode is on, a built-in line is used in its place.', placeholder: '## OUTPUT ONLY CHANGED SECTIONS:' },
+                { key: 'trackerSwipeRollback', kind: 'switch', label: 'Roll back the memo on a swipe', hint: 'When on, a swipe or a regenerate starts from the memo as it was before the replaced reply’s pass. This stops a turn being counted twice. When off, the new pass merges onto the memo as it stands. Default: on.' },
                 ],
             },
         ],
@@ -118,58 +130,38 @@ export const PREF_DIAL_GROUPS: readonly DialGroup[] = [
             {
                 id: 'core',
                 icon: '🧭',
-                title: 'Agent core settings',
-                lead: 'The agent’s cadence, window and turns. The same dials are in the Lorebook agent fold; the campaign’s name is per chat, and stays there.',
+                title: 'Agent passes',
+                lead: 'How often the agent runs, how much of the chat it reads and how many model calls a pass may make. The same settings are under Quick settings in the Lore widget.',
                 rows: [
-                { key: 'agentRunEvery', kind: 'number', label: 'Replies between automatic passes', hint: 'A pass runs by itself after every N replies, reading the story since the last one. 0: only when you press the button.', min: 0, max: 50 },
-                { key: 'agentLookback', kind: 'number', label: 'Messages to read', hint: 'The last N messages of the chat. 0 reads the whole chat.', min: 0, max: 100000 },
-                { key: 'agentMaxTurns', kind: 'number', label: 'Research turns', hint: 'Model calls one pass may make, one after another, 1 to 20. Lower is faster; too low and the agent stops before it has decided anything.', min: 1, max: 20 },
-                { key: 'agentDirectLookback', kind: 'number', label: 'Messages an instructed agent pass reads', hint: 'The send bar’s window, 0 to 100. 0 reads the whole chat.', min: 0, max: 100 },
-                { key: 'agentEnabled', kind: 'switch', label: 'Enable the Lorebook Agent', hint: 'Off, the automatic pass after a reply is held; Run the agent now and the send bar still run one. The cadence below is kept.' },
-                { key: 'agentLookbackMode', kind: 'select', label: 'Story an automatic pass reads', hint: 'Since the last run: every message since the agent last ran, so nothing throttled by the cadence is missed (recommended). Since the last user message: the current exchange only. Fixed: the count below.', options: [{ value: 'since_last_run', label: 'Since the last run (recommended)' }, { value: 'since_last_user', label: 'Since the last user message' }, { value: 'fixed', label: 'A fixed count of messages' }] },
-                { key: 'agentSwipeRollback', kind: 'switch', label: 'Roll a pass back on a swipe', hint: 'A swipe or a regenerate of the reply an automatic pass read undoes that pass; the lore it wrote for the discarded reply goes with it. Off, the pass stands. Multihog ships this off; AdventureTime always rolled back.' },
+                { key: 'agentRunEvery', kind: 'number', label: 'Replies between automatic passes', hint: 'An automatic agent pass runs after this many replies. Set 0 to run the agent only when you press Run the agent now. Default: 3.', min: 0, max: 50 },
+                { key: 'agentLookback', kind: 'number', label: 'Messages to read', hint: 'The agent reads the last N messages of the chat. 0 reads the whole chat. An automatic pass uses this number only when "Automatic pass reads" is set to a fixed count. Default: 0.', min: 0, max: 100000 },
+                { key: 'agentMaxTurns', kind: 'number', label: 'Research turns', hint: 'The number of model calls one agent pass may make, from 1 to 20. Lower is faster. If it is too low, the agent stops before it has decided anything. Default: 5.', min: 1, max: 20 },
+                { key: 'agentDirectLookback', kind: 'number', label: 'Messages an instructed pass reads', hint: 'The number of messages the agent reads when you send it an instruction, from 0 to 100. 0 reads the whole chat. Default: 10.', min: 0, max: 100 },
+                { key: 'agentEnabled', kind: 'switch', label: 'Automatic agent passes', hint: 'When off, no agent pass runs by itself after a reply. Run the agent now and instructed passes still work. The "Replies between automatic passes" number is kept. Default: on.' },
+                { key: 'agentLookbackMode', kind: 'select', label: 'Automatic pass reads', hint: 'Since the last run: every message since the agent last ran, so nothing is missed between passes. Since the last user message: the current exchange only. Fixed count: the number in "Messages to read". Default: since the last run.', options: [{ value: 'since_last_run', label: 'Since the last run (recommended)' }, { value: 'since_last_user', label: 'Since the last user message' }, { value: 'fixed', label: 'Fixed count of messages' }] },
+                { key: 'agentSwipeRollback', kind: 'switch', label: 'Roll back the agent pass on a swipe', hint: 'When on, swiping or regenerating a reply undoes the automatic agent pass that read it. The lore written for the discarded reply is removed. Default: on.\n\nDifferent from Multihog: Multihog’s default is off. Here the default is on.' },
                 ],
             },
             {
                 id: 'cleanup',
                 icon: '🧹',
                 title: 'Cleanup & full audit',
-                lead: 'Multihog’s 🧹 Cleanup menu and 📕 Full Audit, on the Lorebook agent fold’s tool strip. The threshold is what the cleanup scan flags; the auto-cleanup runs a pass of its own every N passes that find something over it.',
+                lead: 'Settings for the Cleanup and Full audit buttons in the Lore widget. Cleanup shortens bloated entries. Full audit runs the whole chat through the agent in chunks.',
                 rows: [
-                { key: 'agentCleanupUseThreshold', kind: 'switch', label: 'Use the token threshold', hint: 'On, the cleanup flags every entry at or over the threshold; off, every entry of the campaign’s books.' },
-                { key: 'agentCleanupThreshold', kind: 'number', label: 'Token threshold', hint: 'An entry this many tokens long (about four characters each, its map not counted) is bloated: 50 to 5000. Multihog’s 300.', min: 50, max: 5000 },
-                { key: 'agentCleanupEvery', kind: 'number', label: 'Auto-cleanup every N passes', hint: 'After every Nth agent pass that finds something bloated, a cleanup pass runs on its own; 0 never. Every pass that finds something says so in the terminal either way.', min: 0, max: 100 },
-                { key: 'agentAuditTokens', kind: 'number', label: 'Full audit context tokens', hint: 'Multihog’s Full Audit Max Tokens: the chat is cut into chunks of this size less 3000 tokens, each run through the agent with the audit instruction. Set it near the model’s context window.', min: 4000, max: 1000000 },
+                { key: 'agentCleanupUseThreshold', kind: 'switch', label: 'Use token threshold', hint: 'When on, cleanup checks only entries at or over the token threshold. When off, it checks every entry in the campaign’s lorebooks. Default: on.' },
+                { key: 'agentCleanupThreshold', kind: 'number', label: 'Token threshold', hint: 'An entry at or over this many tokens counts as bloated. A token is about four characters, and an entry’s map is not counted. Range: 50 to 5000. Default: 300.', min: 50, max: 5000 },
+                { key: 'agentCleanupEvery', kind: 'number', label: 'Auto-cleanup every N passes', hint: 'A cleanup pass runs by itself after every Nth agent pass that finds a bloated entry. Set 0 to never run it automatically. The terminal reports bloated entries either way. Default: 0.', min: 0, max: 100 },
+                { key: 'agentAuditTokens', kind: 'number', label: 'Full audit context tokens', hint: 'A full audit cuts the chat into chunks of this many tokens minus 3000. Each chunk is one agent pass. Set it near the model’s context window. Default: 32000.', min: 4000, max: 1000000 },
                 ],
             },
             {
                 id: 'books',
                 icon: '📚',
                 title: 'Lorebooks',
-                lead: 'Whether the campaign’s books are attached as they are made, and to what. The Lorebooks sub-fold in the Lorebook agent fold shows each book’s standing.',
+                lead: 'Whether the campaign’s lorebooks are attached as they are made, and where. The Lorebooks list in the Lore widget shows whether each one is attached.',
                 rows: [
-                { key: 'attachBooksToCard', kind: 'switch', label: 'Attach new books as they are made', hint: 'A book is scanned only once it is attached to the chat, the narrator’s card, the persona or the global list; on, every book the campaign makes is attached the moment it is made.' },
-                { key: 'attachBooksTarget', kind: 'select', label: 'Attach to', hint: 'The chat: the books are scanned in this chat and nowhere else. The card: the books go wherever the card goes.', options: [{ value: 'chat', label: 'this chat only (recommended)' }, { value: 'card', label: 'the narrator’s card, for every chat it is used in' }] },
-                ],
-            },
-        ],
-    },
-    {
-        id: 'wizard',
-        category: 'systems',
-        sections: [
-            {
-                id: 'wizard',
-                icon: '🪄',
-                title: 'Wizard advanced options',
-                lead: 'The wizard itself is in the Game Systems & Custom Fields card, under the game systems. These are what it reads when it drafts; the same dials are under the wizard, beside the list it adds to.',
-                rows: [
-                { key: 'wizardLookback', kind: 'number', label: 'Messages the wizard reads', hint: 'For context when drafting a system, 0 to 200. 0 reads none.', min: 0, max: 200 },
-                { key: 'wizardLookbackAll', kind: 'switch', label: 'The wizard reads every message', hint: 'Multihog’s Read every message: the whole chat, the count above ignored.' },
-                { key: 'wizardInjectMemo', kind: 'switch', label: 'Show the wizard the tracker state' },
-                { key: 'wizardInjectLore', kind: 'switch', label: 'Show the wizard the lore the host has active', hint: 'Multihog’s Inject lorebooks: the entries Lumiverse has active for the chat, each under its title.' },
-                { key: 'wizardInjectModulePrompts', kind: 'switch', label: 'Cite existing module prompts as formatting examples', hint: 'Multihog’s picker: which modules and sections to cite is chosen in the wizard’s fold, under the describe box.' },
-                { key: 'wizardSystemPrompt', kind: 'prompt', label: 'The architect prompt', hint: 'What the model is told about designing a system. Multihog’s own, editable; blank it to go back to the stock text.', placeholder: 'Blank: the stock architect prompt.' },
+                { key: 'attachBooksToCard', kind: 'switch', label: 'Attach new lorebooks automatically', hint: 'Lumiverse scans a lorebook only when it is attached to the chat, the narrator’s character card, the persona or the global list. When on, each lorebook the campaign makes is attached as soon as it is made. Default: on.' },
+                { key: 'attachBooksTarget', kind: 'select', label: 'Attach to', hint: 'This chat only: the lorebooks are scanned in this chat and nowhere else. The narrator’s card: the lorebooks are scanned in every chat that uses the card. Default: this chat only.', options: [{ value: 'chat', label: 'This chat only (recommended)' }, { value: 'card', label: 'The narrator’s card (every chat that uses it)' }] },
                 ],
             },
         ],
@@ -182,54 +174,51 @@ export const PREF_DIAL_GROUPS: readonly DialGroup[] = [
                 id: 'architect',
                 icon: '🏛️',
                 title: 'Map Architect',
-                lead: 'When the narrator first enters an unmapped site, Map Architect first generates and locks its room or district topology, then runs a separate content-placement pass against those exact areas. Nothing is stored until both passes validate. The same dials are in the Maps fold.',
+                lead: 'Map Architect draws a map when the party first enters an unmapped site. It makes two passes: one for the layout and one for the contents. Nothing is saved unless both passes succeed.',
                 rows: [
-                { key: 'mapArchitectOpener', kind: 'select', label: 'How the narrator asks for a map', hint: 'Tool call: the narrator calls CreateAreaMap mid-reply, which needs Enable Function Calling on its connection. Block: for a connection that cannot call tools, the narrator writes a [CREATE_AREA_MAP] block at the end of its reply and stops; the map is drawn behind it.', options: [{ value: 'tool', label: 'A tool call (CreateAreaMap)' }, { value: 'text', label: 'A block at the end of the reply' }] },
-                { key: 'mapArchitectLookback', kind: 'number', label: 'Messages the architect reads', hint: 'For context when it draws a site: who is there, what the story has shown. Multihog’s 12.', min: 0, max: 100 },
-                { key: 'mapArchitectSystemPrompt', kind: 'prompt', label: 'The architect’s content prompt', hint: 'Your own content-placement prompt, in place of the stock.', placeholder: 'Blank: the stock prompt.' },
+                { key: 'mapArchitectOpener', kind: 'select', label: 'How the narrator asks for a map', hint: 'Tool call: the narrator calls a tool during its reply. This needs function calling turned on for the narrator’s connection. Text block: the narrator writes a map request at the end of its reply and stops, and the map is drawn after the reply. Use this for a connection that cannot call tools. Default: tool call.', options: [{ value: 'tool', label: 'Tool call (CreateAreaMap)' }, { value: 'text', label: 'Text block' }] },
+                { key: 'mapArchitectLookback', kind: 'number', label: 'Messages read by Map Architect', hint: 'The number of recent messages Map Architect reads for context when it draws a site. Default: 12.', min: 0, max: 100 },
                 ],
             },
             {
                 id: 'updater',
                 icon: '🔄',
                 title: 'Map Updater',
-                lead: 'After a map exists, this dedicated pass keeps occupancy current. It does not record NPC biographies or relationships — those stay on the Lorebook Agent. Every reply is the default, so the agent can stay on a slower cadence.',
+                lead: 'Map Updater keeps an existing map current during play. It records who and what is where. NPC biographies and relationships are recorded by the Lorebook Agent, not here.',
                 rows: [
-                { key: 'mapUpdaterEnabled', kind: 'switch', label: 'Update the map with play', hint: 'After a reply inside a mapped site, one model call asks for a transaction against that site’s map.' },
-                { key: 'mapUpdaterRunEvery', kind: 'number', label: 'Replies between updates', hint: 'Multihog’s 1: after every reply inside a mapped site. A building the party has just entered is furnished at once whatever this says.', min: 1, max: 50 },
-                { key: 'mapUpdaterLookback', kind: 'number', label: 'User turns the updater reads', hint: 'When there is no last update to read from, and for an update pressed in the fold. After one, it reads what came since.', min: 1, max: 100 },
-                { key: 'mapUpdaterSystemPrompt', kind: 'prompt', label: 'The updater’s prompt', hint: 'Your own occupancy prompt, in place of the stock.', placeholder: 'Blank: the stock prompt.' },
+                { key: 'mapUpdaterEnabled', kind: 'switch', label: 'Update maps during play', hint: 'When on, a pass runs after a reply inside a mapped site and applies what changed to that site’s map. Default: on.' },
+                { key: 'mapUpdaterRunEvery', kind: 'number', label: 'Replies between updates', hint: 'How many replies inside a mapped site pass between updates. 1 updates after every reply. A building the party has just entered is filled in at once, whatever this number is. Default: 1.', min: 1, max: 50 },
+                { key: 'mapUpdaterLookback', kind: 'number', label: 'User turns read by Map Updater', hint: 'How many user turns of story Map Updater reads on its first update of a site, and when you press "Update the map now". After an update it reads only what came since. Default: 4.', min: 1, max: 100 },
                 ],
             },
             {
                 id: 'evolution',
                 icon: '🌒',
                 title: 'Map Evolution',
-                lead: 'Separate from occupancy: advances mapped sites off-screen on in-world time, and lets each map feel the World Reports that touch it. Its named sites are ticked in the Maps fold, from the mapped ones; its connection is under Connections & models.',
+                lead: 'Map Evolution changes mapped sites as in-world time passes, mainly while the party is away. It also applies World Progression reports that affect a site. Its connection is set under Connections & models.',
                 rows: [
-                { key: 'mapEvolutionEnabled', kind: 'switch', label: 'Let sites change while the party is away', hint: 'Every mapped site has a clock; once the tracker’s [TIME] has moved past its interval, one model call advances its map.' },
-                { key: 'mapEvolutionIntervalHours', kind: 'number', label: 'In-world hours between passes, away', hint: 'For a site the party is not in. Multihog’s 12. The clock is the tracker’s [TIME] block.', min: 1, max: 168 },
-                { key: 'mapEvolutionOnSiteIntervalHours', kind: 'number', label: 'Hours between passes, on site', hint: 'For the site the party is in, with the minutes below. Multihog’s 1. Both 0: never while they are there.', min: 0, max: 168 },
-                { key: 'mapEvolutionOnSiteIntervalMinutes', kind: 'number', label: 'Minutes between passes, on site', hint: 'Added to the hours above.', min: 0, max: 59 },
-                { key: 'mapEvolutionOnSitePreset', kind: 'select', label: 'On the party’s site', hint: 'Dynamic: bolder, encounter-rich change just beyond their area. Standard: the same restraint as elsewhere.', options: [{ value: 'dynamic', label: 'Dynamic' }, { value: 'standard', label: 'Standard' }] },
-                { key: 'mapEvolutionScope', kind: 'select', label: 'Which sites a pass considers', hint: 'All: every mapped site that is due. The party’s: only the one they are in. Some: the number below, picked from the due ones. Named: the sites ticked in the Maps fold.', options: [{ value: 'all', label: 'All' }, { value: 'active', label: 'The party’s' }, { value: 'count', label: 'Some' }, { value: 'selected', label: 'Named' }] },
-                { key: 'mapEvolutionCount', kind: 'number', label: 'How many, when some', hint: '0 for every due site.', min: 0, max: 50, visibleWhen: (p) => p.mapEvolutionScope === 'count' },
-                { key: 'mapEvolutionRandomize', kind: 'switch', label: 'Pick them at random', visibleWhen: (p) => p.mapEvolutionScope === 'count' },
-                { key: 'mapEvolutionWorldReportLookback', kind: 'number', label: 'World reports a site may feel', hint: 'The most recent ones, plus any aimed at the site. Multihog’s 5.', min: 1, max: 20 },
-                { key: 'mapEvolutionLookback', kind: 'number', label: 'User turns of recent story a pass reads', hint: 'Every due site is shown the same window and told to apply only what touches its own map. 0 sends none. Multihog’s 20.', min: 0, max: 100 },
-                { key: 'mapEvolutionCompressEnabled', kind: 'switch', label: 'Compress a site’s closed history when it grows long' },
-                { key: 'mapEvolutionCompressThreshold', kind: 'number', label: 'Compress past this many tokens', hint: 'Of closed threads. One more model call, into a few digests. Multihog’s 10,000.', min: 500, max: 100000, step: 100, visibleWhen: (p) => p.mapEvolutionCompressEnabled !== false },
-                { key: 'mapEvolutionNarratorCommitTokens', kind: 'number', label: 'Tokens of site activity for the narrator', hint: 'The briefing sent with a site’s map: open threads, recent commits, digests. Multihog’s 2,000.', min: 200, max: 20000, step: 100 },
-                { key: 'mapEvolutionSystemPrompt', kind: 'prompt', label: 'The evolution prompt', hint: 'Your own evolution prompt, in place of the stock.', placeholder: 'Blank: the stock prompt.' },
+                { key: 'mapEvolutionEnabled', kind: 'switch', label: 'Evolve sites over in-world time', hint: 'When on, every mapped site has a clock that follows the tracker’s in-world time. When a site’s interval has passed, one pass changes its map. Default: on.' },
+                { key: 'mapEvolutionIntervalHours', kind: 'number', label: 'Hours between passes, away', hint: 'In-world hours between passes for a site the party is not in. Default: 8.', min: 1, max: 168 },
+                { key: 'mapEvolutionOnSiteIntervalHours', kind: 'number', label: 'Hours between passes, on site', hint: 'In-world hours between passes for the site the party is in. The minutes below are added. If both are 0, that site never changes while the party is there. Default: 1.', min: 0, max: 168 },
+                { key: 'mapEvolutionOnSiteIntervalMinutes', kind: 'number', label: 'Minutes between passes, on site', hint: 'Added to the hours above. Default: 0.', min: 0, max: 59 },
+                { key: 'mapEvolutionOnSitePreset', kind: 'select', label: 'Change style on the party’s site', hint: 'Dynamic: bolder changes with more encounters, just outside the party’s area. Standard: the same restraint as for other sites. Default: dynamic.', options: [{ value: 'dynamic', label: 'Dynamic' }, { value: 'standard', label: 'Standard' }] },
+                { key: 'mapEvolutionScope', kind: 'select', label: 'Sites a pass considers', hint: 'All: every mapped site that is due. Party’s site: only the site the party is in. Some: a set number of the due sites. Named: the sites selected under "Named sites and their hours" in the Map Evolution drawer of the Lore widget. Default: all.', options: [{ value: 'all', label: 'All' }, { value: 'active', label: 'Party’s site' }, { value: 'count', label: 'Some' }, { value: 'selected', label: 'Named' }] },
+                { key: 'mapEvolutionCount', kind: 'number', label: 'Number of sites', hint: 'How many due sites one pass takes. 0 takes every due site. Shown when "Sites a pass considers" is "Some". Default: 2.', min: 0, max: 50, visibleWhen: (p) => p.mapEvolutionScope === 'count' },
+                { key: 'mapEvolutionRandomize', kind: 'switch', label: 'Pick sites at random', hint: 'When on, the sites for a pass are picked at random from the due ones. When off, the sites changed longest ago go first. The party’s site, when it is due, is always taken first. Default: on.', visibleWhen: (p) => p.mapEvolutionScope === 'count' },
+                { key: 'mapEvolutionWorldReportLookback', kind: 'number', label: 'World reports a site reads', hint: 'How many of the most recent World Progression reports a pass reads. Reports aimed at the site are always included. Default: 5.', min: 1, max: 20 },
+                { key: 'mapEvolutionLookback', kind: 'number', label: 'User turns of story a pass reads', hint: 'How many user turns of recent story a pass reads. Every due site gets the same story and applies only what affects its own map. 0 sends no story. Default: 20.', min: 0, max: 100 },
+                { key: 'mapEvolutionCompressEnabled', kind: 'switch', label: 'Compress long site history', hint: 'When on, a site’s closed history is shortened once it passes the token limit below. Default: on.' },
+                { key: 'mapEvolutionCompressThreshold', kind: 'number', label: 'Compress above this many tokens', hint: 'When a site’s closed history passes this many tokens, one extra pass shortens it into a few summaries. Default: 10,000.', min: 500, max: 100000, step: 100, visibleWhen: (p) => p.mapEvolutionCompressEnabled !== false },
+                { key: 'mapEvolutionNarratorCommitTokens', kind: 'number', label: 'Site activity tokens for the narrator', hint: 'The token budget for the site activity briefing sent to the narrator with a site’s map. The briefing covers open threads, recent changes and summaries. Default: 2,000.', min: 200, max: 20000, step: 100 },
                 ],
             },
             {
                 id: 'screen',
                 icon: '🧭',
-                title: 'The map on screen',
-                lead: 'The party’s site as the Maps fold draws it.',
+                title: 'Map display',
+                lead: '',
                 rows: [
-                { key: 'mapRevealAll', kind: 'switch', label: 'Reveal all on the map on screen', hint: 'Draw what the party has not learned too: every room, every thing in them, and what each evolution pass did. Off, the picture is what the party knows.' },
+                { key: 'mapRevealAll', kind: 'switch', label: 'Reveal all', hint: 'When on, the map shows everything: every room, everything in them, and what each Map Evolution pass did. When off, the map shows only what the party knows. The same switch is beside the map in the Visuals/Map tab. Default: off.' },
                 ],
             },
         ],
@@ -243,67 +232,68 @@ export const PREF_DIAL_GROUPS: readonly DialGroup[] = [
             {
                 id: 'rotation',
                 icon: '🔀',
-                title: 'Location Rotation',
-                lead: 'World Progression advances location-scale conditions, not entity timelines. It selects the least recently covered location dossiers first. The random pick and the exclusion list have no row in the fold: the backend honours them, and this is their first place on screen.',
+                title: 'Location rotation',
+                lead: 'World Progression reports on locations, not on individual people or things.',
                 rows: [
-                { key: 'worldProgressionLocationsPerReport', kind: 'number', label: 'Locations per report', hint: 'The ones advanced longest ago go first; named people are never subjects.', min: 1, max: 12 },
-                { key: 'worldProgressionLocationRandomize', kind: 'switch', label: 'Pick the locations at random', hint: 'Off, the ones advanced longest ago go first, as Multihog’s rotation does.' },
-                { key: 'worldProgressionExclusionList', kind: 'text', label: 'Places never reported on', hint: 'Names, comma-separated, as their entries title them.' },
+                { key: 'worldProgressionLocationsPerReport', kind: 'number', label: 'Locations per report', hint: 'How many locations each report covers. The locations reported on longest ago are chosen first. Named people are never report subjects. Default: 3.', min: 1, max: 12 },
+                { key: 'worldProgressionLocationRandomize', kind: 'switch', label: 'Randomize equally old locations', hint: 'The locations reported on longest ago always go first. When on, locations that are equally old are picked in random order. When off, they are picked in a fixed order. Default: on.' },
+                { key: 'worldProgressionExclusionList', kind: 'text', label: 'Excluded places', hint: 'Locations that World Progression never reports on. Enter the names as their lorebook entries are titled, separated by commas.' },
                 ],
             },
             {
                 id: 'timing',
                 icon: '🕒',
-                title: 'Timing & Narrative Input',
-                lead: 'The switch, the interval on the tracker’s [TIME] block, and the replies the writer reads for scene context. Write a report now and Reset the timeline are in the World progression fold.',
+                title: 'Timing & narrative input',
+                lead: '“Write a report now” and “Reset the timeline” are in the World Progression drawer of the Lore widget.',
                 rows: [
-                { key: 'worldProgressionEnabled', kind: 'switch', label: 'Write reports', hint: 'Off by default. The clock is the tracker’s [TIME] block; switching it on starts the clock on the next tracker pass.' },
-                { key: 'worldProgressionIntervalHours', kind: 'number', label: 'In-world hours between reports', hint: 'Multihog’s 24: one report a day. The clock is the tracker’s [TIME] block.', min: 1, max: 720 },
-                { key: 'worldProgressionLookback', kind: 'number', label: 'Replies the writer reads', hint: 'For scene context only. 0 reads none.', min: 0, max: 200 },
+                { key: 'worldProgressionEnabled', kind: 'switch', label: 'Write reports', hint: 'When on, World Progression writes a report each time the in-world interval passes. The clock is the tracker’s [TIME] block, and it starts counting on the next tracker pass. Default: off.' },
+                { key: 'worldProgressionIntervalHours', kind: 'number', label: 'In-world hours between reports', hint: 'In-world hours between automatic reports, read from the tracker’s [TIME] block. Default: 24, one report per in-world day.', min: 1, max: 720 },
+                { key: 'worldProgressionLookback', kind: 'number', label: 'Replies the report writer reads', hint: 'How many recent replies the report writer reads for scene context. Set 0 to read none. Default: 20.', min: 0, max: 200 },
                 ],
             },
             {
                 id: 'injection',
                 icon: '➡️',
-                title: 'Context Injection Settings',
-                lead: 'The rolling window: how many of the newest reports reach the narrator as the AdventureTime — the world message.',
+                title: 'Context injection',
+                lead: '',
                 rows: [
-                { key: 'worldProgressionKeepActive', kind: 'number', label: 'Reports shown to the narrator', hint: 'The newest N. The rest stay in the campaign’s _World book as history.', min: 1, max: 20 },
+                { key: 'worldProgressionKeepActive', kind: 'number', label: 'Reports shown to the narrator', hint: 'How many of the newest reports the narrator sees, in the “AdventureTime — the world” prompt message. Older reports stay in the campaign’s World lorebook as history. Default: 1.', min: 1, max: 20 },
                 ],
             },
             {
                 id: 'history',
                 icon: '📖',
-                title: 'Report History & Consolidation',
-                lead: 'What the writer reads of the earlier reports, and the consolidation that folds a long backlog into digests. None of these has a row in the fold; the backend honours them, and this is their first place on screen.',
+                title: 'Report history & consolidation',
+                lead: '',
                 rows: [
-                { key: 'worldProgressionHistoryLookback', kind: 'number', label: 'Earlier reports the writer reads', hint: 'The newest N of the history, besides the ones shown to the narrator, so a report follows from the last. 0 reads none.', min: 0, max: 100 },
-                { key: 'worldProgressionConsolidateEnabled', kind: 'switch', label: 'Consolidate old reports', hint: 'Every N reports, the older ones in the _World book are folded into one digest by one more model call.' },
-                { key: 'worldProgressionConsolidateInterval', kind: 'number', label: 'Reports between consolidations', hint: 'Multihog’s 7.', min: 2, max: 50, visibleWhen: (p) => p.worldProgressionConsolidateEnabled === true },
+                { key: 'worldProgressionHistoryLookback', kind: 'number', label: 'Earlier reports the report writer reads', hint: 'How many earlier reports the report writer reads, besides the ones shown to the narrator, so a new report follows from the last. Set 0 to read none. Default: 0.', min: 0, max: 100 },
+                { key: 'worldProgressionConsolidateEnabled', kind: 'switch', label: 'Consolidate old reports', hint: 'When on, the older reports in the campaign’s World lorebook are merged into one digest after every set number of reports. Each merge is one more model call. Default: off.' },
+                { key: 'worldProgressionConsolidateInterval', kind: 'number', label: 'Reports between consolidations', hint: 'How many reports are written between consolidations. Default: 7.', min: 2, max: 50, visibleWhen: (p) => p.worldProgressionConsolidateEnabled === true },
                 ],
             },
         ],
     },
     {
         id: 'creator',
-        category: 'connections',
+        // Under Game systems & rulebook since 100c (departure 170): Multihog keeps it with the connections.
+        category: 'systems',
         sections: [
             {
                 id: 'creation',
                 icon: '✍️',
-                title: 'Character Creation & Starting Modes',
-                lead: 'Shared by the Character creator, Instant Action and the other ways to begin, where the sheet is written. Multihog keeps these with its connections.',
+                title: 'Character creation & starting modes',
+                lead: 'These defaults are used by the Character creator, Instant Action and the other ways to begin.',
                 rows: [
-                { key: 'creatorLevel', kind: 'select', label: 'Level', hint: 'The default for the next character; the level the creator starts at.', options: LEVELS },
-                { key: 'creatorGearTier', kind: 'select', label: 'Starting gear', options: GEAR_TIERS.map((t) => ({ value: t.value, label: t.label })) },
-                { key: 'creatorCombatScalingGuide', kind: 'switch', label: 'Use the combat and skill scaling guide', hint: 'A classic d20-style reference for how competence grows with level. Switch it off for a homebrew system that should not read like D&D.' },
-                { key: 'creatorPlayerCard', kind: 'switch', label: 'Write a Player Card (recommended)', hint: 'A second model call writes the character’s appearance, personality, habits and backstory into a Player Card the narrator sees every turn.' },
-                { key: 'creatorCardWords', kind: 'number', label: 'Player Card words', min: CARD_WORDS_MIN, max: CARD_WORDS_MAX, step: 10 },
-                { key: 'creatorPersona', kind: 'switch', label: 'Create a persona with the character’s name (recommended)', hint: 'A persona with the character’s name and no description, made and switched to, so your messages carry the name while the Player Card stays the one biography.' },
-                { key: 'creatorInitialDate', kind: 'text', label: 'Starting day', hint: 'What the [TIME] block opens at. Day 1.' },
-                { key: 'creatorInitialTime', kind: 'text', label: 'Starting time', hint: '08:00 AM.' },
-                { key: 'creatorSendStarter', kind: 'switch', label: 'Instant Action begins the adventure', hint: 'Begin sends the opening message as yours and starts the reply; off, you type your first action.' },
-                { key: 'creatorInstantRandomLevel', kind: 'switch', label: 'Instant Action rolls the level (1–10)', hint: 'Off, level 1. A level named in the setup outranks either.' },
+                { key: 'creatorLevel', kind: 'select', label: 'Starting level', hint: 'The level the Character creator offers for the next character. Default: level 1.', options: LEVELS },
+                { key: 'creatorGearTier', kind: 'select', label: 'Starting gear', options: GEAR_TIERS.map((t) => ({ value: t.value, label: t.value === 'none' ? 'None (skip gear guidance)' : t.label })) }, // the one tier shown in other words than the generated list's (96)
+                { key: 'creatorCombatScalingGuide', kind: 'switch', label: 'Use the scaling guide', hint: 'When on, the character prompt includes a d20-style reference for how combat and skill ability grow with level. Turn it off for a homebrew system that should not read like D&D. Default: on.' },
+                { key: 'creatorPlayerCard', kind: 'switch', label: 'Write a Player Card', hint: 'When on, one more model call writes the character’s appearance, personality, habits and backstory into a Player Card. The narrator sees the Player Card on every reply. Default: off. Recommended.' },
+                { key: 'creatorCardWords', kind: 'number', label: 'Player Card length (words)', min: CARD_WORDS_MIN, max: CARD_WORDS_MAX, step: 10 },
+                { key: 'creatorPersona', kind: 'switch', label: 'Create a matching persona', hint: 'When on, AdventureTime creates a Lumiverse persona with the character’s name and no description, and switches to it. Your messages then carry the character’s name, and the Player Card stays the only biography. Default: on. Recommended.' },
+                { key: 'creatorInitialDate', kind: 'text', label: 'Starting day', hint: 'The day the in-world clock starts on. Default: Day 1.' },
+                { key: 'creatorInitialTime', kind: 'text', label: 'Starting time', hint: 'The time the in-world clock starts at. Default: 08:00 AM.' },
+                { key: 'creatorSendStarter', kind: 'switch', label: 'Instant Action sends the opening message', hint: 'When on, Instant Action sends the opening message for you and the narrator replies. When off, you type your first action. Default: on.' },
+                { key: 'creatorInstantRandomLevel', kind: 'switch', label: 'Instant Action: random level (1–10)', hint: 'When on, Instant Action rolls a starting level from 1 to 10. When off, the character starts at level 1. A level named in the setup text overrides both. Default: off.' },
                 ],
             },
         ],
@@ -327,12 +317,13 @@ export interface PrefDials {
 export const PREF_DIALS_CSS = `
 .lh-dial-books-list { max-height: 160px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; border: 1px solid var(--lh-accent-dim, var(--lumiverse-border, rgba(128,128,128,0.3))); border-radius: 6px; padding: 6px 8px; background: var(--lh-card-bg, var(--lumiverse-fill, rgba(127,127,127,0.06))); }
 .lh-dial-books-list:empty { display: none; }
-.lh-dial-book { display: flex; align-items: center; gap: 6px; font-size: 0.85em; cursor: pointer; }
+.lh-dial-book { display: flex; align-items: center; gap: 6px; font-size: 0.8em; cursor: pointer; }
 .adventuretime-panel .lh-dials { display: flex; flex-direction: column; gap: 8px; }
-.adventuretime-panel .lh-dial-card > .lh-section-help { margin-top: 6px; }
 .adventuretime-panel .lh-dial { display: flex; flex-direction: column; gap: 3px; }
 .adventuretime-panel .lh-dial-main { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .adventuretime-panel .lh-dial-label { flex: 1; min-width: 10em; }
+.adventuretime-panel .lh-dial-label-line { display: flex; align-items: center; gap: 4px; }
+.adventuretime-panel .lh-dial-label-line > label { min-width: 0; }
 .adventuretime-panel .lh-dial input[type="number"] { width: 6em; }
 .adventuretime-panel .lh-dial input[type="text"] { flex: 1; min-width: 10em; }
 .adventuretime-panel .lh-dial textarea { width: 100%; box-sizing: border-box; }
@@ -360,6 +351,15 @@ export function createPrefDials(host: PrefDialsHost, group: DialGroup): PrefDial
         const main = el('div', { class: 'lh-dial-main' })
         const label = el('label', { class: 'lh-dial-label' })
         label.textContent = row.label
+        // The hint is behind a [?] after the label (96); its text goes under the row.
+        const tip = row.hint ? createHelpTip(el, row.label, row.hint) : null
+        const labelled = (node: HTMLElement): HTMLElement => {
+            if (!tip) return node
+            const line = el('span', { class: 'lh-dial-label lh-dial-label-line' })
+            node.classList.remove('lh-dial-label')
+            line.append(node, tip.button)
+            return line
+        }
         let control: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
         if (row.kind === 'switch') {
             const input = el('input', { type: 'checkbox', 'aria-label': row.label }) as HTMLInputElement
@@ -367,7 +367,7 @@ export function createPrefDials(host: PrefDialsHost, group: DialGroup): PrefDial
             const box = el('label', { class: 'lh-dial-label' })
             box.append(input, label)
             label.className = ''
-            main.append(box)
+            main.append(labelled(box))
             control = input
         } else if (row.kind === 'select') {
             const select = el('select', { class: 'lh-input', 'aria-label': row.label }) as HTMLSelectElement
@@ -377,23 +377,24 @@ export function createPrefDials(host: PrefDialsHost, group: DialGroup): PrefDial
                 select.append(option)
             }
             select.addEventListener('change', () => save({ [row.key]: select.value }))
-            main.append(label, select)
+            main.append(labelled(label), select)
             control = select
         } else if (row.kind === 'books') {
             // The legacy's filter list: a tick per book the host has, saved as the ticked names; None ticked reads every book.
             const list = el('div', { class: 'lh-dial-books-list', 'data-lh-field': `dial-${row.key}-list` })
             const note = el('div', { class: 'lh-conn-hint', 'data-lh-field': `dial-${row.key}-note` })
             const reload = el('button', { type: 'button', class: 'lh-button lh-button--quiet' }) as HTMLButtonElement
-            reload.textContent = '↻ Reload the books'
+            reload.textContent = '↻ Reload lorebooks'
             // Clear (73h-bis, the maintainer's ask): the list is long, and unticking it one by one is not a way back to the default.
             const clear = el('button', { type: 'button', class: 'lh-button lh-button--quiet', 'data-lh-field': `dial-${row.key}-clear` }) as HTMLButtonElement
-            clear.textContent = 'Clear'
-            clear.title = 'Untick every book: the tracker reads the books linked to this chat again.'
+            clear.textContent = 'Clear selection'
+            // Its help is behind a [?] beside it (96), not a tooltip.
+            const clearTip = createHelpTip(el, 'Clear selection', 'Clears every selection. The tracker then reads the lorebooks linked to this chat.')
             const ticked = (): string[] => Array.from(list.querySelectorAll<HTMLInputElement>('input[data-lh-book]')).filter((box) => box.checked).map((box) => box.dataset.lhBook ?? '')
             const entry = { row, list, note, loaded: false, load: () => {} }
             entry.load = () => {
-                if (!host.listBooks) { note.textContent = 'This build cannot list the host’s lorebooks.'; return }
-                note.textContent = 'Reading the host’s books…'
+                if (!host.listBooks) { note.textContent = 'This build cannot list Lumiverse’s lorebooks.'; return }
+                note.textContent = 'Reading the lorebooks…'
                 host.listBooks().then((books) => {
                     entry.loaded = true
                     const picked = new Set(Array.isArray(prefs[row.key]) ? (prefs[row.key] as string[]) : [])
@@ -411,9 +412,9 @@ export function createPrefDials(host: PrefDialsHost, group: DialGroup): PrefDial
                     // A ticked name the host no longer lists is kept in the filter, as the legacy keeps it; the note says so.
                     const missing = [...picked].filter((name) => !books.some((book) => book.name === name))
                     note.textContent = books.length
-                        ? (missing.length ? `Ticked, but the host lists no book so named: ${missing.join(', ')}.` : '')
+                        ? (missing.length ? `Selected, but Lumiverse has no lorebook with this name: ${missing.join(', ')}.` : '')
                         : 'No lorebooks found.'
-                }).catch((error) => { note.textContent = `The books could not be listed: ${error instanceof Error ? error.message : String(error)}`; host.fail(error) })
+                }).catch((error) => { note.textContent = `The lorebooks could not be listed: ${error instanceof Error ? error.message : String(error)}`; host.fail(error) })
             }
             reload.addEventListener('click', entry.load)
             clear.addEventListener('click', () => {
@@ -421,20 +422,18 @@ export function createPrefDials(host: PrefDialsHost, group: DialGroup): PrefDial
                 save({ [row.key]: [] })
             })
             bookRows.push(entry)
-            main.append(label, reload, clear)
+            main.append(labelled(label), reload, clear, clearTip.button)
             container.classList.add('lh-dial--stacked')
-            container.append(main, list, note)
-            if (row.hint) {
-                const hint = el('div', { class: 'lh-conn-hint' })
-                hint.textContent = row.hint
-                container.append(hint)
-            }
+            container.append(main)
+            if (tip) container.append(tip.note)
+            container.append(clearTip.note)
+            container.append(list, note)
             into.append(container)
             return
         } else if (row.kind === 'prompt') {
             const box = el('textarea', { class: 'lh-input', rows: '3', spellcheck: 'false', 'aria-label': row.label, placeholder: row.placeholder ?? '' }) as HTMLTextAreaElement
             box.addEventListener('change', () => save({ [row.key]: box.value }))
-            main.append(label)
+            main.append(labelled(label))
             container.classList.add('lh-dial--stacked')
             control = box
         } else {
@@ -452,16 +451,12 @@ export function createPrefDials(host: PrefDialsHost, group: DialGroup): PrefDial
                     save({ [row.key]: input.value })
                 }
             })
-            main.append(label, input)
+            main.append(labelled(label), input)
             control = input
         }
         container.append(main)
+        if (tip) container.append(tip.note)
         if (row.kind === 'prompt') container.append(control)
-        if (row.hint) {
-            const hint = el('div', { class: 'lh-conn-hint' })
-            hint.textContent = row.hint
-            container.append(hint)
-        }
         rows.push({ row, container, control })
         into.append(container)
     }
@@ -470,13 +465,12 @@ export function createPrefDials(host: PrefDialsHost, group: DialGroup): PrefDial
         const card = el('details', { class: 'lh-card lh-dial-card', 'data-lh-card': section.id }) as HTMLDetailsElement
         const summary = el('summary')
         const icon = el('span', { class: 'lh-card-icon', 'aria-hidden': 'true' })
-        icon.textContent = section.icon
+        setCardIcon(icon, section.title, section.icon)
         const title = el('span', { class: 'lh-card-title' })
         title.textContent = section.title
         summary.append(icon, title, el('span', { class: 'lh-chevron', 'aria-hidden': 'true' }))
-        const lead = el('div', { class: 'lh-section-help' })
-        lead.textContent = section.lead
-        card.append(summary, lead)
+        card.append(summary)
+        if (section.lead) attachCardHelp(el, card, summary, title, section.lead)
         for (const row of section.rows) renderRow(row, card)
         root.append(card)
     }

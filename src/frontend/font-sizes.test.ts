@@ -15,7 +15,7 @@ describe('the font sizes (74e)', () => {
         expect(readFontSize(-2)).toBe(0)
         expect(readFontSize(undefined)).toBe(0)
         expect(readFontSize('big')).toBe(0)
-        expect(fontSizeLabel(0)).toBe('the host’s')
+        expect(fontSizeLabel(0)).toBe('Lumiverse default')
         expect(fontSizeLabel(16)).toBe('16px')
     })
 

@@ -40,7 +40,7 @@ function makeBooks(seed: Record<string, Array<Partial<Entry>>>) {
 
 const PACK_MOVES = JSON.stringify({ operation_id: 'evo-pack', operations: [{ op: 'MOVE_ASSET', evidence: 'EVOLVED', asset_id: 'pack', from: 'crypt', to: 'landing', detail: 'Sniffing at the door.', cause: 'Drawn by the lantern light.', actor: 'pack', thread_status: 'open' }], chronicles: [{ area_id: 'crypt', text: 'The pack crept out toward the landing.' }] })
 const QUIET = '{"noop":true}'
-const OPTIONS: MapEvolutionOptions = { enabled: true, intervalHours: 8, onSiteIntervalHours: 1, onSiteIntervalMinutes: 0, onSitePreset: 'dynamic', scope: 'all', count: 2, randomize: false, selectedRoots: [], worldReportLookback: 5, storyLookback: 0, systemPrompt: '', compressEnabled: true, compressThreshold: 10000 }
+const OPTIONS: MapEvolutionOptions = { enabled: true, intervalHours: 8, onSiteIntervalHours: 1, onSiteIntervalMinutes: 0, onSitePreset: 'dynamic', scope: 'all', count: 2, randomize: false, selectedRoots: [], worldReportLookback: 5, storyLookback: 0, systemPrompt: '', compressSystemPrompt: '', compressEnabled: true, compressThreshold: 10000 }
 
 function harness(replies: string[] = [PACK_MOVES, QUIET], over: Partial<MapSandboxDeps> = {}) {
     const books = makeBooks({ Vell_LOC: Object.values(LOCATION_BOOK) })

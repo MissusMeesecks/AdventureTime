@@ -510,6 +510,28 @@ describe('Multihog’s manifest (78b): the Player Character, the NPC cards, the 
         expect(shown.at(-1)!.nodes[0]).toBe(full)
     })
 
+    it('shows under the Full NPC Card only what was said while it was open, never the panel’s note from before (the report of 2026-11-22)', async () => {
+        shown.length = 0
+        const { fold, root, openIt, openFolder, note } = mount({ cards: true, extra: extra() })
+        fold.setChat('c1')
+        await openIt()
+        openFolder('Vell_NPC')
+        // Something said in the panel first: a pin, standing in for + MAP's note in the report.
+        ;(root.querySelector('.lh-npc-card[data-lh-entry="n1"] [data-lh-field="records-pin"]') as HTMLElement).click()
+        await settle()
+        expect(note()).not.toBe('')
+        ;(root.querySelector('.lh-npc-card[data-lh-entry="n1"] [data-lh-field="records-view"]') as HTMLElement).click()
+        const full = shown.at(-1)!.nodes[0]!
+        const fullNote = full.querySelector('[data-lh-field="records-full-note"]') as HTMLElement
+        expect(fullNote.textContent).toBe('')
+        // Said while the card is open, it shows there.
+        const number = full.querySelector('input[aria-label="Elara’s friendship"]') as HTMLInputElement
+        number.value = '12'
+        number.dispatchEvent(new Event('change'))
+        await settle()
+        expect(fullNote.textContent).toBe('Elara’s friendship is set to +12.')
+    })
+
     it('rewrites an entry with AI from the Full NPC Card (78c): the pane over the sections, the legacy’s refusal of blank instructions, the revised text for review, Regenerate, Cancel and Apply through update', async () => {
         shown.length = 0
         const asked: Array<[string, string]> = []

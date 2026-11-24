@@ -6,7 +6,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { createDisplayGroupsCard, type DisplayGroupsCard } from './display-groups-card.js'
+import { DISPLAY_GROUPS_CARD_CSS, createDisplayGroupsCard, type DisplayGroupsCard } from './display-groups-card.js'
 
 const el = (tag: string, attrs?: Record<string, string>) => { const n = document.createElement(tag); for (const [k, v] of Object.entries(attrs ?? {})) n.setAttribute(k, v); return n }
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0))
@@ -37,7 +37,7 @@ beforeEach(() => {
 describe('the switches and the list', () => {
     it('reads the three preferences, saves a switch as it is ticked, and lists each group with its members', () => {
         expect(card.root.getAttribute('data-lh-card')).toBe('display-groups')
-        expect(q('.lh-dg-list').textContent).toContain('No Display Groups configured.')
+        expect(q('.lh-dg-list').textContent).toContain('No display groups yet.')
         card.applyPrefs({ displayGroupsEnabled: true, displayGroupsShowGaps: false, displayGroups: [group] })
         expect(field('displayGroupsEnabled').checked).toBe(true)
         expect(field('displayGroupsShowGaps').checked).toBe(false)
@@ -49,7 +49,7 @@ describe('the switches and the list', () => {
         expect(lastPatch()).toEqual({ displayGroupsShowGaps: true })
         field('displayGroupsEnabled').click()
         expect(lastPatch()).toEqual({ displayGroupsEnabled: false })
-        expect(q('[data-lh-field="display-groups-note"]').textContent).toContain('Normal module cards restored')
+        expect(q('[data-lh-field="display-groups-note"]').textContent).toBe('Display groups off. Every module has its own card again.')
         // A group's own tick saves the groups whole, normalised.
         row.querySelector<HTMLInputElement>('.lh-dg-enabled')!.click()
         expect(lastPatch()).toEqual({ displayGroups: [{ ...group, enabled: false }] })
@@ -60,7 +60,7 @@ describe('the switches and the list', () => {
         confirm.mockResolvedValueOnce(false)
         q('[data-lh-group="vehicle_systems"] .lh-dg-delete').click()
         await settle()
-        expect(confirm).toHaveBeenCalledWith('Delete Display Group?', expect.stringContaining('"Vehicle Systems"'), 'Delete')
+        expect(confirm).toHaveBeenCalledWith('Delete display group?', 'Delete display group "Vehicle Systems"? Its modules are not deleted or turned off.', 'Delete')
         expect(savePrefs).not.toHaveBeenCalled()
         q('[data-lh-group="vehicle_systems"] .lh-dg-delete').click()
         await settle()
@@ -69,18 +69,75 @@ describe('the switches and the list', () => {
     })
 })
 
+describe('the help behind a [?] (96)', () => {
+    const tipFor = (label: string) => q<HTMLButtonElement>(`.lh-help-tip[aria-label="Help: ${label}"]`)
+    const noteOf = (tip: HTMLElement) => document.getElementById(tip.getAttribute('aria-controls')!)!
+
+    it('puts the card’s, the two ticks’ and the editor’s help behind buttons, hidden from the first paint, with no help left in the open', () => {
+        expect(q('.lh-card-title').textContent).toBe('Display groups')
+        const head = tipFor('Display groups')
+        expect(head.parentElement!.tagName).toBe('SUMMARY')
+        expect(noteOf(head).hidden).toBe(true)
+        expect(noteOf(head).textContent).toBe('A display group draws the cards of several modules as one card under a shared header.\n\nDisplay groups apply to every chat and only change how cards are drawn. They never change the memo, the prompts, which modules are on or the game systems.')
+        head.click()
+        expect(card.root.open).toBe(true)
+        expect(noteOf(head).hidden).toBe(false)
+        for (const [name, label, text] of [
+            ['displayGroupsEnabled', 'Enable display groups', 'When on, your saved groups are used in the tracker cards. When off, every module is drawn as its own card again, and your groups are kept. Default: off.'],
+            ['displayGroupsShowGaps', 'Show gaps in groups', 'When on, a line and a gap separate the modules inside a group. When off, they run together with no separator. Default: off.'],
+        ] as const) {
+            const row = field(name).closest('label')!
+            expect(row.textContent).toBe(label)
+            expect(row.hasAttribute('title')).toBe(false)
+            const tip = tipFor(label)
+            expect(tip.closest('label')).toBeNull()
+            expect(noteOf(tip).closest('label')).toBeNull()
+            expect(noteOf(tip).hidden).toBe(true)
+            expect(noteOf(tip).textContent).toBe(text)
+        }
+        expect(q('.lh-second-lead')).toBeNull()
+        // The editor's two notes are in the DOM before it is ever opened.
+        expect(qa('[data-lh-field="display-group-editor"] .lh-help-note').map((n) => n.hidden)).toEqual([true, true])
+    })
+
+    it('keeps the editor’s help through a redraw and a close, and names a group’s own switch for a screen reader', () => {
+        card.applyPrefs({ displayGroups: [group] })
+        const tick = q('[data-lh-group="vehicle_systems"] .lh-dg-enabled')
+        expect(tick.getAttribute('aria-label')).toBe('Turn this group on or off')
+        expect(tick.title).toBe('Turn this group on or off')
+        action('display-group-add').click()
+        expect(field('display-group-icon').hasAttribute('title')).toBe(false)
+        expect(field('display-group-name').getAttribute('placeholder')).toBe('Group name')
+        const icon = tipFor('Group icon')
+        expect(icon.previousElementSibling).toBe(field('display-group-icon'))
+        const order = tipFor('Module order in this group')
+        expect(order.parentElement!.textContent).toBe('Module order in this group')
+        order.click()
+        expect(noteOf(order).textContent).toBe('Select the modules to draw under this shared header. Use the arrows to set their order inside the group. Combat, Quests and Benched party cannot be grouped, and a module can belong to only one group.')
+        expect(noteOf(order).previousElementSibling).toBe(order.parentElement)
+        expect(noteOf(icon).textContent).toBe('The group’s icon. Type or paste an emoji, or pick one from the row below.')
+        // A redraw (the cartridge changed under the open editor) keeps the open note open.
+        card.setSettings(settings)
+        expect(noteOf(tipFor('Module order in this group')).hidden).toBe(false)
+        expect(qa('[data-lh-field="display-group-editor"] .lh-help-note')).toHaveLength(2)
+        action('display-group-cancel').click()
+        expect(qa('[data-lh-field="display-group-editor"] .lh-help-note')).toHaveLength(2)
+        expect(DISPLAY_GROUPS_CARD_CSS).toContain('.lh-dg-editor[hidden] { display: none; }')
+    })
+})
+
 describe('the editor', () => {
     it('creates a group from the checklist in the order ticked, refusing no name and no member', async () => {
         expect(field('display-group-editor').hidden).toBe(true)
         action('display-group-add').click()
         expect(field('display-group-editor').hidden).toBe(false)
-        expect(q('.lh-dg-editor-title').textContent).toBe('Create Display Group')
+        expect(q('.lh-dg-editor-title').textContent).toBe('Create display group')
         // The stock blocks less the three excluded, then the custom fields with their kind.
         expect(qa('.lh-dg-member').map((m) => (m as HTMLInputElement).value)).toEqual(['CHARACTER', 'PARTY', 'INVENTORY', 'ABILITIES', 'SPELLS', 'XP', 'TIME', 'ALPHA_STANDING', 'VEHICLE_FUEL'])
-        expect(qa('.lh-dg-member-kind').map((k) => k.textContent)).toEqual(['Stock', 'Stock', 'Stock', 'Stock', 'Stock', 'Stock', 'Stock', 'Custom', 'Wizard'])
-        expect(q('[data-lh-field="display-group-order"]').textContent).toContain('Select modules below')
+        expect(qa('.lh-dg-member-kind').map((k) => k.textContent)).toEqual(['Built-in', 'Built-in', 'Built-in', 'Built-in', 'Built-in', 'Built-in', 'Built-in', 'Custom', 'Wizard'])
+        expect(q('[data-lh-field="display-group-order"]').textContent).toContain('No modules selected yet.')
         action('display-group-save').click()
-        expect(q('[data-lh-field="display-groups-note"]').textContent).toBe('Give the Display Group a name.')
+        expect(q('[data-lh-field="display-groups-note"]').textContent).toBe('Give the display group a name.')
         field('display-group-name').value = 'Vehicle Systems'
         field('display-group-name').dispatchEvent(new Event('input'))
         action('display-group-save').click()
@@ -126,7 +183,7 @@ describe('the editor', () => {
     it('edits a group with a claimed tag greyed and a missing member kept as unavailable, and Cancel drops the edit', () => {
         card.applyPrefs({ displayGroups: [group, { id: 'other', name: 'Other', icon: '🏠', enabled: true, members: ['TIME', 'GONE'] }] })
         q('[data-lh-group="other"] .lh-dg-edit').click()
-        expect(q('.lh-dg-editor-title').textContent).toBe('Edit Display Group')
+        expect(q('.lh-dg-editor-title').textContent).toBe('Edit display group')
         expect(field('display-group-name').value).toBe('Other')
         expect(member('VEHICLE_FUEL').disabled).toBe(true)
         expect(member('VEHICLE_FUEL').closest('label')!.textContent).toContain('In Vehicle Systems')

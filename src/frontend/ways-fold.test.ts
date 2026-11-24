@@ -2,7 +2,8 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
 import type { WaysResult } from '../protocol.js'
-import { rollCreatorName } from '../tracker/creator.js'
+import { GEAR_TIERS, rollCreatorName } from '../tracker/creator.js'
+import { CREATOR_HELP, gearTierLabel } from './creator-fold.js'
 import { createWaysFold, describeWaysResult, type WaysFold, type WaysFoldHost } from './ways-fold.js'
 
 afterEach(() => { document.body.replaceChildren() })
@@ -203,5 +204,69 @@ describe('the time & date segment (72b)', () => {
         // Without a cartridge writer the two selects are drawn disabled.
         const bare = createWaysFold({ el: (tag, attrs) => { const n = document.createElement(tag); for (const [k, v] of Object.entries(attrs ?? {})) n.setAttribute(k, v); return n }, begin: async () => ({ status: 'failed', at: 't', way: 'custom', name: '' }) as WaysResult, savePrefs: async () => undefined, fail: () => undefined, when: () => '' })
         expect((bare.root.querySelector('[data-lh-field="ways-calendar-input"]') as HTMLSelectElement).disabled).toBe(true)
+    })
+})
+
+/** Every piece of help is a [?] and a hidden note: nothing explanatory stands in the open or lives in a tooltip alone. */
+function expectNoVisibleHelp(root: HTMLElement, statusClasses: string[], titles: string[]): void {
+    expect(root.querySelectorAll('.lh-world-lead')).toHaveLength(0)
+    const hints = Array.from(root.querySelectorAll('[class*="-hint"], [class*="-sub"]')).filter((n) => !statusClasses.some((c) => n.classList.contains(c)))
+    expect(hints.map((n) => n.className)).toEqual([])
+    // A tooltip may name an icon-only button or say why a button is off; it never carries the help.
+    const titled = Array.from(root.querySelectorAll('[title]')).filter((n) => n.getAttribute('title'))
+    expect(titled.every((n) => n.tagName === 'BUTTON')).toBe(true)
+    expect(titled.map((n) => n.getAttribute('title')).filter((t) => !titles.includes(t!))).toEqual([])
+    const notes = Array.from(root.querySelectorAll<HTMLElement>('.lh-help-note'))
+    expect(notes.length).toBeGreaterThan(0)
+    for (const note of notes) {
+        expect(note.hidden).toBe(true)
+        expect(note.textContent).not.toMatch(/the host|Multihog|\bPhase\b|creator[A-Z]\w+/)
+        const tip = root.querySelector(`button.lh-help-tip[aria-controls="${note.id}"]`)!
+        expect(tip).not.toBeNull()
+        // Neither the [?] nor its note may sit in a label that wraps a tick: a press would be the label's.
+        for (const node of [tip, note]) expect(node.closest('label')?.querySelector('input[type="checkbox"]') ?? null).toBeNull()
+    }
+}
+
+describe('the sub-fold and its copy (98)', () => {
+    const helpOf = (scope: Element) => scope.querySelector('.lh-help-note')?.textContent ?? ''
+
+    it('is a plain sub-fold header naming its two ways, with no lead paragraph', () => {
+        const { fold } = harness()
+        const summary = fold.root.querySelector('summary')!
+        expect(summary.textContent).toBe('From a persona or a description')
+        expect(summary.children).toHaveLength(0)
+        expect(fold.root.className).toBe('lh-ways')
+    })
+
+    it('says its twins’ decided labels and help, and keeps every help behind a [?]', () => {
+        const { fold } = harness()
+        fold.setChat('chat-1')
+        type(control(fold, 'name'), 'Mara Quill')
+        type(control(fold, 'instructions'), 'A lighthouse keeper')
+        const field = (name: string) => fold.root.querySelector(`[data-lh-field="ways-${name}"]`)!
+        expect(['level', 'genre', 'gear-tier', 'calendar', 'clock', 'start-day', 'start-time', 'instructions'].map((n) => field(n).querySelector('label')!.textContent)).toEqual(['Starting level', 'Genre', 'Starting gear', 'Calendar', 'Clock', 'Starting day', 'Starting time', 'Instructions'])
+        expect(helpOf(field('level'))).toBe(CREATOR_HELP.level)
+        expect(helpOf(field('start-day'))).toBe('The day the in-world clock starts on. Default: Day 1.')
+        expect(helpOf(field('start-time'))).toBe('The time the in-world clock starts at. Default: 08:00 AM.')
+        expect(helpOf(field('calendar'))).toContain('Use DD/MM/YYYY dates')
+        expect(helpOf(field('clock'))).toContain('Use 24-hour time')
+        expect(control(fold, 'level').options[0]!.textContent).toBe('No levels (custom system)')
+        expect(Array.from(control(fold, 'gear-tier').options).map((o) => o.textContent)).toEqual(GEAR_TIERS.map(gearTierLabel))
+        const tick = (name: string) => control(fold, name).closest('label')!
+        expect(tick('combat-guide').textContent).toBe('Use the scaling guide')
+        expect(helpOf(tick('combat-guide').closest('.lh-helped')!)).toBe(CREATOR_HELP.scalingGuide)
+        expect(tick('player-card').textContent).toBe('Write a Player Card')
+        expect(helpOf(tick('player-card').closest('.lh-helped')!)).toBe(CREATOR_HELP.playerCard)
+        expect(tick('persona').textContent).toBe('Create a matching persona')
+        expect(helpOf(tick('persona').closest('.lh-helped')!)).toBe(CREATOR_HELP.persona)
+        // Each way's help is the [?] after its own button; an enabled button carries no tooltip.
+        expect(button(fold, PERSONA).title).toBe('')
+        expect(button(fold, CUSTOM).title).toBe('')
+        expect(button(fold, PERSONA).nextElementSibling!.getAttribute('aria-label')).toBe('Help: From the active persona')
+        expect(button(fold, CUSTOM).nextElementSibling!.getAttribute('aria-label')).toBe('Help: From the instructions')
+        // The name line is a status line, and stays.
+        expectNoVisibleHelp(fold.root, ['lh-ways-hint'], [])
+        expect(Array.from(fold.root.querySelectorAll('.lh-ways-hint')).map((n) => n.getAttribute('data-lh-field'))).toEqual(['ways-name-hint'])
     })
 })

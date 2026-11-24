@@ -67,7 +67,7 @@ export interface SyspromptRow {
 
 export interface SyspromptView {
     rows: SyspromptRow[]
-    /** `44 sections · 4 switched on` */
+    /** `44 sections · 4 on` */
     counts: string
     /** What the switched-on ones cost the narrator every single turn. */
     cost: string
@@ -188,33 +188,28 @@ export function buildSyspromptView(
 
     const on = rows.filter((row) => row.enabled)
     const counts = rows.length
-        ? `${rows.length} section${rows.length === 1 ? '' : 's'} · ${on.length} switched on`
+        ? `${rows.length} section${rows.length === 1 ? '' : 's'} · ${on.length} on`
         : ''
 
     const onTokens = on.reduce((sum, row) => sum + row.tokens, 0)
     const cost = on.length
-        ? `About ${onTokens.toLocaleString()} tokens go to the narrator every turn.`
-        : 'Nothing is being sent to the narrator.'
+        ? `about ${onTokens.toLocaleString()} tokens sent with every reply`
+        : 'No custom section is sent to the narrator.'
 
-    const summary = rows.length
-        ? 'These are your own instructions to the storyteller — voice, world rules, how a ' +
-          'mechanic reads. Every section switched on is sent with every reply, on top of ' +
-          'whatever your character card and system prompt already say.'
-        : 'No custom sections in this cartridge.'
+    // With sections there is nothing to say here (96): what they are is behind the heading's [?].
+    const summary = rows.length ? '' : 'No custom sections yet.'
 
     const notes: string[] = []
     const empty = rows.filter((row) => row.empty)
     if (empty.length) {
         notes.push(
-            `${empty.length} section${empty.length === 1 ? ' is' : 's are'} switched on with nothing ` +
-                'written in them, so they are skipped.',
+            `${empty.length} section${empty.length === 1 ? ' is on but empty, so it is' : 's are on but empty, so they are'} skipped.`,
         )
     }
     const lost = rows.filter((row) => row.position < 0)
     if (lost.length) {
         notes.push(
-            `${lost.length} section${lost.length === 1 ? ' is' : 's are'} missing from your saved ` +
-                'order, so they are placed last. Nothing is lost.',
+            `${lost.length} section${lost.length === 1 ? ' is missing from the saved order, so it is' : 's are missing from the saved order, so they are'} sent last.`,
         )
     }
 

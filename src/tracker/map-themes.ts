@@ -51,6 +51,21 @@ const legacy = createMapThemesLegacy() as unknown as Legacy
 
 /** The twenty-two colour fields, in the legacy's order and groups. */
 export const MAP_THEME_FIELDS: ReadonlyArray<MapThemeField> = legacy.MAP_THEME_FIELDS
+/**
+ * The names the card shows where they differ from the generated file's (96):
+ * keyed by the legacy's own label, so the generated file keeps Multihog's
+ * words and a pin move that renames one fails the face's test.
+ */
+export const MAP_THEME_FIELD_DISPLAY_NAMES: Readonly<Record<string, string>> = {
+    'Textbox background': 'Hover card background',
+    'Visited text': 'Visited area text',
+    'Closed / locked': 'Closed or locked route',
+    'Blocked / destroyed': 'Blocked or destroyed route',
+    'Other': 'Other asset',
+}
+/** A colour field's name as the card shows it. */
+export const mapThemeFieldLabel = (field: Pick<MapThemeField, 'label'>): string =>
+    Object.prototype.hasOwnProperty.call(MAP_THEME_FIELD_DISPLAY_NAMES, field.label) ? MAP_THEME_FIELD_DISPLAY_NAMES[field.label]! : field.label
 /** Ember: the legacy's default, and the fallback every rule of the map's stylesheet carries. */
 export const DEFAULT_MAP_THEME: Readonly<MapTheme> = legacy.DEFAULT_MAP_THEME
 /** The five factory presets: Ember, Blueprint, Verdant, Parchment, Blue & White. */

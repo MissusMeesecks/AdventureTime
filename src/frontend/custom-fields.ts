@@ -15,6 +15,8 @@
  * alone change it.
  */
 
+import { attachCardHelp, createHelpTip } from './help-tip.js'
+
 export interface CustomField {
     tag: string
     label?: string
@@ -33,9 +35,15 @@ export interface CustomFieldsHost {
     download?(filename: string, text: string): void
     /** A JSON file picked by the user, as text; `null` when none was picked. */
     pickJson?(): Promise<string | null>
-    /** Ask before the clear; true to go ahead. Absent, the clear asks nothing. */
-    confirm?(message: string): Promise<boolean>
+    /**
+     * Ask before a field is deleted or all are removed; true to go ahead. The
+     * title names the action and the button is its verb (96). Absent, nothing asks.
+     */
+    confirm?(title: string, message: string, confirmLabel: string): Promise<boolean>
 }
+
+/** Ids for the row editor's labels; one counter for every editor on the page. */
+let inputSequence = 0
 
 /** The modules file (72b): the custom fields alone, under a name that says what they are. */
 export interface CustomFieldsFile {
@@ -128,12 +136,12 @@ export function validateTag(tag: string, others: string[]): string | null {
     const value = tag.trim().toUpperCase()
     if (!value) return 'A tag is required.'
     if (!TAG_PATTERN.test(value)) {
-        return 'Use capitals, digits and underscores only, starting with a letter — like MORALE_INDEX.'
+        return 'Use capital letters, digits and underscores, starting with a letter. Example: MORALE_INDEX.'
     }
     if (STOCK_MODULE_TAGS.includes(value)) {
-        return `${value} is a built-in module. Pick a different tag, or switch that module off instead.`
+        return `${value} is a built-in module. Pick a different tag, or turn that module off.`
     }
-    if (others.includes(value)) return `There is already a field tagged ${value}.`
+    if (others.includes(value)) return `A field tagged ${value} already exists.`
     return null
 }
 
@@ -167,25 +175,30 @@ export function mountCustomFieldsEditor(
     const summary = el('div', { class: 'lh-fields-summary' })
     const list = el('div', { class: 'lh-fields-list' })
     const addButton = el('button', { type: 'button', class: 'lh-button' })
-    addButton.textContent = 'Add a field'
+    addButton.textContent = 'Add field'
     // Export, Import and Clear all (72b): Multihog's three buttons, drawn when the host can file and pick.
     const tools = el('div', { class: 'lh-fields-tools' })
     const toolsNote = el('div', { class: 'lh-fields-tools-note', 'data-lh-field': 'fields-tools-note' })
+    // The buttons' help (96): each `[?]` after its button, the notes under the row. Drawn once, so a redraw of the list keeps them.
+    const toolsHelp = el('div', { class: 'lh-fields-tools-help' })
+    const helped = (button: HTMLElement, label: string, text: string): void => {
+        const tip = createHelpTip(el as never, label, text)
+        tools.append(button, tip.button)
+        toolsHelp.append(tip.note)
+    }
     if (host.download) {
         const exportButton = el('button', { type: 'button', class: 'lh-button lh-button--quiet', 'data-lh-field': 'fields-export' })
-        exportButton.textContent = 'Export'
-        exportButton.title = 'Every custom field as a JSON file, to keep or to import into another install.'
+        exportButton.textContent = 'Export fields'
         exportButton.addEventListener('click', () => {
             if (!fields.length) { toolsNote.textContent = 'No custom fields to export.'; return }
             host.download!(`adventuretime-modules-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify({ adventuretimeCustomFields: fields } satisfies CustomFieldsFile, null, 2))
             toolsNote.textContent = `Exported ${fields.length} ${fields.length === 1 ? 'field' : 'fields'}.`
         })
-        tools.append(exportButton)
+        helped(exportButton, 'Export fields', 'Saves every custom field as one JSON file. Use it as a backup, or import it into another install.')
     }
     if (host.pickJson) {
         const importButton = el('button', { type: 'button', class: 'lh-button lh-button--quiet', 'data-lh-field': 'fields-import' })
-        importButton.textContent = 'Import'
-        importButton.title = 'A modules file: its fields are added, and one with a tag already here replaces that one.'
+        importButton.textContent = 'Import fields'
         importButton.addEventListener('click', () => {
             host.pickJson!().then((text) => {
                 if (text === null) { toolsNote.textContent = 'No file was picked.'; return }
@@ -195,14 +208,13 @@ export function mountCustomFieldsEditor(
                 toolsNote.textContent = `Imported ${imported.length} ${imported.length === 1 ? 'field' : 'fields'}: ${imported.map((f) => f.tag).join(', ')}.`
             }).catch((error: unknown) => { toolsNote.textContent = `Could not import: ${error instanceof Error ? error.message : String(error)}` })
         })
-        tools.append(importButton)
+        helped(importButton, 'Import fields', 'Adds the fields from a custom fields file. A field whose tag already exists here is replaced.')
     }
     const clearButton = el('button', { type: 'button', class: 'lh-button lh-button--quiet lh-button--danger', 'data-lh-field': 'fields-clear' })
-    clearButton.textContent = 'Clear all'
-    clearButton.title = 'Remove every custom field. The memo blocks they made stay until a pass drops them; a game system linked to one is left without its tracker half.'
+    clearButton.textContent = 'Remove all fields'
     clearButton.addEventListener('click', () => {
         if (!fields.length) { toolsNote.textContent = 'No custom fields to clear.'; return }
-        const ask = host.confirm ? host.confirm(`Remove all ${fields.length} custom ${fields.length === 1 ? 'field' : 'fields'}? A cartridge exported before this still holds them.`) : Promise.resolve(true)
+        const ask = host.confirm ? host.confirm('Remove all fields', `Remove all ${fields.length} custom ${fields.length === 1 ? 'field' : 'fields'}? This cannot be undone. A cartridge you exported earlier still holds them.`, 'Remove all') : Promise.resolve(true)
         ask.then((ok) => {
             if (!ok) return
             const count = fields.length
@@ -211,8 +223,15 @@ export function mountCustomFieldsEditor(
             toolsNote.textContent = `Removed ${count} ${count === 1 ? 'field' : 'fields'}.`
         }).catch(() => undefined)
     })
-    tools.append(clearButton)
-    root.replaceChildren(summary, list, addButton, tools, toolsNote)
+    // The warning stays in the open beside its button; the rest is behind the `[?]`.
+    const clearWarning = el('span', { class: 'lh-fields-tools-warning' })
+    clearWarning.textContent = 'Removes every custom field.'
+    {
+        const tip = createHelpTip(el as never, 'Remove all fields', 'The memo blocks the fields made stay until a tracker pass drops them. A game system linked to a removed field loses its tracker module.')
+        tools.append(clearButton, clearWarning, tip.button)
+        toolsHelp.append(tip.note)
+    }
+    root.replaceChildren(summary, list, addButton, tools, toolsHelp, toolsNote)
 
     function commit(): void {
         onChange(fields.map((field) => ({ ...field })))
@@ -236,16 +255,8 @@ export function mountCustomFieldsEditor(
         }
 
         const line = el('div')
-        line.textContent = `${on} of ${fields.length} switched on.`
+        line.textContent = `${on} of ${fields.length} on`
         summary.append(line)
-
-        if (on < fields.length) {
-            const note = el('small', { class: 'lh-help' })
-            note.textContent =
-                'A field that is off still travels in cartridges and still shows if its block is already in the memo — ' +
-                'but the tracker is never told to maintain it, so it will not update.'
-            summary.append(note)
-        }
 
         // Switched on and still not maintained. Reported separately because it
         // is a *different* problem with an identical symptom, and the switch
@@ -256,15 +267,9 @@ export function mountCustomFieldsEditor(
             const warning = el('div', { class: 'lh-field-warning' })
             warning.textContent =
                 silent === 1
-                    ? '1 of those has no instruction, so it will not update either.'
-                    : `${silent} of those have no instruction, so they will not update either.`
+                    ? '1 field that is on has no instruction, so it does not update.'
+                    : `${silent} fields that are on have no instruction, so they do not update.`
             summary.append(warning)
-
-            const note = el('small', { class: 'lh-help' })
-            note.textContent =
-                'The instruction is the module — it is the whole of what the tracker is told about a block. ' +
-                'A field without one is left out of the prompt entirely, however its switch is set.'
-            summary.append(note)
         }
     }
 
@@ -276,7 +281,8 @@ export function mountCustomFieldsEditor(
 
         const toggle = el('input', { type: 'checkbox' })
         toggle.checked = !!field.enabled
-        toggle.title = 'Maintain this block on every turn'
+        toggle.title = 'Update this block on every pass'
+        toggle.setAttribute('aria-label', 'Update this block on every pass')
         // Inside a <summary>, a click would otherwise fold the row instead.
         toggle.addEventListener('click', (event) => event.stopPropagation())
         toggle.addEventListener('change', () => {
@@ -291,17 +297,18 @@ export function mountCustomFieldsEditor(
         tagChip.textContent = `[${field.tag}]`
 
         head.append(toggle, name, tagChip)
+        row.append(head)
 
         // On the row it is about, not only in the count above. Lesson 7: a
-        // message about one thing must go on that thing.
+        // message about one thing must go on that thing. Its help opens the
+        // row, as a card's does, since a closed row shows only its head (96).
         if (field.enabled && !isMaintained(field)) {
             row.classList.add('lh-field--silent')
             const chip = el('span', { class: 'lh-field-silent' })
-            chip.textContent = 'no instruction'
-            chip.title = 'Switched on, but the tracker is never told about this block, so it will not update.'
+            chip.textContent = 'No instruction'
             head.append(chip)
+            attachCardHelp(el as never, row, head, chip, 'This field is on, but it has no instruction. The tracker is not told about it, so it does not update.')
         }
-        row.append(head)
 
         const body = el('div', { class: 'lh-field-body' })
 
@@ -311,10 +318,13 @@ export function mountCustomFieldsEditor(
             help: string,
             apply: (next: string) => string | null,
         ): HTMLElement => {
-            const wrap = el('label', { class: 'lh-field-input' })
-            const caption = el('span')
+            // Not a <label> around the lot: the `[?]` and its note may not sit inside one (96).
+            const id = `lh-field-${++inputSequence}`
+            const wrap = el('div', { class: 'lh-field-input' })
+            const captionLine = el('div', { class: 'lh-field-caption' })
+            const caption = el('label', { for: id })
             caption.textContent = labelText
-            const input = el('input', { type: 'text' })
+            const input = el('input', { type: 'text', id })
             input.value = value
             const error = el('small', { class: 'lh-field-error' })
 
@@ -327,9 +337,9 @@ export function mountCustomFieldsEditor(
                 else commit()
             })
 
-            const hint = el('small', { class: 'lh-help' })
-            hint.textContent = help
-            wrap.append(caption, input, hint, error)
+            const tip = createHelpTip(el as never, labelText, help)
+            captionLine.append(caption, tip.button)
+            wrap.append(captionLine, tip.note, input, error)
             return wrap
         }
 
@@ -341,7 +351,7 @@ export function mountCustomFieldsEditor(
                 fields[index] = { ...field, tag: next.trim().toUpperCase() }
                 return null
             }),
-            text('Name', field.label ?? '', 'Shown on the card. Defaults to the tag.', (next) => {
+            text('Name', field.label ?? '', 'Shown on the card. Leave blank to use the tag.', (next) => {
                 fields[index] = { ...field, label: next.trim() }
                 return null
             }),
@@ -351,20 +361,20 @@ export function mountCustomFieldsEditor(
             }),
         )
 
-        const promptWrap = el('label', { class: 'lh-field-input' })
-        const promptCaption = el('span')
+        const promptId = `lh-field-${++inputSequence}`
+        const promptWrap = el('div', { class: 'lh-field-input' })
+        const promptLine = el('div', { class: 'lh-field-caption' })
+        const promptCaption = el('label', { for: promptId })
         promptCaption.textContent = 'Instruction'
-        const prompt = el('textarea', { rows: '10', spellcheck: 'false' })
+        const prompt = el('textarea', { rows: '10', spellcheck: 'false', id: promptId })
         prompt.value = field.prompt ?? ''
         prompt.addEventListener('change', () => {
             fields[index] = { ...field, prompt: prompt.value }
             commit()
         })
-        const promptHint = el('small', { class: 'lh-help' })
-        promptHint.textContent =
-            'What the tracker model is told about this block, every turn. This is the module: describe the values, ' +
-            'how they change, and end with the exact block format you want back. Leave it empty and the block is ' +
-            'never mentioned to the tracker at all. For example:'
+        const promptTip = createHelpTip(el as never, 'Instruction',
+            'What the tracker is told about this block on every pass. Describe the values and how they change, ' +
+            'and end with the exact block format you want back. If it is empty, the tracker is not told about the block.')
 
         // A blank box with prose guidance above it is what produces the empty
         // instruction this row now warns about. Showing the shape is cheaper
@@ -377,14 +387,26 @@ export function mountCustomFieldsEditor(
             'Arrows: 12/20',
             '[/QUIVER]',
         ].join('\n')
-        promptWrap.append(promptCaption, prompt, promptHint, promptExample)
+        // The example goes with the help it illustrates, behind the same `[?]`.
+        promptTip.note.append(promptExample)
+        promptLine.append(promptCaption, promptTip.button)
+        promptWrap.append(promptLine, promptTip.note, prompt)
         body.append(promptWrap)
 
         const remove = el('button', { type: 'button', class: 'lh-button lh-field-delete' })
-        remove.textContent = 'Delete this field'
+        remove.textContent = 'Delete field'
         remove.addEventListener('click', () => {
-            fields = fields.filter((_, i) => i !== index)
-            commit()
+            // Asks first, as every other delete does (96). By the field itself, not its index: the list may be redrawn while the question stands.
+            const drop = (): void => {
+                const at = fields.indexOf(field)
+                if (at < 0) return
+                fields = fields.filter((_, i) => i !== at)
+                commit()
+            }
+            if (!host.confirm) { drop(); return }
+            host.confirm('Delete field', `Delete the field "${field.label || field.tag}"? This cannot be undone.`, 'Delete')
+                .then((ok) => { if (ok) drop() })
+                .catch(() => undefined)
         })
         body.append(remove)
 

@@ -647,10 +647,10 @@ export interface RulebookView {
 
 const CHILD_FLAGS: Record<string, Array<{ flag: string; label: string; engine?: boolean }>> = {
     quests: [
-        { flag: 'questsDeadlines', label: 'deadlines' },
-        { flag: 'questsFrustration', label: 'questgiver mood' },
+        { flag: 'questsDeadlines', label: 'Deadlines' },
+        { flag: 'questsFrustration', label: 'Questgiver frustration' },
     ],
-    '[PARTY]_mechanics': [{ flag: 'party_bench', label: 'benching', engine: !ENGINE_LIMITS.partyBench }],
+    '[PARTY]_mechanics': [{ flag: 'party_bench', label: 'Benched party', engine: !ENGINE_LIMITS.partyBench }],
 }
 
 export function buildRulebookView(input: RulebookSettings): RulebookView {
@@ -713,19 +713,8 @@ export function buildRulebookView(input: RulebookSettings): RulebookView {
     const sent = base.filter((r) => r.sent).length
     const counts = `${base.length} stock sections · ${sent} sent`
 
+    // No engine limit is left (every entry of ENGINE_LIMITS is lifted), so the notes that named one are gone (96).
     const limits: string[] = []
-    if (!ENGINE_LIMITS.dice) {
-        limits.push(
-            'Dice are not built yet, so the RNG section tells the narrator to simulate a fair d20 internally. ' +
-                'The rngEnabled setting is preserved and ignored until the dice engine lands.',
-        )
-    }
-    if (!ENGINE_LIMITS.partyBench) {
-        limits.push(
-            'Party benching is switched off by AdventureTime: the [BENCH] and [UNBENCH] commands are not merged, ' +
-                'so the narrator is not told to bench. The flag is preserved.',
-        )
-    }
 
     return { rows, size: whole.length, tokens: Math.round(whole.length / 4), counts, limits }
 }

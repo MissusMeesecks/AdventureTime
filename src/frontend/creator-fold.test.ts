@@ -2,7 +2,8 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
 import type { CreatorResult } from '../protocol.js'
-import { createCreatorFold, describeCreatorResult, type CreatorFold, type CreatorFoldHost } from './creator-fold.js'
+import { GEAR_TIERS } from '../tracker/creator.js'
+import { createCreatorFold, CREATOR_HELP, describeCreatorResult, GEAR_TIER_DISPLAY, gearTierLabel, type CreatorFold, type CreatorFoldHost } from './creator-fold.js'
 
 afterEach(() => { document.body.replaceChildren() })
 
@@ -78,10 +79,10 @@ describe('the Player Card switches (35b)', () => {
 })
 
 describe('the fold', () => {
-    it('starts closed and blank, stays folded on a chat with no memo (84; it opened itself before), wears the drawers’ chevron, and disables Generate without a chat', () => {
+    it('starts closed and blank, stays folded on a chat with no memo (84; it opened itself before), wears the option card’s header, and disables Generate without a chat', () => {
         const { fold } = harness()
         expect(fold.root.open).toBe(false)
-        expect(fold.root.querySelector('summary .lh-start-hero-btn .lh-start-fold-chevron')!.textContent).toBe('▸')
+        expect(fold.root.querySelector('summary > .lh-chevron')).not.toBeNull()
         expect(button(fold, 'Generate the character').disabled).toBe(true)
         fold.setChat('chat-1', true)
         expect(fold.root.open).toBe(false)
@@ -268,13 +269,99 @@ describe('the fold', () => {
         fold.applyPrefs({ creatorConnectionId: 'gone' })
         fold.setConnections([{ id: 'c1', name: 'Fast', model: 'small' }], '')
         const select = fold.root.querySelector('[data-lh-field="creator-connection"] select') as HTMLSelectElement
-        expect(Array.from(select.options).map((o) => [o.value, o.textContent])).toEqual([['', 'The tracker’s connection'], ['c1', 'Fast — small'], ['gone', 'The connection you chose is no longer listed']])
+        expect(Array.from(select.options).map((o) => [o.value, o.textContent])).toEqual([['', 'Use the State Tracker connection'], ['c1', 'Fast — small'], ['gone', 'The connection you chose is no longer listed']])
         expect(select.value).toBe('gone')
         select.value = 'c1'
         change(select)
         await settle()
         expect(patches.at(-1)).toEqual({ creatorConnectionId: 'c1' })
+        // The line under the select is a status line: nothing to say, nothing shown.
+        expect((fold.root.querySelector('[data-lh-field="creator-connection"] .lh-conn-hint') as HTMLElement).hidden).toBe(true)
+        fold.setConnections([], '')
+        expect(fold.root.querySelector('[data-lh-field="creator-connection"] .lh-conn-hint')!.textContent).toBe('No connections are listed. The sheet is written on the State Tracker connection.')
         fold.setConnections([], 'The host refused the list')
+        expect((fold.root.querySelector('[data-lh-field="creator-connection"] .lh-conn-hint') as HTMLElement).hidden).toBe(false)
         expect(fold.root.querySelector('[data-lh-field="creator-connection"] .lh-conn-hint')!.textContent).toBe('The host refused the list')
+    })
+})
+
+/** Every piece of help is a [?] and a hidden note: nothing explanatory stands in the open or lives in a tooltip alone. */
+function expectNoVisibleHelp(root: HTMLElement, statusClasses: string[], titles: string[]): void {
+    expect(root.querySelectorAll('.lh-world-lead')).toHaveLength(0)
+    const hints = Array.from(root.querySelectorAll('[class*="-hint"], [class*="-sub"]')).filter((n) => !statusClasses.some((c) => n.classList.contains(c)))
+    expect(hints.map((n) => n.className)).toEqual([])
+    // A tooltip may name an icon-only button or say why a button is off; it never carries the help.
+    const titled = Array.from(root.querySelectorAll('[title]')).filter((n) => n.getAttribute('title'))
+    expect(titled.every((n) => n.tagName === 'BUTTON')).toBe(true)
+    expect(titled.map((n) => n.getAttribute('title')).filter((t) => !titles.includes(t!))).toEqual([])
+    const notes = Array.from(root.querySelectorAll<HTMLElement>('.lh-help-note'))
+    expect(notes.length).toBeGreaterThan(0)
+    for (const note of notes) {
+        expect(note.hidden).toBe(true)
+        expect(note.textContent).not.toMatch(/the host|Multihog|\bPhase\b|creator[A-Z]\w+/)
+        const tip = root.querySelector(`button.lh-help-tip[aria-controls="${note.id}"]`)!
+        expect(tip).not.toBeNull()
+        // Neither the [?] nor its note may sit in a label that wraps a tick: a press would be the label's.
+        for (const node of [tip, note]) expect(node.closest('label')?.querySelector('input[type="checkbox"]') ?? null).toBeNull()
+    }
+}
+
+describe('the option card and its copy (98)', () => {
+    const labelOf = (fold: CreatorFold, name: string) => fold.root.querySelector(`[data-lh-field="creator-${name}"] > label > span`)!.textContent
+    const helpOf = (scope: Element) => scope.querySelector('.lh-help-note')?.textContent ?? ''
+
+    it('wears the starting area’s shared header: the icon, the name, the line saying who it is for, the chevron, and no [?]', () => {
+        const { fold } = harness()
+        expect(fold.root.className).toBe('lh-creator lh-start-option')
+        expect(fold.root.getAttribute('data-lh-option')).toBe('creator')
+        const summary = fold.root.querySelector('summary')!
+        expect(Array.from(summary.children).map((n) => `${n.tagName.toLowerCase()}.${n.className}`)).toEqual(['span.lh-start-option-icon', 'span.lh-start-option-label', 'span.lh-chevron'])
+        expect(summary.querySelector('.lh-start-option-icon')!.textContent).toBe('🎲')
+        expect(summary.querySelector('.lh-start-option-icon')!.getAttribute('aria-hidden')).toBe('true')
+        expect(Array.from(summary.querySelector('.lh-start-option-label')!.children).map((n) => `${n.tagName.toLowerCase()}.${n.className}`)).toEqual(['span.lh-start-option-title', 'small.lh-start-option-sub'])
+        expect(summary.querySelector('.lh-start-option-title')!.textContent).toBe('Character creator')
+        expect(summary.querySelector('.lh-start-option-sub')!.textContent).toBe('Full control: class, level, gear and saved presets.')
+        expect(summary.querySelector('.lh-chevron')!.textContent).toBe('')
+        expect(summary.querySelector('.lh-chevron')!.getAttribute('aria-hidden')).toBe('true')
+        expect(fold.root.querySelector('.lh-start-hero-btn, .lh-start-hero-sub, .lh-start-fold-chevron, .lh-start-drawer-chevron')).toBeNull()
+    })
+
+    it('says its twins’ decided labels and help, and keeps every help behind a [?]', () => {
+        const { fold } = harness()
+        fold.setChat('chat-1', true)
+        fold.setConnections([{ id: 'c1', name: 'Fast' }], '')
+        expect(['level', 'gear-tier', 'start-date', 'start-time'].map((n) => labelOf(fold, n))).toEqual(['Starting level', 'Starting gear', 'Starting day', 'Starting time'])
+        expect(helpOf(fold.root.querySelector('[data-lh-field="creator-level"]')!)).toBe(`${CREATOR_HELP.level} No levels (custom system): the sheet has no level and no XP block.`)
+        expect(CREATOR_HELP.level).toBe('The level the Character creator offers for the next character. Default: level 1.')
+        expect(helpOf(fold.root.querySelector('[data-lh-field="creator-start-time"]')!)).toBe('The time the in-world clock starts at. Default: 08:00 AM.')
+        expect(helpOf(fold.root.querySelector('[data-lh-field="creator-start-date"]')!)).toContain('The day the in-world clock starts on. Default: Day 1.')
+        expect(control(fold, 'level').options[0]!.textContent).toBe('No levels (custom system)')
+        const tick = (field: string) => fold.root.querySelector(`[data-lh-field="${field}"]`)!.closest('.lh-helped')!
+        expect(fold.root.querySelector('[data-lh-field="creator-combat-guide"]')!.textContent).toBe('Use the scaling guide')
+        expect(helpOf(tick('creator-combat-guide'))).toBe(CREATOR_HELP.scalingGuide)
+        expect(fold.root.querySelector('[data-lh-field="creator-persona"]')!.textContent).toBe('Create a matching persona')
+        expect(helpOf(tick('creator-persona'))).toBe(CREATOR_HELP.persona)
+        const card = fold.root.querySelector('[data-lh-field="creator-player-card-input"]')!.closest('label')!
+        expect(card.textContent).toBe('Write a Player Card')
+        expect(helpOf(card.closest('.lh-helped')!)).toBe(CREATOR_HELP.playerCard)
+        expect(fold.root.querySelector('[data-lh-field="creator-connection"] .lh-conn-label')!.textContent).toBe('Connection')
+        expect(helpOf(fold.root.querySelector('[data-lh-field="creator-connection"]')!)).toBe(CREATOR_HELP.connection)
+        expectNoVisibleHelp(fold.root, ['lh-conn-hint', 'lh-start-option-sub'], ['Roll a name'])
+        expect((fold.root.querySelector('.lh-conn-hint') as HTMLElement).hidden).toBe(true)
+        // A press shows the help under its field and nothing else.
+        const level = fold.root.querySelector('[data-lh-field="creator-level"]')!
+        ;(level.querySelector('.lh-help-tip') as HTMLButtonElement).click()
+        expect((level.querySelector('.lh-help-note') as HTMLElement).hidden).toBe(false)
+        expect(Array.from(fold.root.querySelectorAll<HTMLElement>('.lh-help-note')).filter((n) => !n.hidden)).toHaveLength(1)
+    })
+
+    it('shows one gear tier in the settings’ words, over the generated list’s own name for it', () => {
+        // If the generated list drops or renames the tier, the override is dead weight: this fails then.
+        expect(GEAR_TIERS.find((t) => t.value === 'none')?.label).toBe('None — skip gear guidance')
+        expect(Object.keys(GEAR_TIER_DISPLAY)).toEqual(['none'])
+        expect(GEAR_TIERS.map(gearTierLabel)).toEqual(['Auto (match level)', 'Mundane only', 'Low', 'Standard', 'Well-equipped', 'Heroic', 'None (skip gear guidance)'])
+        const { fold } = harness()
+        expect(Array.from(control(fold, 'gear-tier').options).map((o) => o.textContent)).toEqual(GEAR_TIERS.map(gearTierLabel))
+        expect(Array.from(control(fold, 'gear-tier').options).map((o) => o.value)).toEqual(GEAR_TIERS.map((t) => t.value))
     })
 })

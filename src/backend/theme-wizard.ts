@@ -7,6 +7,7 @@
  * as JSON with the change asked for; with no theme stored it makes a new
  * one instead, as the legacy's button does.
  */
+import { connectionField } from './agent-pass.js'
 import { readGenerationText } from './tracker-pass.js'
 import { buildThemeWizardPrompt, readThemeWizardReply, type CustomTheme } from '../tracker/theme-wizard.js'
 
@@ -43,7 +44,7 @@ export function createThemeWizard(deps: ThemeWizardDeps): ThemeWizard {
             deps.log.info(`theme wizard: ${prompt.iterated ? 'refining the theme' : 'generating a theme'} from "${text.slice(0, 60)}"`)
             const raw = await deps.generate.quiet({
                 userId,
-                ...(prefs.trackerConnectionId ? { connectionId: prefs.trackerConnectionId } : {}),
+                ...connectionField(prefs.trackerConnectionId || undefined),
                 messages: [
                     { role: 'system', content: prompt.system },
                     { role: 'user', content: prompt.user },

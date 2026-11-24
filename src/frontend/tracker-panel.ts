@@ -23,10 +23,11 @@
  * later, which is exactly what a dead tracker looks like.
  */
 
+import { setCardIcon } from './icons.js'
 import { NARRATOR_BLANK } from './connections-category.js'
 import { createCreatorFold } from './creator-fold.js'
 import { createInstantFold } from './instant-fold.js'
-import { createStartArea } from './start-area.js'
+import { NARRATOR_CARD_EVENT, createStartArea } from './start-area.js'
 import { createPlayerCardFold, reasonText } from './player-card-fold.js'
 import { createWaysFold } from './ways-fold.js'
 import { createImportFold } from './import-fold.js'
@@ -34,6 +35,7 @@ import { createLibraryFold } from './library-fold.js'
 import { createNpcCreatorFold } from './npc-creator-fold.js'
 import { createSceneFold } from './scene-fold.js'
 import { createEnlarge, zoomTarget, zoomable, type PictureActions } from './enlarge.js'
+import { attachCardHelp, createHelpTip, withHelp } from './help-tip.js'
 import { MAX_PORTRAIT_BYTES, PORTRAIT_FILE_TYPES, toDataUrl } from './portrait-actions.js'
 import { askForPrompt } from './prompt-dialog.js'
 import { createLocationBackground } from './location-background.js'
@@ -48,7 +50,8 @@ import { createRecordsFold } from './campaign-records.js'
 import { createSandboxFold } from './sandbox-fold.js'
 import { createAgentTools } from './agent-tools.js'
 import { createTerminalFold } from './terminal-fold.js'
-import { createPrefDials, dialRows } from './pref-dials.js'
+import { createCompanionPane, type CompanionPlace } from './companion-pane.js'
+import { createPrefDials, dialCopy, dialRows } from './pref-dials.js'
 import type { DialGroup } from './pref-dials.js'
 import { openDetailsModal } from './details-modal.js'
 import type { DetailsModal } from './details-modal.js'
@@ -77,7 +80,7 @@ import { createRecolorBinding } from './recolor.js'
 import { readDisplayGroups, type DisplayGroup } from '../tracker/display-groups.js'
 import { ENTITY_TAGS } from '../tracker/entities.js'
 import { resolveCampaignPrefix } from '../agent/campaign.js'
-import type { ActivatedLoreResult, AgentAuditResult, AgentRedoResult, AgentRunResult, AgentUndoResult, CampaignBooksResult, CampaignCloneResult, CampaignNameResult, CampaignRecordsResult, CardAiEditResult, CardChoice, CardResult, ConnectionChoice, ConnectionsResult, CreatorResult, ImportResult, InstantResult, LibraryActionResult, LibraryPhotoPromptResult, LibraryPhotoResult, LibraryRecordView, LibrarySources, MapArchitectResult, MapCreateResult, MapEvolutionIntervalResult, MapEvolutionResult, MapEvolutionStatus, MapRawResult, MapRawSaveResult, MapSandboxOutcome, MapSandboxResult, MapStatusResult, MapUpdaterResult, MapViewResult, NarratorCardResult, NpcAddResult, NpcDraftResult, PersonaResult, PlayerCardView, PortraitAutoStatus, PortraitDrawReport, PortraitDrawResult, PortraitPromptResult, PortraitsResult, PrefsResult, RecordEntryResult, RecordRemoveMapResult, RelationshipAward, RelationshipsView, ReportsHistoryResult, SceneConnectionsResult, SceneDrawResult, ScenePictureReport, ScenePromptResult, SceneResult, TerminalResult, TerminalStep, TrackerHistoryResult, TrackerPassReportDTO, TrackerPassStartedDTO, TrackerResult, WaysResult, WorldBooksResult, WorldConsolidateResult, WorldPurgeResult, WorldRunResult, WorldSkeletonResult, WorldSourceResult, WorldStatusResult } from '../protocol.js'
+import type { StatusResult, ActivatedLoreResult, AgentAuditResult, AgentRedoResult, AgentRunResult, AgentUndoResult, CampaignBooksResult, CampaignCloneResult, CampaignNameResult, CampaignRecordsResult, CardAiEditResult, CardChoice, CompanionState, CardResult, ConnectionChoice, ConnectionsResult, CreatorResult, ImportResult, InstantResult, LibraryActionResult, LibraryPhotoPromptResult, LibraryPhotoResult, LibraryRecordView, LibrarySources, MapArchitectResult, MapCreateResult, MapEvolutionIntervalResult, MapEvolutionResult, MapEvolutionStatus, MapRawResult, MapRawSaveResult, MapSandboxOutcome, MapSandboxResult, MapStatusResult, MapUpdaterResult, MapViewResult, NarratorCardResult, NpcAddResult, NpcDraftResult, PersonaResult, PlayerCardView, PortraitAutoStatus, PortraitDrawReport, PortraitDrawResult, PortraitPromptResult, PortraitsResult, PrefsResult, RecordEntryResult, RecordRemoveMapResult, RelationshipAward, RelationshipsView, ReportsHistoryResult, SceneConnectionsResult, SceneDrawResult, ScenePictureReport, ScenePromptResult, SceneResult, TerminalResult, TerminalStep, TrackerHistoryResult, TrackerPassReportDTO, TrackerPassStartedDTO, TrackerResult, WaysResult, WorldBooksResult, WorldConsolidateResult, WorldPurgeResult, WorldRunResult, WorldSkeletonResult, WorldSourceResult, WorldStatusResult } from '../protocol.js'
 
 export interface TrackerPanelHost {
     dom: {
@@ -123,6 +126,8 @@ export interface TrackerPanel {
      * this section's, so the outcome lands where every pass's does.
      */
     instruct(instruction: string): Promise<void>
+    /** The settings panel's status read (98): the starting area's checks, the same marks as the Lumiverse checklist's. */
+    applyStatus(status: StatusResult | null): void
     destroy(): void
 }
 
@@ -614,21 +619,20 @@ export function mountTrackerPanel(
         bridge.request<PrefsResult>('prefs.patch', { patch: { trackerActiveTab: tag } }).catch(() => undefined)
     }
 
-    // The raw memo in the starting area's drawer clothes since 84 (the maintainer's ask): ✦, the title over its small line, the chevron.
-    const rawView = el('details', { class: 'lh-tracker-raw lh-start-drawer', 'data-lh-field': 'raw-memo' })
+    // The raw memo in the starting area's option-card style (98-bis; the drawer's style of 84 went with 98):
+    // the icon, the title over its small line, the chevron.
+    const rawView = el('details', { class: 'lh-tracker-raw lh-start-option', 'data-lh-field': 'raw-memo' })
     const rawSummary = el('summary')
-    const rawIcon = el('span', { class: 'lh-start-drawer-icon', 'aria-hidden': 'true' })
-    rawIcon.textContent = '✦'
-    const rawLabel = el('span', { class: 'lh-start-drawer-label' })
-    const rawTitle = el('span', { class: 'lh-start-drawer-title' })
+    const rawIcon = el('span', { class: 'lh-start-option-icon', 'aria-hidden': 'true' })
+    rawIcon.textContent = '📝'
+    const rawLabel = el('span', { class: 'lh-start-option-label' })
+    const rawTitle = el('span', { class: 'lh-start-option-title' })
     rawTitle.textContent = 'Raw tracker memo'
-    const rawSub = el('small', { class: 'lh-start-drawer-sub' })
-    rawSub.textContent = 'The live memo as text: edit it by hand, save, or revert'
+    const rawSub = el('small', { class: 'lh-start-option-sub' })
+    rawSub.textContent = 'The live memo as text. Edit it by hand, save, or revert.'
     rawLabel.append(rawTitle, rawSub)
-    const rawChevron = el('span', { class: 'lh-start-drawer-chevron', 'aria-hidden': 'true' })
-    rawChevron.textContent = '▸'
-    rawSummary.append(rawIcon, rawLabel, rawChevron)
-    const rawBody = el('div', { class: 'lh-start-drawer-body lh-tracker-raw-body' })
+    rawSummary.append(rawIcon, rawLabel, el('span', { class: 'lh-chevron', 'aria-hidden': 'true' }))
+    const rawBody = el('div', { class: 'lh-start-option-body lh-tracker-raw-body' })
     const rawText = el('textarea', { rows: '12', spellcheck: 'false' })
     const rawActions = el('div', { class: 'lh-tracker-raw-actions' })
     const saveButton = el('button', { type: 'button', class: 'lh-button' })
@@ -877,7 +881,7 @@ export function mountTrackerPanel(
     const booksAutoInput = el('input', { type: 'checkbox', 'data-lh-field': 'books-auto' }) as HTMLInputElement
     booksAutoInput.checked = true
     const booksAutoLabel = el('span')
-    booksAutoLabel.textContent = 'Attach new books as they are made'
+    booksAutoLabel.textContent = 'Attach new lorebooks automatically'
     booksAuto.title = 'The moment one of the campaign’s books is made, it is attached where the row below says — nothing of yours is removed from any list.'
     booksAuto.append(booksAutoInput, booksAutoLabel)
     // Where a book is attached (55-ter): this chat's own record by default,
@@ -887,7 +891,7 @@ export function mountTrackerPanel(
     const booksTargetLabel = el('span')
     booksTargetLabel.textContent = 'Attach to'
     const booksTargetSelect = el('select', { class: 'lh-input', 'data-lh-field': 'books-target' }) as HTMLSelectElement
-    for (const [value, text] of [['chat', 'this chat only (recommended)'], ['card', 'the narrator’s card, for every chat it is used in']] as const) {
+    for (const [value, text] of [['chat', 'This chat only (recommended)'], ['card', 'The narrator’s card (every chat that uses it)']] as const) {
         const option = el('option', { value }) as HTMLOptionElement
         option.textContent = text
         booksTargetSelect.append(option)
@@ -1248,6 +1252,19 @@ export function mountTrackerPanel(
     })
 
     // The terminal (71b): Multihog's Terminal/Direct Prompt — every agent's feed and its direct bar, one tab each.
+    // The Adventure Companion (100a): a second conversation beside the story, per chat. A tab of the second
+    // box as it ships; a card of the settings tab when the player chooses so (placeCompanion, below).
+    const companionPane = createCompanionPane({
+        el,
+        load: (forChat) => bridge.request<CompanionState>('companion.get', { chatId: forChat }),
+        send: (forChat, text) => bridge.request<CompanionState>('companion.send', { chatId: forChat, text }),
+        clear: (forChat) => bridge.request<CompanionState>('companion.clear', { chatId: forChat }),
+        answerTurn: (forChat, send) => bridge.request<CompanionState>('companion.confirm', { chatId: forChat, send }),
+        savePrefs: async (patch) => { await bridge.request<PrefsResult>('prefs.patch', { patch }) },
+        ...(host.ui ? { confirm: async (title: string, message: string, confirmLabel: string) => (await host.ui!.showConfirm({ title, message, variant: 'warning', confirmLabel })).confirmed } : {}),
+        clock: (iso) => clock(iso),
+        onPlace: (place) => { placeCompanion(place) },
+    })
     const terminalFold = createTerminalFold({
         el,
         load: (forChat) => bridge.request<TerminalResult>('terminal.get', { chatId: forChat }),
@@ -1415,7 +1432,7 @@ export function mountTrackerPanel(
     const worldSwitchRow = el('label', { class: 'lh-world-switch', 'data-lh-field': 'world-enabled' })
     const worldSwitch = el('input', { type: 'checkbox' })
     const worldSwitchText = el('span')
-    worldSwitchText.textContent = 'Write reports'
+    worldSwitchText.textContent = dialCopy('worldProgressionEnabled').label
     worldSwitchRow.append(worldSwitch, worldSwitchText)
     worldSwitch.addEventListener('change', () => { saveWorldPref({ worldProgressionEnabled: worldSwitch.checked }).catch(fail) })
     worldBadge.addEventListener('click', (event) => {
@@ -1429,10 +1446,10 @@ export function mountTrackerPanel(
     const worldNumber = (field: string, label: string, hint: string, min: number, max: number, key: 'worldProgressionIntervalHours' | 'worldProgressionLocationsPerReport' | 'worldProgressionKeepActive' | 'worldProgressionLookback') => {
         const row = el('div', { class: 'lh-agent-campaign', 'data-lh-field': field })
         const name = el('label', { class: 'lh-agent-campaign-label' })
-        name.textContent = label
+        name.textContent = dialCopy(key).label || label
         const input = el('input', { type: 'number', min: String(min), max: String(max), step: '1', class: 'lh-input' })
         const note = el('div', { class: 'lh-agent-campaign-hint' })
-        note.textContent = hint
+        note.textContent = dialCopy(key).hint || hint
         row.append(name, input, note)
         input.addEventListener('change', () => { saveWorldPref({ [key]: Math.floor(Number(input.value)) }).catch(fail) })
         return { row, input }
@@ -1489,29 +1506,32 @@ export function mountTrackerPanel(
     // 2026-10-28), one card where the mirrored dials of 63c and the fold of 78b were two: the card's icon,
     // title and lead are the dials card's, its body the fold's, and the dials card is gone. It stands
     // first among the World progression category's cards, where the dials card stood.
+    // The [?] component takes a plain element maker (96).
+    const skeletonEl = (tag: string, attrs?: Record<string, string>): HTMLElement => el(tag as keyof HTMLElementTagNameMap, attrs)
     const skeletonView = el('details', { class: 'lh-card lh-dial-card lh-skeleton', 'data-lh-card': 'skeleton' })
     const skeletonSummary = el('summary')
     const skeletonIcon = el('span', { class: 'lh-card-icon', 'aria-hidden': 'true' })
-    skeletonIcon.textContent = '💀'
+    setCardIcon(skeletonIcon, 'World Skeleton & atmosphere', '💀')
     const skeletonTitle = el('span', { class: 'lh-card-title' })
-    skeletonTitle.textContent = 'World Skeleton & Atmosphere'
+    skeletonTitle.textContent = 'World Skeleton & atmosphere'
     // The count of premises filed, beside the title where the fold's summary carried it.
     const skeletonCountBadge = el('span', { class: 'lh-skeleton-count-badge', 'data-lh-field': 'world-skeleton-count' })
     skeletonSummary.append(skeletonIcon, skeletonTitle, skeletonCountBadge, el('span', { class: 'lh-chevron', 'aria-hidden': 'true' }))
     // One search item (63): a word anywhere in the body shows and opens the card, as the dial cards' rows do.
     const skeletonBody = el('div', { class: 'lh-world-body lh-skeleton-body lh-search-item' })
-    const skeletonLead = el('div', { class: 'lh-world-lead' })
-    skeletonLead.textContent =
-        'The World Skeleton is a hidden set of Day 0 macro premises. Location seeds become simulation subjects; factions, institutions and conflicts provide regional context. '
-        + 'Named individuals belong in ordinary NPC lore once established through play, never in the skeleton. '
-        + 'Written once from your description of the world below: its locations are subjects for reports until the agent records real lore for the same place; its factions and conflicts are the wider-world context. Nothing here reaches the narrator directly.'
-    const skeletonSource = el('textarea', { class: 'lh-world-extra lh-skeleton-source', rows: '5', 'data-lh-field': 'world-skeleton-source', placeholder: 'The world, in your words: its atmosphere, cultures, history, powers, places, tensions, technology… A sentence or a page. Or have it written from this chat, below.' })
+    // The description box (96): a visible label with its [?], a short placeholder.
+    const skeletonSourceTip = createHelpTip(skeletonEl, 'World description', 'Describe the world in your own words: atmosphere, cultures, history, powers, places, tensions, technology. A sentence or a page is enough. You can also press “Write from this chat”.')
+    const skeletonSourceLabel = el('div', { class: 'lh-helped-line lh-skeleton-label' })
+    const skeletonSourceLabelText = el('span', { class: 'lh-agent-campaign-label' })
+    skeletonSourceLabelText.textContent = 'World description'
+    skeletonSourceLabel.append(skeletonSourceLabelText, skeletonSourceTip.button)
+    const skeletonSource = el('textarea', { class: 'lh-world-extra lh-skeleton-source', rows: '5', 'data-lh-field': 'world-skeleton-source', placeholder: 'Describe the world', 'aria-label': 'World description' })
     // Or from the chat (33c): a model generalises the recent messages into a
     // paragraph with no names in it, for pointing at an old chat to seed a new one.
     const skeletonSourceRow = el('div', { class: 'lh-skeleton-source-row' })
     const skeletonSourceButton = el('button', { type: 'button', class: 'lh-button lh-button--quiet' })
-    skeletonSourceButton.textContent = 'Write it from this chat'
-    skeletonSourceButton.title = 'A model reads the recent messages and writes one paragraph about the world — its texture, powers and tensions — naming nobody and no event. It replaces the text above.'
+    skeletonSourceButton.textContent = 'Write from this chat'
+    const skeletonSourceButtonTip = createHelpTip(skeletonEl, 'Write from this chat', 'A model reads the recent messages and writes one paragraph about the world. It names no person and no event. It replaces the text in the description box.')
     skeletonSourceButton.addEventListener('click', () => { writeSourceFromChat().catch(fail) })
     const skeletonSourceLookbackLabel = el('label', { class: 'lh-skeleton-count', 'data-lh-field': 'world-skeleton-source-lookback' })
     const skeletonSourceLookbackText = el('span')
@@ -1521,7 +1541,10 @@ export function mountTrackerPanel(
     const skeletonSourceLookbackTail = el('span')
     skeletonSourceLookbackTail.textContent = 'messages'
     skeletonSourceLookbackLabel.append(skeletonSourceLookbackText, skeletonSourceLookback, skeletonSourceLookbackTail)
-    skeletonSourceRow.append(skeletonSourceButton, skeletonSourceLookbackLabel)
+    const skeletonSourceLookbackTip = createHelpTip(skeletonEl, 'Messages read', 'How many recent messages the model reads when you press “Write from this chat”. Range: 1 to 200. Default: 30.')
+    skeletonSourceRow.append(skeletonSourceButton, skeletonSourceButtonTip.button, skeletonSourceLookbackLabel, skeletonSourceLookbackTip.button)
+    const skeletonSourceWrap = el('div', { class: 'lh-helped' })
+    skeletonSourceWrap.append(skeletonSourceRow, skeletonSourceButtonTip.note, skeletonSourceLookbackTip.note)
     const skeletonCount = (field: string, label: string, key: 'worldSkeletonFactions' | 'worldSkeletonLocations' | 'worldSkeletonConflicts') => {
         const row = el('label', { class: 'lh-skeleton-count', 'data-lh-field': field })
         const name = el('span')
@@ -1535,23 +1558,28 @@ export function mountTrackerPanel(
     const skeletonLocations = skeletonCount('world-skeleton-locations', 'Locations', 'worldSkeletonLocations')
     const skeletonConflicts = skeletonCount('world-skeleton-conflicts', 'Conflicts', 'worldSkeletonConflicts')
     const skeletonCounts = el('div', { class: 'lh-skeleton-counts' })
-    skeletonCounts.append(skeletonFactions.row, skeletonLocations.row, skeletonConflicts.row)
-    const skeletonCheck = (field: string, label: string, title: string, key: 'worldSkeletonUseLorebooks' | 'worldSkeletonLorebookOnly' | 'worldSkeletonUseExisting') => {
-        const row = el('label', { class: 'lh-world-switch', 'data-lh-field': field, title })
+    // One [?] for the three counts (96): they had no help at all.
+    const skeletonCountsTip = createHelpTip(skeletonEl, 'Factions, locations and conflicts', 'How many factions, locations and conflicts the model writes. Range: 0 to 20 each. Defaults: 4 factions, 4 locations and 3 conflicts. Ignored when “Only what the lorebooks state” is on.')
+    skeletonCounts.append(skeletonFactions.row, skeletonLocations.row, skeletonConflicts.row, skeletonCountsTip.button)
+    const skeletonCountsWrap = el('div', { class: 'lh-helped' })
+    skeletonCountsWrap.append(skeletonCounts, skeletonCountsTip.note)
+    const skeletonCheck = (field: string, label: string, help: string, key: 'worldSkeletonUseLorebooks' | 'worldSkeletonLorebookOnly' | 'worldSkeletonUseExisting') => {
+        const row = el('label', { class: 'lh-world-switch', 'data-lh-field': field })
         const input = el('input', { type: 'checkbox' })
         const text = el('span')
         text.textContent = label
         row.append(input, text)
         input.addEventListener('change', () => { saveWorldPref({ [key]: input.checked }).catch(fail) })
-        return { row, input }
+        // The [?] beside the label, never inside it (96); `wrap` is what goes in the body and what is hidden.
+        return { row, input, wrap: withHelp(skeletonEl, row, label, help) }
     }
-    const skeletonLorebooks = skeletonCheck('world-skeleton-lorebooks', 'Read existing lorebooks as canon', 'The books are shown to the model as established fact to build on. With none ticked below, this campaign’s own books are read.', 'worldSkeletonUseLorebooks')
+    const skeletonLorebooks = skeletonCheck('world-skeleton-lorebooks', 'Read lorebooks as canon', 'When on, the model reads lorebooks as established fact to build on. If you select none below, the campaign’s own lorebooks are read. Default: off.', 'worldSkeletonUseLorebooks')
     // The picker (33c): every lorebook on the install but World Progression's
     // own, ticked when named in the filter; the filter stays the comma list
     // 33b stored, so nothing already saved changes shape.
     const skeletonFilterRow = el('div', { class: 'lh-agent-campaign lh-skeleton-filter', 'data-lh-field': 'world-skeleton-filter' })
     const skeletonFilterLabel = el('div', { class: 'lh-agent-campaign-label' })
-    skeletonFilterLabel.textContent = 'Which books'
+    skeletonFilterLabel.textContent = 'Lorebooks to read'
     const skeletonFilterHint = el('div', { class: 'lh-agent-campaign-hint' })
     const skeletonBookList = el('div', { class: 'lh-skeleton-books' })
     skeletonFilterRow.append(skeletonFilterLabel, skeletonFilterHint, skeletonBookList)
@@ -1562,22 +1590,22 @@ export function mountTrackerPanel(
         skeletonBookList.replaceChildren()
         const busy = !!worldRunning || !!skeletonRunning || !chatId
         if (worldBooks === null) {
-            skeletonFilterHint.textContent = chatId ? 'Reading the shelf…' : ''
+            skeletonFilterHint.textContent = chatId ? 'Loading lorebooks…' : ''
             return
         }
         if (!worldBooks.length) {
-            skeletonFilterHint.textContent = 'There are no lorebooks on this install yet.'
+            skeletonFilterHint.textContent = 'Lumiverse has no lorebooks yet.'
             return
         }
         const ticked = new Set(skeletonFilterNames.map((n) => n.toLowerCase()))
-        skeletonFilterHint.textContent = ticked.size ? `${ticked.size} ticked.` : 'None ticked: this campaign’s own books are read.'
+        skeletonFilterHint.textContent = ticked.size ? `${ticked.size} selected.` : 'None selected. The campaign’s own lorebooks are read.'
         for (const book of worldBooks) {
             const row = el('label', { class: 'lh-world-switch lh-skeleton-book', 'data-lh-book': book.name })
             const box = el('input', { type: 'checkbox' })
             box.checked = ticked.has(book.name.toLowerCase())
             box.disabled = busy
             const text = el('span')
-            text.textContent = book.own ? `${book.name} · this campaign’s` : book.name
+            text.textContent = book.own ? `${book.name} (this campaign)` : book.name
             row.append(box, text)
             box.addEventListener('change', () => {
                 const next = skeletonFilterNames.filter((n) => n.toLowerCase() !== book.name.toLowerCase())
@@ -1588,25 +1616,37 @@ export function mountTrackerPanel(
             skeletonBookList.append(row)
         }
     }
-    const skeletonOnly = skeletonCheck('world-skeleton-only', 'Only what those books state', 'Nothing invented: the counts above are ignored and the model writes only the factions, locations and conflicts the books name.', 'worldSkeletonLorebookOnly')
-    const skeletonExisting = skeletonCheck('world-skeleton-existing', 'When adding, show the model what is already filed', 'So it builds on the premises there instead of repeating them.', 'worldSkeletonUseExisting')
-    const skeletonPrompt = el('textarea', { class: 'lh-world-extra lh-skeleton-prompt', rows: '3', 'data-lh-field': 'world-skeleton-prompt', placeholder: 'Your own architect prompt, in place of the stock one. {factionCount}, {locationCount} and {conflictCount} are filled in. Empty: the stock prompt.' })
+    const skeletonOnly = skeletonCheck('world-skeleton-only', 'Only what the lorebooks state', 'When on, the model invents nothing. It writes only the factions, locations and conflicts the lorebooks name, and ignores the three counts. Default: off.', 'worldSkeletonLorebookOnly')
+    const skeletonExisting = skeletonCheck('world-skeleton-existing', 'Show existing premises when adding', 'When on, “Add to skeleton” shows the model the premises already in the skeleton. It then builds on them and does not repeat them. Default: on.', 'worldSkeletonUseExisting')
+    const skeletonPrompt = el('textarea', { class: 'lh-world-extra lh-skeleton-prompt', rows: '3', 'data-lh-field': 'world-skeleton-prompt', placeholder: 'Custom skeleton prompt', 'aria-label': 'Custom skeleton prompt' })
     skeletonPrompt.addEventListener('change', () => { saveWorldPref({ worldSkeletonSystemPrompt: skeletonPrompt.value }).catch(fail) })
+    const skeletonPromptTip = createHelpTip(skeletonEl, 'Custom skeleton prompt', 'Replaces the built-in skeleton prompt. {factionCount}, {locationCount} and {conflictCount} are replaced by the three counts. Leave blank to use the built-in prompt.')
+    const skeletonPromptLabel = el('div', { class: 'lh-helped-line lh-skeleton-label' })
+    const skeletonPromptLabelText = el('span', { class: 'lh-agent-campaign-label' })
+    skeletonPromptLabelText.textContent = 'Custom skeleton prompt'
+    skeletonPromptLabel.append(skeletonPromptLabelText, skeletonPromptTip.button)
     const skeletonStatusLine = el('div', { class: 'lh-world-status lh-skeleton-status' })
     const skeletonLive = el('div', { class: 'lh-world-running lh-skeleton-running', hidden: 'hidden' })
     const skeletonNote = el('div', { class: 'lh-world-note lh-skeleton-note' })
     const skeletonGenerateButton = el('button', { type: 'button', class: 'lh-button' })
-    skeletonGenerateButton.textContent = 'Generate the skeleton'
-    skeletonGenerateButton.title = 'Write a fresh skeleton from the source above. One that is there already is replaced.'
+    skeletonGenerateButton.textContent = 'Generate skeleton'
+    const skeletonGenerateTip = createHelpTip(skeletonEl, 'Generate skeleton', 'Writes a new skeleton from the description above.')
+    // The one visible warning (96), beside the button it is about.
+    const skeletonGenerateWarning = el('div', { class: 'lh-world-note lh-skeleton-warning' })
+    skeletonGenerateWarning.textContent = '“Generate skeleton” replaces the existing skeleton.'
     skeletonGenerateButton.addEventListener('click', () => { runSkeleton('replace').catch(fail) })
     const skeletonAddButton = el('button', { type: 'button', class: 'lh-button lh-button--quiet' })
-    skeletonAddButton.textContent = 'Add to the skeleton'
-    skeletonAddButton.title = 'More premises, added to the ones there.'
+    skeletonAddButton.textContent = 'Add to skeleton'
+    const skeletonAddTip = createHelpTip(skeletonEl, 'Add to skeleton', 'Writes more premises and adds them to the existing skeleton.')
     skeletonAddButton.addEventListener('click', () => { runSkeleton('append').catch(fail) })
     const skeletonButtons = el('div', { class: 'lh-world-buttons' })
-    skeletonButtons.append(skeletonGenerateButton, skeletonAddButton)
-    skeletonBody.append(skeletonLead, skeletonSource, skeletonSourceRow, skeletonCounts, skeletonLorebooks.row, skeletonFilterRow, skeletonOnly.row, skeletonExisting.row, skeletonPrompt, skeletonStatusLine, skeletonLive, skeletonNote, skeletonButtons)
+    skeletonButtons.append(skeletonGenerateButton, skeletonGenerateTip.button, skeletonAddButton, skeletonAddTip.button)
+    const skeletonButtonsWrap = el('div', { class: 'lh-helped' })
+    skeletonButtonsWrap.append(skeletonButtons, skeletonGenerateWarning, skeletonGenerateTip.note, skeletonAddTip.note)
+    skeletonBody.append(skeletonSourceLabel, skeletonSourceTip.note, skeletonSource, skeletonSourceWrap, skeletonCountsWrap, skeletonLorebooks.wrap, skeletonFilterRow, skeletonOnly.wrap, skeletonExisting.wrap, skeletonPromptLabel, skeletonPromptTip.note, skeletonPrompt, skeletonStatusLine, skeletonLive, skeletonNote, skeletonButtonsWrap)
     skeletonView.append(skeletonSummary, skeletonBody)
+    // The card's [?] (96): what the lead said, after the title; the note is the first line under the header.
+    attachCardHelp(skeletonEl, skeletonView as HTMLDetailsElement, skeletonSummary, skeletonTitle, 'The World Skeleton is a hidden set of starting premises for the world: factions, locations and conflicts. Its locations can be subjects of World Progression reports until the Lorebook Agent records real lore for the same place. The narrator never sees the skeleton directly.')
 
     const worldPurgeButton = el('button', { type: 'button', class: 'lh-button lh-button--quiet lh-world-purge' })
     worldPurgeButton.textContent = 'Purge history'
@@ -1656,33 +1696,31 @@ export function mountTrackerPanel(
     // The opener (46): the tool call, or the block in the prose for a connection that cannot call tools.
     const architectOpenerRow = el('div', { class: 'lh-agent-campaign', 'data-lh-field': 'map-architect-opener' })
     const architectOpenerLabel = el('label', { class: 'lh-agent-campaign-label' })
-    architectOpenerLabel.textContent = 'How the narrator asks for a map'
+    architectOpenerLabel.textContent = dialCopy('mapArchitectOpener').label
     const architectOpener = el('select', { class: 'lh-input' }) as HTMLSelectElement
-    for (const [value, text] of [['tool', 'The CreateAreaMap tool call'], ['text', 'A [CREATE_AREA_MAP] block in its reply']] as const) {
+    for (const [value, text] of [['tool', 'Tool call (CreateAreaMap)'], ['text', 'Text block']] as const) {
         const option = el('option', { value }) as HTMLOptionElement
         option.textContent = text
         architectOpener.append(option)
     }
     const architectOpenerHint = el('div', { class: 'lh-agent-campaign-hint' })
-    architectOpenerHint.textContent = 'Tool call: the narrator calls CreateAreaMap mid-reply, which needs Enable Function Calling on its connection. Block: for a connection that cannot call tools, the narrator writes the block at the end of its reply and stops; the block is taken out of the reply, the map is drawn behind it, and the narrator is briefed from the next turn. Multihog\u2019s tool.'
+    architectOpenerHint.textContent = dialCopy('mapArchitectOpener').hint
     architectOpener.addEventListener('change', () => { saveMapPref({ mapArchitectOpener: architectOpener.value }).catch(fail) })
     architectOpenerRow.append(architectOpenerLabel, architectOpener, architectOpenerHint)
     const architectLookbackRow = el('div', { class: 'lh-agent-campaign', 'data-lh-field': 'map-architect-lookback' })
     const architectLookbackLabel = el('label', { class: 'lh-agent-campaign-label' })
-    architectLookbackLabel.textContent = 'Messages the architect reads'
+    architectLookbackLabel.textContent = dialCopy('mapArchitectLookback').label
     const architectLookback = el('input', { type: 'number', min: '0', max: '100', step: '1', class: 'lh-input' })
     const architectLookbackHint = el('div', { class: 'lh-agent-campaign-hint' })
-    architectLookbackHint.textContent = 'For context when it draws a site: who is there, what the story has shown. Multihog\u2019s 12.'
+    architectLookbackHint.textContent = dialCopy('mapArchitectLookback').hint
     architectLookback.addEventListener('change', () => { saveMapPref({ mapArchitectLookback: Math.floor(Number(architectLookback.value)) }).catch(fail) })
     architectLookbackRow.append(architectLookbackLabel, architectLookback, architectLookbackHint)
-    const architectPrompt = el('textarea', { class: 'lh-world-extra lh-skeleton-prompt', rows: '3', 'data-lh-field': 'map-architect-prompt', placeholder: 'Your own content-placement prompt, in place of the stock one. The topology prompt is fixed. Empty: the stock prompt.' })
-    architectPrompt.addEventListener('change', () => { saveMapPref({ mapArchitectSystemPrompt: architectPrompt.value }).catch(fail) })
     // The updater (34b): its switch, a pass in flight, the last pass, its three settings, and a pass now with an instruction.
     const updaterLine = el('div', { class: 'lh-world-status lh-maps-updater' })
     const updaterSwitchRow = el('label', { class: 'lh-world-switch', 'data-lh-field': 'map-updater-enabled' })
     const updaterSwitch = el('input', { type: 'checkbox' })
     const updaterSwitchText = el('span')
-    updaterSwitchText.textContent = 'Update the map with play'
+    updaterSwitchText.textContent = dialCopy('mapUpdaterEnabled').label
     updaterSwitchRow.append(updaterSwitch, updaterSwitchText)
     updaterSwitch.addEventListener('change', () => { saveMapPref({ mapUpdaterEnabled: updaterSwitch.checked }).catch(fail) })
     const updaterLive = el('div', { class: 'lh-world-running lh-maps-updater-running', hidden: 'hidden' })
@@ -1690,18 +1728,16 @@ export function mountTrackerPanel(
     const mapNumber = (field: string, label: string, hint: string, min: number, max: number, key: 'mapUpdaterRunEvery' | 'mapUpdaterLookback') => {
         const row = el('div', { class: 'lh-agent-campaign', 'data-lh-field': field })
         const name = el('label', { class: 'lh-agent-campaign-label' })
-        name.textContent = label
+        name.textContent = dialCopy(key).label || label
         const input = el('input', { type: 'number', min: String(min), max: String(max), step: '1', class: 'lh-input' })
         const note = el('div', { class: 'lh-agent-campaign-hint' })
-        note.textContent = hint
+        note.textContent = dialCopy(key).hint || hint
         input.addEventListener('change', () => { saveMapPref({ [key]: Math.floor(Number(input.value)) }).catch(fail) })
         row.append(name, input, note)
         return { row, input }
     }
     const updaterEvery = mapNumber('map-updater-run-every', 'Replies between updates', 'Multihog\u2019s 1: after every reply inside a mapped site. A building the party has just entered is furnished at once whatever this says.', 1, 50, 'mapUpdaterRunEvery')
     const updaterLookback = mapNumber('map-updater-lookback', 'User turns the updater reads', 'When there is no last update to read from, and for an update pressed here. After one, it reads what came since.', 1, 100, 'mapUpdaterLookback')
-    const updaterPrompt = el('textarea', { class: 'lh-world-extra lh-skeleton-prompt', rows: '3', 'data-lh-field': 'map-updater-prompt', placeholder: 'Your own occupancy prompt, in place of the stock one. Empty: the stock prompt.' })
-    updaterPrompt.addEventListener('change', () => { saveMapPref({ mapUpdaterSystemPrompt: updaterPrompt.value }).catch(fail) })
     const updaterInstruction = el('textarea', { class: 'lh-world-extra lh-maps-updater-instruction', rows: '3', 'data-lh-field': 'map-updater-instruction', placeholder: 'An instruction for one update, in place of the routine pass: \u201cmark the ghoul pack dead\u201d, \u201copen the vault door\u201d. Empty: the routine pass, on the site the party is in.' })
     const updaterButtons = el('div', { class: 'lh-world-buttons' })
     const updaterRunButton = el('button', { type: 'button', class: 'lh-button' })
@@ -1727,7 +1763,7 @@ export function mountTrackerPanel(
     const evoSwitchRow = el('label', { class: 'lh-world-switch', 'data-lh-field': 'map-evolution-enabled' })
     const evoSwitch = el('input', { type: 'checkbox' })
     const evoSwitchText = el('span')
-    evoSwitchText.textContent = 'Let sites change while the party is away'
+    evoSwitchText.textContent = dialCopy('mapEvolutionEnabled').label
     evoSwitchRow.append(evoSwitch, evoSwitchText)
     evoSwitch.addEventListener('change', () => { saveMapPref({ mapEvolutionEnabled: evoSwitch.checked }).catch(fail) })
     const evoLive = el('div', { class: 'lh-world-running lh-maps-evolution-running', hidden: 'hidden' })
@@ -1736,10 +1772,10 @@ export function mountTrackerPanel(
     const evoNumber = (field: string, label: string, hint: string, min: number, max: number, key: EvoNumberKey) => {
         const row = el('div', { class: 'lh-agent-campaign', 'data-lh-field': field })
         const name = el('label', { class: 'lh-agent-campaign-label' })
-        name.textContent = label
+        name.textContent = dialCopy(key).label || label
         const input = el('input', { type: 'number', min: String(min), max: String(max), step: '1', class: 'lh-input' })
         const note = el('div', { class: 'lh-agent-campaign-hint' })
-        note.textContent = hint
+        note.textContent = dialCopy(key).hint || hint
         input.addEventListener('change', () => { saveMapPref({ [key]: Math.floor(Number(input.value)) }).catch(fail) })
         row.append(name, input, note)
         return { row, input }
@@ -1747,7 +1783,7 @@ export function mountTrackerPanel(
     const evoSelect = (field: string, label: string, hint: string, choices: Array<[string, string]>, key: 'mapEvolutionOnSitePreset' | 'mapEvolutionScope') => {
         const row = el('div', { class: 'lh-agent-campaign', 'data-lh-field': field })
         const name = el('label', { class: 'lh-agent-campaign-label' })
-        name.textContent = label
+        name.textContent = dialCopy(key).label || label
         const select = el('select', { class: 'lh-input' }) as HTMLSelectElement
         for (const [value, text] of choices) {
             const option = el('option', { value }) as HTMLOptionElement
@@ -1755,7 +1791,7 @@ export function mountTrackerPanel(
             select.append(option)
         }
         const note = el('div', { class: 'lh-agent-campaign-hint' })
-        note.textContent = hint
+        note.textContent = dialCopy(key).hint || hint
         select.addEventListener('change', () => { saveMapPref({ [key]: select.value }).catch(fail) })
         row.append(name, select, note)
         return { row, select }
@@ -1764,7 +1800,7 @@ export function mountTrackerPanel(
         const row = el('label', { class: 'lh-world-switch', 'data-lh-field': field })
         const input = el('input', { type: 'checkbox' })
         const text = el('span')
-        text.textContent = label
+        text.textContent = dialCopy(key).label || label
         row.append(input, text)
         input.addEventListener('change', () => { saveMapPref({ [key]: input.checked }).catch(fail) })
         return { row, input }
@@ -1773,7 +1809,7 @@ export function mountTrackerPanel(
     const evoOnSiteHours = evoNumber('map-evolution-on-site-hours', 'Hours between passes, on site', 'For the site the party is in, with the minutes below. Multihog\u2019s 1. Both 0: never while they are there.', 0, 168, 'mapEvolutionOnSiteIntervalHours')
     const evoOnSiteMinutes = evoNumber('map-evolution-on-site-minutes', 'Minutes between passes, on site', 'Added to the hours above.', 0, 59, 'mapEvolutionOnSiteIntervalMinutes')
     const evoPreset = evoSelect('map-evolution-preset', 'On the party\u2019s site', 'Dynamic: bolder, encounter-rich change just beyond their area. Standard: the same restraint as elsewhere.', [['dynamic', 'Dynamic'], ['standard', 'Standard']], 'mapEvolutionOnSitePreset')
-    const evoScope = evoSelect('map-evolution-scope', 'Which sites a pass considers', 'All: every mapped site that is due. The party\u2019s: only the one they are in. Some: the number below, picked from the due ones. Named: the list below.', [['all', 'All'], ['active', 'The party\u2019s'], ['count', 'Some'], ['selected', 'Named']], 'mapEvolutionScope')
+    const evoScope = evoSelect('map-evolution-scope', 'Which sites a pass considers', 'All: every mapped site that is due. The party\u2019s: only the one they are in. Some: the number below, picked from the due ones. Named: the list below.', [['all', 'All'], ['active', 'Party\u2019s site'], ['count', 'Some'], ['selected', 'Named']], 'mapEvolutionScope')
     const evoCount = evoNumber('map-evolution-count', 'How many, when some', '0 for every due site.', 0, 50, 'mapEvolutionCount')
     const evoRandomize = evoCheck('map-evolution-randomize', 'Pick them at random', 'mapEvolutionRandomize')
     const evoSelectedRow = el('div', { class: 'lh-agent-campaign', 'data-lh-field': 'map-evolution-selected' })
@@ -1893,8 +1929,6 @@ export function mountTrackerPanel(
               : 'A fast model suits it: a pass can take several sites in one turn, and a slow model makes that a long wait. Blank runs on the agent\u2019s. Multihog recommends the fastest you have.'
         evoConnection.disabled = !!connectionsUnavailable
     }
-    const evoPrompt = el('textarea', { class: 'lh-world-extra lh-skeleton-prompt', rows: '3', 'data-lh-field': 'map-evolution-prompt', placeholder: 'Your own evolution prompt, in place of the stock one. Empty: the stock prompt.' })
-    evoPrompt.addEventListener('change', () => { saveMapPref({ mapEvolutionSystemPrompt: evoPrompt.value }).catch(fail) })
     const evoCompress = evoCheck('map-evolution-compress', 'Compress a site\u2019s closed history when it grows long', 'mapEvolutionCompressEnabled')
     const evoThreshold = evoNumber('map-evolution-compress-threshold', 'Compress past this many tokens', 'Of closed threads. One more model call, into a few digests. Multihog\u2019s 10,000.', 500, 100000, 'mapEvolutionCompressThreshold')
     const evoTokens = evoNumber('map-evolution-narrator-tokens', 'Tokens of site activity for the narrator', 'The briefing sent with a site\u2019s map: open threads, recent commits, digests. Multihog\u2019s 2,000.', 200, 20000, 'mapEvolutionNarratorCommitTokens')
@@ -2118,20 +2152,18 @@ export function mountTrackerPanel(
      * Game systems & customisation; a change in either place reaches the
      * other through the backend's `settings.changed` event.
      */
-    const narratorFold = el('details', { class: 'lh-narrator', 'data-lh-field': 'narrator-config' }) as HTMLDetailsElement
-    // Multihog's drawer since 83: the ✦, the label over its small line, the chevron (the start area's clothes).
+    const narratorFold = el('details', { class: 'lh-narrator lh-start-option', 'data-lh-field': 'narrator-config', 'data-lh-option': 'narrator' }) as HTMLDetailsElement
+    // An option card's header since 98 (the start area's style): the icon, the name over its one line, the chevron.
     const narratorSummary = el('summary')
-    const narratorIcon = el('span', { class: 'lh-start-drawer-icon', 'aria-hidden': 'true' })
-    narratorIcon.textContent = '✦'
-    const narratorLabel = el('span', { class: 'lh-start-drawer-label' })
-    const narratorTitle = el('span', { class: 'lh-start-drawer-title' })
-    narratorTitle.textContent = 'Narrator configuration'
-    const narratorSub = el('small', { class: 'lh-narrator-sub' })
-    narratorSub.textContent = 'Set pacing, RNG, quests, and optional systems'
+    const narratorIcon = el('span', { class: 'lh-start-option-icon', 'aria-hidden': 'true' })
+    narratorIcon.textContent = '🎭'
+    const narratorLabel = el('span', { class: 'lh-start-option-label' })
+    const narratorTitle = el('span', { class: 'lh-start-option-title' })
+    narratorTitle.textContent = 'Narrator'
+    const narratorSub = el('small', { class: 'lh-start-option-sub lh-narrator-sub' })
+    narratorSub.textContent = 'Optional. Pacing, dice, quests and other parts of play. The defaults work.'
     narratorLabel.append(narratorTitle, narratorSub)
-    const narratorChevron = el('span', { class: 'lh-start-drawer-chevron', 'aria-hidden': 'true' })
-    narratorChevron.textContent = '▸'
-    narratorSummary.append(narratorIcon, narratorLabel, narratorChevron)
+    narratorSummary.append(narratorIcon, narratorLabel, el('span', { class: 'lh-chevron', 'aria-hidden': 'true' }))
     const narratorBody = el('div', { class: 'lh-narrator-body' })
     narratorFold.append(narratorSummary, narratorBody)
     const narrator: NarratorConfig = mountNarratorConfig(narratorBody, { createElement: el as never }, settings as SettingsBag, {
@@ -2142,13 +2174,19 @@ export function mountTrackerPanel(
         },
         savePref: (patch) => { bridge.request<PrefsResult>('prefs.patch', { patch }).catch(fail) },
     })
-    // The area after Multihog's onboarding (83): the hero, the box, the two drawers, How It Works, Need Help,
-    // the Setup Guide with the narrator card's row, the connection shortcut — around the folds built above.
+    // The area in setup order (98): the live checks, the three ways in as option cards, the Narrator block,
+    // Learn more — around the folds built above. Its checks are fed the settings panel's own status read
+    // (applyStatus below), through the Lumiverse checklist's own function, so the two places show the same marks.
+    /** Ask the settings panel, which holds the one status read, to read again for this chat (a card made, a chat changed). */
+    const refreshStartStatus = (): void => {
+        root.ownerDocument.dispatchEvent(new CustomEvent(NARRATOR_CARD_EVENT, { detail: { chatId } }))
+    }
     const startArea = createStartArea({
         el,
         creator: creatorFold.root, instant: instantFold.root, ways: waysFold.root, importCard: importFold.root, narrator: narratorFold,
         createNarratorCard: (name) => bridge.request<NarratorCardResult>('narrator.create', { name }),
         savePrefs: async (patch) => { await bridge.request<PrefsResult>('prefs.patch', { patch }) },
+        refreshStatus: () => { refreshStartStatus() },
         fail: (error) => fail(error),
     })
     const startGroup = startArea.root
@@ -2291,14 +2329,21 @@ export function mountTrackerPanel(
      * the folds under it, one shown at a time, the shown one held open so
      * the tab is the fold's switch and its summary has nothing to do.
      */
-    const TAB_ICONS: Record<string, string> = { agent: '📖', records: '👥', visuals: '🗺️' }
+    const TAB_ICONS: Record<string, string> = { agent: '📖', records: '👥', visuals: '🗺️', companion: '💬' }
     /** The word under each icon on a phone (92b): a long press there opens the host's own menu, never the hover. */
-    const TAB_SHORT: Record<string, string> = { agent: 'Agent', records: 'Records', visuals: 'Map' }
+    const TAB_SHORT: Record<string, string> = { agent: 'Agent', records: 'Records', visuals: 'Map', companion: 'Companion' }
+    /** The strip's handles (100a): the Companion's tab leaves the strip while its chat stands in the settings tab. */
+    let tabs: { show(key: string): void; current(): string; button(name: string): HTMLButtonElement | undefined } | null = null
+    /** Panes that are not in the box at the moment: the strip neither shows nor hides them. */
+    const awayPanes = new Set<string>()
     function tabbed(panes: Array<[string, string, HTMLDetailsElement]>, initial: string): HTMLElement[] {
         const strip = el('div', { class: 'lh-widget-tabs', role: 'tablist' })
         const buttons = new Map<string, HTMLButtonElement>()
+        let shown = initial
         const show = (key: string) => {
+            shown = key
             for (const [name, , pane] of panes) {
+                if (awayPanes.has(name)) continue
                 const on = name === key
                 pane.hidden = !on
                 pane.classList.toggle('lh-widget-pane--active', on)
@@ -2326,6 +2371,7 @@ export function mountTrackerPanel(
             pane.classList.add('lh-widget-pane')
         }
         show(initial)
+        tabs = { show, current: () => shown, button: (name) => buttons.get(name) }
         return [strip, ...panes.map(([, , pane]) => pane)]
     }
 
@@ -2379,11 +2425,40 @@ export function mountTrackerPanel(
         ['agent', 'Lorebook Agent', agentView],
         ['records', 'Campaign Records', recordsPane],
         ['visuals', 'Visuals/Map', mapView],
+        ['companion', 'Companion', companionPane.root],
     ]
+    /**
+     * Where the Companion's chat stands (100a, the maintainer's ask): a tab of the second box, or a card of
+     * the settings tab between the starting area and the raw memo. Only the widgets layouts have both a tab
+     * strip and a settings tab; in the others the chat is a fold after Visuals/Map whatever the choice.
+     */
+    function placeCompanion(place: CompanionPlace): void {
+        if (!tabs || !scene || rest === root) return
+        const pane = companionPane.root
+        const button = tabs.button('companion')
+        if (place === 'settings') {
+            if (awayPanes.has('companion')) return
+            awayPanes.add('companion')
+            if (tabs.current() === 'companion') tabs.show('visuals')
+            if (button) button.hidden = true
+            pane.classList.remove('lh-widget-pane', 'lh-widget-pane--active')
+            pane.classList.add('lh-start-option')
+            pane.hidden = false
+            rawView.before(pane)
+        } else {
+            if (!awayPanes.has('companion')) return
+            awayPanes.delete('companion')
+            if (button) button.hidden = false
+            pane.classList.remove('lh-start-option')
+            pane.classList.add('lh-widget-pane')
+            pane.hidden = true
+            mapView.after(pane)
+        }
+    }
     if (rest === root) {
         agentBody.append(agentFooter)
         root.append(
-            header, status, problem, cards, archiveActions, startGroup, ...settingsFolds,
+            header, status, problem, cards, archiveActions, startGroup, ...settingsFolds, companionPane.root,
             agentView, recordsPane, mapView, ...(skeletonHome ? [] : [skeletonView]), rawView, bottomXp, changeLog, trackerBar.row, trackerFooter,
         )
     } else {
@@ -2426,7 +2501,7 @@ export function mountTrackerPanel(
             }
         } else {
             agentBody.append(agentFooter)
-            root.append(header, status, problem, cards, archiveActions, agentView, recordsPane, mapView, bottomXp, changeLog, trackerBar.row, trackerFooter)
+            root.append(header, status, problem, cards, archiveActions, agentView, recordsPane, mapView, companionPane.root, bottomXp, changeLog, trackerBar.row, trackerFooter)
         }
         rest.append(startGroup, ...settingsFolds, ...(skeletonHome ? [] : [skeletonView]), rawView)
     }
@@ -2478,15 +2553,12 @@ export function mountTrackerPanel(
         const a = s && !s.unavailable ? s.architect : null
         architectOpenerRow.hidden = !a
         architectLookbackRow.hidden = !a
-        architectPrompt.hidden = !a
         if (a) {
             architectOpener.value = a.opener
             architectLookback.value = String(a.lookback)
-            if (document.activeElement !== architectPrompt) architectPrompt.value = a.systemPrompt
         }
         architectOpener.disabled = !a || !!architectRunning
         architectLookback.disabled = !a || !!architectRunning
-        architectPrompt.disabled = !a || !!architectRunning
         if (!a) {
             architectLine.textContent = ''
         } else if (!s!.enabled) {
@@ -2531,18 +2603,16 @@ export function mountTrackerPanel(
         const s = mapStatus
         const u = s && !s.unavailable ? s.updater : null
         const running = updaterRunning ?? (u?.running ? { site: s?.activeSiteRoot || 'the map', at: '' } : null)
-        for (const node of [updaterSwitchRow, updaterEvery.row, updaterLookback.row, updaterPrompt, updaterInstruction, updaterButtons]) node.hidden = !u
+        for (const node of [updaterSwitchRow, updaterEvery.row, updaterLookback.row, updaterInstruction, updaterButtons]) node.hidden = !u
         if (u) {
             updaterSwitch.checked = u.enabled
             updaterEvery.input.value = String(u.runEvery)
             updaterLookback.input.value = String(u.lookback)
-            if (document.activeElement !== updaterPrompt) updaterPrompt.value = u.systemPrompt
         }
         const busy = !u || !!running || updaterPressed
         updaterSwitch.disabled = busy
         updaterEvery.input.disabled = busy
         updaterLookback.input.disabled = busy
-        updaterPrompt.disabled = busy
         updaterRunButton.disabled = busy || !chatId || !s!.enabled
         if (!u) {
             updaterLine.textContent = ''
@@ -2637,13 +2707,12 @@ export function mountTrackerPanel(
             evoStory.input.value = String(e.storyLookback)
             evoConnectionId = e.connectionId ?? ''
             drawEvoConnection()
-            if (document.activeElement !== evoPrompt) evoPrompt.value = e.systemPrompt
             evoCompress.input.checked = e.compressEnabled
             evoThreshold.input.value = String(e.compressThreshold)
             evoTokens.input.value = String(e.narratorCommitTokens)
         }
         const busy = !e || !!running || evolutionPressed
-        for (const input of [evoSwitch, evoInterval.input, evoOnSiteHours.input, evoOnSiteMinutes.input, evoPreset.select, evoScope.select, evoCount.input, evoRandomize.input, evoReports.input, evoStory.input, evoPrompt, evoCompress.input, evoThreshold.input, evoTokens.input]) input.disabled = busy
+        for (const input of [evoSwitch, evoInterval.input, evoOnSiteHours.input, evoOnSiteMinutes.input, evoPreset.select, evoScope.select, evoCount.input, evoRandomize.input, evoReports.input, evoStory.input, evoCompress.input, evoThreshold.input, evoTokens.input]) input.disabled = busy
         evoSelectedBusy = busy
         drawEvoSelected(s && !s.unavailable ? s.sites : [], e?.sites ?? [])
         if (!busy) evoConnection.disabled = !!connectionsUnavailable
@@ -2768,7 +2837,7 @@ export function mountTrackerPanel(
             mapStatus = result
         } catch (error) {
             if (destroyed || chatId !== asked) return
-            mapStatus = { enabled: false, currentLocation: '', sites: [], activeSiteRoot: '', mentionedSiteRoots: [], canonChars: 0, syncedAt: '', architect: { toolRegistered: false, opener: 'tool', lookback: 12, systemPrompt: '' }, updater: { enabled: false, runEvery: 1, lookback: 4, systemPrompt: '', running: false }, evolution: { enabled: false, intervalHours: 8, onSiteIntervalHours: 1, onSiteIntervalMinutes: 0, onSitePreset: 'dynamic', scope: 'all', count: 1, randomize: true, selectedRoots: '', worldReportLookback: 5, storyLookback: 20, connectionId: '', systemPrompt: '', compressEnabled: true, compressThreshold: 10000, narratorCommitTokens: 2000, running: false, currentTime: '', lastFired: '', nextDue: '', sites: [] }, unavailable: error instanceof Error ? error.message : String(error) }
+            mapStatus = { enabled: false, currentLocation: '', sites: [], activeSiteRoot: '', mentionedSiteRoots: [], canonChars: 0, syncedAt: '', architect: { toolRegistered: false, opener: 'tool', lookback: 12 }, updater: { enabled: false, runEvery: 1, lookback: 4, running: false }, evolution: { enabled: false, intervalHours: 8, onSiteIntervalHours: 1, onSiteIntervalMinutes: 0, onSitePreset: 'dynamic', scope: 'all', count: 1, randomize: true, selectedRoots: '', worldReportLookback: 5, storyLookback: 20, connectionId: '', compressEnabled: true, compressThreshold: 10000, narratorCommitTokens: 2000, running: false, currentTime: '', lastFired: '', nextDue: '', sites: [] }, unavailable: error instanceof Error ? error.message : String(error) }
         }
         drawMaps()
         picture.refresh().catch(() => undefined)
@@ -2864,7 +2933,7 @@ export function mountTrackerPanel(
             if (document.activeElement !== skeletonSource && !skeletonSource.value.trim()) skeletonSource.value = status.skeletonSource ?? ''
         }
         skeletonFilterRow.hidden = !skeletonLorebooks.input.checked
-        skeletonOnly.row.hidden = !skeletonLorebooks.input.checked
+        skeletonOnly.wrap.hidden = !skeletonLorebooks.input.checked
         drawSkeletonBooks()
         drawSkeleton()
 
@@ -2999,7 +3068,7 @@ export function mountTrackerPanel(
             case 'skipped':
                 return `${run.reason ?? 'Nothing was written.'}${tail}`
             default:
-                return `The skeleton failed: ${run.reason ?? 'no reason given'}.${tail}`
+                return `The skeleton could not be written: ${run.reason ?? 'no reason given'}.${tail}`
         }
     }
 
@@ -3014,14 +3083,14 @@ export function mountTrackerPanel(
             skeletonCountBadge.textContent = total ? `\u00b7 ${total}` : ''
             skeletonStatusLine.textContent = total
                 ? `${status.skeletonBookName} holds ${counts.factions} factions, ${counts.locations} locations and ${counts.conflicts} conflicts.`
-                : `No skeleton yet. It will be filed in ${status.skeletonBookName || 'the campaign\u2019s _Skeleton book'}.`
+                : `No skeleton yet. It will be stored in ${status.skeletonBookName ? `the lorebook ${status.skeletonBookName}` : 'the campaign\u2019s Skeleton lorebook'}.`
         }
         skeletonLive.hidden = !skeletonRunning
         if (skeletonRunning) {
             const started = clock(skeletonRunning.at)
             skeletonLive.textContent = skeletonRunning.mode === 'source'
-                ? `The source is being written from this chat now${started ? `, started ${started}` : ''}. Reading the recent messages\u2026`
-                : `The skeleton is being ${skeletonRunning.mode === 'append' ? 'extended' : 'written'} now${started ? `, started ${started}` : ''}. Reading the source\u2026`
+                ? `Writing the description from this chat${started ? ` (started ${started})` : ''}\u2026`
+                : `${skeletonRunning.mode === 'append' ? 'Adding to the skeleton' : 'Writing the skeleton'}${started ? ` (started ${started})` : ''}\u2026`
         }
         const last = status?.lastSkeleton
         skeletonNote.textContent = last ? describeSkeletonRun(last) : ''
@@ -3054,7 +3123,7 @@ export function mountTrackerPanel(
                 button.textContent = label
             }, 8000),
         })
-        say(`${ask.message} Press the button again within a few seconds to go ahead.`, 'busy')
+        say(`${ask.message} Press the button again within a few seconds to confirm.`, 'busy')
         return false
     }
 
@@ -3066,7 +3135,7 @@ export function mountTrackerPanel(
         if (mode === 'replace' && filed > 0) {
             const ok = await confirmOn(skeletonGenerateButton, {
                 title: 'Replace the skeleton',
-                message: `The ${filed} premises in ${worldStatus?.skeletonBookName ?? 'the skeleton'} will be deleted and written afresh. This cannot be undone.`,
+                message: `This deletes the ${filed} premises in ${worldStatus?.skeletonBookName ?? 'the skeleton'} and writes new ones. This cannot be undone.`,
                 confirmLabel: 'Replace',
             })
             if (!ok) return
@@ -3083,7 +3152,7 @@ export function mountTrackerPanel(
         } catch (error) {
             if (destroyed || chatId !== asked) return
             if (error instanceof RequestTimeoutError) {
-                say('The skeleton is taking longer than the panel waits. It is still being written; reopen the fold in a while to see it.', 'busy')
+                say('The skeleton is taking longer than expected. It is still being written. Reopen this card later to see it.', 'busy')
                 return
             }
             skeletonRunning = null
@@ -3098,8 +3167,8 @@ export function mountTrackerPanel(
         const asked = chatId
         if (skeletonSource.value.trim()) {
             const ok = await confirmOn(skeletonSourceButton, {
-                title: 'Replace the source',
-                message: 'The text in the source box will be replaced by what the model writes from this chat.',
+                title: 'Replace the description',
+                message: 'This replaces the text in the description box.',
                 confirmLabel: 'Replace',
             })
             if (!ok) return
@@ -3113,15 +3182,15 @@ export function mountTrackerPanel(
             if (run.status === 'written' && run.source) {
                 skeletonSource.value = run.source
                 if (worldStatus) worldStatus = { ...worldStatus, skeletonSource: run.source }
-                say('The source is written from this chat. Read it over, then generate the skeleton.')
+                say('The description is written. Read it, then generate the skeleton.')
             } else {
-                say(run.status === 'cancelled' ? 'Stopped before the source was written.' : `The source could not be written: ${run.reason ?? 'no reason given'}.`, run.status === 'failed' ? 'error' : 'busy')
+                say(run.status === 'cancelled' ? 'Stopped before the description was written.' : `The description could not be written: ${run.reason ?? 'no reason given'}.`, run.status === 'failed' ? 'error' : 'busy')
             }
             drawWorld()
         } catch (error) {
             if (destroyed || chatId !== asked) return
             if (error instanceof RequestTimeoutError) {
-                say('Writing the source is taking longer than the panel waits. It is still being written; reopen the fold in a while to see it.', 'busy')
+                say('The description is taking longer than expected. It is still being written. Reopen this card later to see it.', 'busy')
                 return
             }
             skeletonRunning = null
@@ -3593,8 +3662,10 @@ export function mountTrackerPanel(
         if (startGroupChat !== chatId) {
             startGroupChat = chatId
             startGroup.open = !!chatId && !memo.trim()
+            // Which card this chat is from, and what its passes run on, are the chat's: the checks read again.
+            refreshStartStatus()
         }
-        if (playerCardChat !== chatId) { playerCardChat = chatId; playerCardFold.setChat(chatId); waysFold.setChat(chatId); importFold.setChat(chatId); libraryFold.setChat(chatId); npcFold.setChat(chatId); sceneFold.setChat(chatId); recordsFold.setChat(chatId); terminalFold.setChat(chatId); sandboxFold.setChat(chatId); evoResetAt = null; detailsModal?.close(); if (activationChat !== chatId) { activation = null; activationChat = chatId; drawActivation() } }
+        if (playerCardChat !== chatId) { playerCardChat = chatId; playerCardFold.setChat(chatId); waysFold.setChat(chatId); importFold.setChat(chatId); libraryFold.setChat(chatId); npcFold.setChat(chatId); sceneFold.setChat(chatId); recordsFold.setChat(chatId); terminalFold.setChat(chatId); companionPane.setChat(chatId); sandboxFold.setChat(chatId); evoResetAt = null; detailsModal?.close(); if (activationChat !== chatId) { activation = null; activationChat = chatId; drawActivation() } }
         const position = readPosition(history, historyIndex, memo)
         // The cards show whatever the stepper is pointing at. The live memo is
         // untouched by looking — nothing is written until a restore.
@@ -4759,6 +4830,7 @@ export function mountTrackerPanel(
             trackerDirectLookback = result.prefs?.trackerDirectLookback ?? 5
             agentDirectLookback = result.prefs?.agentDirectLookback ?? 10
             terminalFold.applyPrefs((result.prefs ?? {}) as Record<string, unknown>)
+            companionPane.applyPrefs((result.prefs ?? {}) as Record<string, unknown>)
             agentTools.applyPrefs((result.prefs ?? {}) as Record<string, unknown>)
             creatorFold.applyPrefs(result.prefs ?? {})
             instantFold.applyPrefs(result.prefs ?? {})
@@ -4909,6 +4981,7 @@ export function mountTrackerPanel(
             if (prefs.creatorConnectionId !== undefined) creatorFold.applyConnection(prefs.creatorConnectionId)
             // The terminal's drafts, lookbacks and tab (71b); the Quick Settings dials (78a).
             terminalFold.applyPrefs(prefs as Record<string, unknown>)
+            companionPane.applyPrefs(prefs as Record<string, unknown>)
             quickMode.applyPrefs(prefs as Record<string, unknown>)
             quickMore.applyPrefs(prefs as Record<string, unknown>)
             // The cards' display preferences (72b) redraw the cards; so does a bar recoloured
@@ -5258,6 +5331,9 @@ export function mountTrackerPanel(
         },
         instruct(instruction: string): Promise<void> {
             return runNow(instruction)
+        },
+        applyStatus(status: StatusResult | null): void {
+            startArea.applyStatus(status)
         },
         destroy(): void {
             destroyed = true

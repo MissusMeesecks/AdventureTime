@@ -70,7 +70,7 @@ export interface DisplayGroupModule {
     tag: string
     icon: string
     label: string
-    kind: 'Stock' | 'Wizard' | 'Custom'
+    kind: 'Built-in' | 'Wizard' | 'Custom'
 }
 
 /**
@@ -81,7 +81,7 @@ export interface DisplayGroupModule {
 export function knownDisplayGroupModules(settings: { customFields?: unknown }): DisplayGroupModule[] {
     const stock: DisplayGroupModule[] = BLOCK_ORDER
         .filter((tag) => !DISPLAY_GROUP_EXCLUDED_TAGS.has(tag))
-        .map((tag) => ({ tag, icon: BLOCK_ICONS[tag] || DEFAULT_BLOCK_ICON, label: tag, kind: 'Stock' }))
+        .map((tag) => ({ tag, icon: BLOCK_ICONS[tag] || DEFAULT_BLOCK_ICON, label: tag, kind: 'Built-in' }))
     const fields = Array.isArray(settings.customFields) ? (settings.customFields as Array<Partial<CustomField> | null>) : []
     const custom: DisplayGroupModule[] = fields
         .map((field) => ({

@@ -24,6 +24,10 @@ describe('which tools the settings ask for', () => {
         expect(tool!.name).toBe(DICE_TOOL_D20)
         expect(tool!.display_name).toBe('Dice Roll (with DC)')
         expect(tool!.inline_available).toBe(true)
+        // Never a Council member's tool, in any of its three forms.
+        const every = [{ rngToolD20: true }, { rngToolD100: true }, { rngToolD20: true, legacyDiceNaming: true }].flatMap((settings) => diceToolRegistrations(settings))
+        expect(every.length).toBeGreaterThanOrEqual(3)
+        expect(every.every((t) => t.council_eligible === false)).toBe(true)
         const params = tool!.parameters as { required: string[]; properties: Record<string, { description: string }> }
         expect(params.required).toEqual(['who', 'for', 'formula', 'dc'])
         expect(params.properties.dc!.description).toContain('Anchors difficulty BEFORE the roll is made')

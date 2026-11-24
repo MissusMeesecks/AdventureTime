@@ -50,7 +50,7 @@ describe('the two gears of the Campaign Records (78b)', () => {
         field<HTMLInputElement>('npc-card-major-words').dispatchEvent(new Event('change'))
         await settle()
         expect(calls.at(-1)).toEqual(['words', 5000, 100])
-        expect(note()).toContain('Saved: 5000 words for a major NPC, 100 for a minor one')
+        expect(note()).toContain('Saved: 5000 words for a major NPC, 100 for a minor NPC')
         // The relationship system: the cartridge key.
         field<HTMLInputElement>('npc-card-relationships').checked = false
         field<HTMLInputElement>('npc-card-relationships').dispatchEvent(new Event('change'))
@@ -95,7 +95,7 @@ describe('the two gears of the Campaign Records (78b)', () => {
         field<HTMLInputElement>('npc-card-minor-words').value = '120'
         field<HTMLInputElement>('npc-card-minor-words').dispatchEvent(new Event('change'))
         await settle()
-        expect(note()).toContain('the NPC instruction no longer carries the two length sentences')
+        expect(note()).toContain('the NPC instruction no longer contains the two length sentences')
     })
 
     it('the Location box holds the scene’s drawing settings handed in, their summary hidden by the sheet', () => {

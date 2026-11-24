@@ -3,7 +3,9 @@
 import { describe, expect, it } from 'vitest'
 
 import { SETTINGS_CATEGORIES } from '../settings/schema.js'
-import { createSettingsCategories, createSettingsSearch } from './categories.js'
+import { CATEGORIES_CSS, createSettingsCategories, createSettingsSearch } from './categories.js'
+import { MAPS_GUIDE, createMapsGuide } from './category-copy.js'
+import { attachCardHelp, createHelpTip } from './help-tip.js'
 
 const el = (tag: string, attrs?: Record<string, string>) => { const n = document.createElement(tag); for (const [k, v] of Object.entries(attrs ?? {})) n.setAttribute(k, v); return n }
 
@@ -28,7 +30,8 @@ describe('the categories (63)', () => {
         const folds = Array.from(categories.root.querySelectorAll('.lh-category'))
         expect(folds.map((f) => f.getAttribute('data-lh-category'))).toEqual(['general', 'connections', 'systems', 'tracker', 'agent', 'maps', 'world'])
         expect(folds.map((f) => f.querySelector('.lh-category-title')!.textContent)).toEqual(SETTINGS_CATEGORIES.map((c) => c.title))
-        expect(folds.map((f) => f.querySelector('.lh-card-icon')!.textContent)).toEqual(SETTINGS_CATEGORIES.map((c) => c.icon))
+        // Line icons since 96, stage 2g: the category's emoji is the fallback for a title the table does not know.
+        expect(folds.every((f) => !!f.querySelector('summary > .lh-card-icon svg'))).toBe(true)
         expect(categories.bodies.maps.closest('.lh-category')).toBe(categories.folds.maps)
         expect(folds.every((f) => !(f as HTMLDetailsElement).open)).toBe(true)
     })
@@ -39,33 +42,41 @@ describe('the categories’ copy (63d)', () => {
         const categories = createSettingsCategories(el)
         for (const fold of Array.from(categories.root.querySelectorAll<HTMLDetailsElement>('.lh-category'))) {
             const children = Array.from(fold.children).map((c) => c.className)
-            // Persistent maps carries the Maps Guide too (71a), between the Quick Start Guide and the body.
-            expect(children).toEqual(fold.getAttribute('data-lh-category') === 'maps'
-                ? ['', 'lh-category-intro lh-search-item', 'lh-card lh-quickstart lh-search-item', 'lh-card lh-quickstart lh-maps-guide lh-search-item', 'lh-category-body']
-                : ['', 'lh-category-intro lh-search-item', 'lh-card lh-quickstart lh-search-item', 'lh-category-body'])
+            // One guide card per category (96, audit D3): the maps guide is part of Persistent maps’ own.
+            expect(children).toEqual(['', 'lh-help-note', 'lh-card lh-quickstart lh-search-item', 'lh-category-body'])
             const guide = fold.querySelector('.lh-quickstart') as HTMLDetailsElement
             expect(guide.open).toBe(false)
             expect(guide.querySelector('.lh-card-title')!.textContent).toBe('Quick Start Guide')
             expect(guide.querySelectorAll('.lh-quickstart-steps > li').length).toBeGreaterThanOrEqual(3)
-            expect(guide.querySelector('.lh-quickstart-misc-label')!.textContent).toBe('Miscellaneous')
-            expect((fold.querySelector('.lh-category-intro') as HTMLElement).textContent!.length).toBeGreaterThan(40)
+            expect(Array.from(guide.querySelectorAll('.lh-quickstart-misc-label')).at(-1)!.textContent).toBe('Miscellaneous')
+            // The intro is behind the header's [?] (96): no box, the text in the fold and hidden.
+            expect(fold.querySelector('.lh-category-intro')).toBeNull()
+            const help = fold.children[1] as HTMLElement
+            expect(help.hidden).toBe(true)
+            expect(help.textContent!.length).toBeGreaterThan(40)
+            expect(fold.querySelector('summary .lh-help-tip')!.getAttribute('aria-controls')).toBe(help.id)
         }
         const world = categories.folds.world
-        expect(world.querySelector('.lh-category-intro')!.textContent).toContain('World Progression automatically generates off-screen world simulation reports')
-        expect(Array.from(world.querySelectorAll('.lh-quickstart-steps b')).map((b) => b.textContent)).toEqual(['Create the skeleton source', 'Generate the skeleton', 'Set up the location rotation', 'Write the first report'])
+        expect(world.children[1]!.textContent).toContain('World Progression writes reports about what happens in the world away from the party')
+        expect(Array.from(world.querySelectorAll('.lh-quickstart-steps b')).map((b) => b.textContent)).toEqual(['Write the skeleton source', 'Generate the skeleton', 'Set the location rotation', 'Write the first report'])
     })
 
-    it('gives Persistent maps the Maps Guide (71a): a closed card of Multihog’s help, with AdventureTime’s button names, and only there', () => {
+    it('folds the maps guide into Persistent maps’ one guide card, and the widget’s block says the same parts (96)', () => {
         const categories = createSettingsCategories(el)
-        const guide = categories.folds.maps.querySelector('.lh-maps-guide') as HTMLDetailsElement
-        expect(guide).not.toBeNull()
-        expect(guide.open).toBe(false)
-        expect(guide.querySelector('.lh-card-title')!.textContent).toBe('Maps Guide')
-        expect(Array.from(guide.querySelectorAll('.lh-quickstart-misc-label')).map((h) => h.textContent)).toEqual(['What are maps?', 'Why do they matter?', 'How are they made and sent?', 'Editing a map', 'World Progression and Map Evolution together'])
-        expect(guide.textContent).toContain('The trap or the enemy is spawned by the roll.')
-        expect(guide.textContent).toContain('+ Add Mapped Location on the Locations folder of Campaign records')
-        expect(guide.textContent).toContain('open Raw JSON under the picture')
-        expect(categories.root.querySelectorAll('.lh-maps-guide')).toHaveLength(1)
+        expect(categories.root.querySelector('.lh-maps-guide')).toBeNull()
+        const guide = categories.folds.maps.querySelector('.lh-quickstart') as HTMLDetailsElement
+        expect(Array.from(guide.querySelectorAll('.lh-quickstart-misc-label')).map((h) => h.textContent)).toEqual(['Why maps matter', 'How maps are made', 'Editing a map', 'Miscellaneous'])
+        expect(guide.textContent).toContain('Maps make skill checks honest.')
+        expect(guide.textContent).toContain('“+ Add Mapped Location” on the Locations folder')
+        expect(guide.textContent).toContain('open “Map Details”')
+        // Nothing of the places that are gone, in either category's guide.
+        for (const id of ['maps', 'world'] as const) expect(categories.folds[id].querySelector('.lh-quickstart')!.textContent).not.toMatch(/Maps fold|in the fold|World progression fold|Multihog/)
+        // No other category's guide has headed parts.
+        expect(Array.from(categories.folds.world.querySelectorAll('.lh-quickstart-misc-label')).map((h) => h.textContent)).toEqual(['Miscellaneous'])
+        const block = createMapsGuide(el)
+        expect(block.tagName).toBe('DIV')
+        expect(Array.from(block.querySelectorAll('.lh-quickstart-misc-label')).map((h) => h.textContent)).toEqual(MAPS_GUIDE.map((part) => part.title))
+        expect(block.querySelectorAll('p')).toHaveLength(1 + MAPS_GUIDE.reduce((n, part) => n + part.paragraphs.length, 0))
     })
 
     it('a search finds a guide and hides the others', () => {
@@ -77,6 +88,25 @@ describe('the categories’ copy (63d)', () => {
         expect(categories.folds.world.hidden).toBe(false)
         expect((categories.folds.world.querySelector('.lh-quickstart') as HTMLElement).hidden).toBe(false)
         expect((categories.folds.tracker.querySelector('.lh-quickstart') as HTMLElement).hidden).toBe(true)
+    })
+})
+
+describe('the look (96, stage 2g)', () => {
+    it('keeps two levels of chrome, one caption and the small button, scoped to the settings', () => {
+        // A category is a header over a divider, not a box.
+        expect(CATEGORIES_CSS).toMatch(/\.lh-categories \.lh-category \{ border: 0; border-bottom: 1px solid /)
+        // A card inside a card is a divider, never a second box.
+        expect(CATEGORIES_CSS).toMatch(/\.lh-categories \.lh-card \.lh-card \{ border: 0; border-top: 1px solid [^}]*background: none; \}/)
+        // One caption style for the group labels inside a card.
+        expect(CATEGORIES_CSS).toMatch(/:is\(\.lh-quickstart-misc-label, \.lh-core-caption, \.lh-developer-caption, \.lh-developer-subhead, \.lh-map-theme-group, \.lh-nc-subtitle, \.lh-caption\) \{ font-size: 0\.72em; font-weight: 600; text-transform: uppercase;/)
+        // The small button, and icon-only buttons at 28 px.
+        expect(CATEGORIES_CSS).toMatch(/:is\(\.lh-button--quiet, \.lh-reset, \.lh-tm-edit, \.lh-tm-move, \.lh-sec-arrows \.lh-button\) \{ font-size: 0\.8em;/)
+        expect(CATEGORIES_CSS).toMatch(/\.lh-sec-head \.lh-sec-remove\) \{ min-width: 28px; min-height: 28px;/)
+        // Every rule of the look is under the settings' own root, so a widget keeps its look.
+        const look = CATEGORIES_CSS.slice(CATEGORIES_CSS.indexOf('/* The look (96, stage 2g)'))
+        const rules = look.split('\n').filter((line) => line.startsWith('.adventuretime-panel'))
+        expect(rules.length).toBeGreaterThan(8)
+        expect(rules.filter((line) => !line.startsWith('.adventuretime-panel .lh-categories') && !line.startsWith('.adventuretime-panel .lh-card-foot-warning'))).toEqual([])
     })
 })
 
@@ -116,6 +146,50 @@ describe('the search (63)', () => {
         expect(categories.folds.general.hidden).toBe(false)
         expect((categories.bodies.general.querySelector('.lh-layout') as HTMLElement).hidden).toBe(false)
         expect((categories.bodies.general.querySelector('.lh-section') as HTMLElement).hidden).toBe(true)
+    })
+
+    it('finds a setting by the help behind its [?], shows why it matched, and closes the help with the box (96)', () => {
+        const { categories, search, type } = build()
+        const row = categories.bodies.tracker.querySelector<HTMLElement>('.lh-row')!
+        const tip = createHelpTip(el, 'Lantern', 'Burns a flask of whale oil each night.')
+        row.append(tip.button, tip.note)
+        type('whale oil')
+        expect(row.hidden).toBe(false)
+        expect(categories.folds.tracker.open).toBe(true)
+        expect(tip.note.hidden).toBe(false)
+        expect(tip.button.getAttribute('aria-expanded')).toBe('true')
+        // The clear button shows with text in the box, empties it, and the help the search opened closes.
+        const clear = search.root.querySelector<HTMLButtonElement>('.lh-search-clear')!
+        expect(clear.hidden).toBe(false)
+        clear.click()
+        expect(search.input.value).toBe('')
+        expect(clear.hidden).toBe(true)
+        expect(tip.note.hidden).toBe(true)
+        expect(row.hidden).toBe(false)
+    })
+
+    it('shows a card whole when the help behind its header matches, and a category’s general help filters nothing (96)', () => {
+        const { categories, type } = build()
+        const card = categories.bodies.tracker.querySelector<HTMLDetailsElement>('.lh-section')!
+        attachCardHelp(el, card, card.querySelector('summary')!, card.querySelector('.lh-section-title')!, 'Everything about waystone attunement.')
+        type('attunement')
+        expect(card.hidden).toBe(false)
+        expect(Array.from(card.querySelectorAll<HTMLElement>('.lh-row')).every((r) => !r.hidden)).toBe(true)
+        // General & visuals' help names the widgets; a search for a word in it still hides the cards that do not match.
+        type('cartridges')
+        expect(categories.folds.general.querySelector('.lh-help-note')!.textContent).toContain('cartridges')
+        expect((categories.bodies.general.querySelector('.lh-section') as HTMLElement).hidden).toBe(true)
+    })
+
+    it('is Lumiverse’s search field: an icon, the box, a clear button, and a note a screen reader hears (96)', () => {
+        const { search } = build()
+        const field = search.root.querySelector('.lh-search-field')!
+        expect(Array.from(field.children).map((c) => c.className)).toEqual(['lh-icon lh-icon-search', 'lh-search-input', 'lh-search-clear'])
+        expect([search.input.placeholder, search.input.getAttribute('aria-label')]).toEqual(['Search settings', 'Search settings'])
+        expect(field.querySelector('.lh-search-clear')!.getAttribute('aria-label')).toBe('Clear the search')
+        expect(search.root.querySelector('.lh-search-note')!.getAttribute('role')).toBe('status')
+        expect(CATEGORIES_CSS).toContain('.adventuretime-panel .lh-search-clear[hidden] { display: none; }')
+        expect(CATEGORIES_CSS).toMatch(/\.lh-search-field \{[^}]*border-radius: 10px/)
     })
 
     it('reads a section drawn whole by an editor through its search items, and opens the fold a match sits in (70)', () => {
@@ -183,7 +257,7 @@ describe('the search (63)', () => {
         const { categories, search, type, hidden } = build()
         type('zzz')
         expect(hidden('.lh-category')).toBe(7)
-        expect(search.root.querySelector('.lh-search-note')!.textContent).toBe('Nothing matches.')
+        expect(search.root.querySelector('.lh-search-note')!.textContent).toBe('No settings match.')
         type('rng')
         type('')
         expect(hidden('.lh-category')).toBe(0)

@@ -51,7 +51,7 @@ const PACK_MOVES = JSON.stringify({ operation_id: 'evo-day6-pack', operations: [
 const QUIET = '{"noop":true,"report_outcomes":[{"report_id":"Vell_World::r1","status":"considered"}]}'
 const BAD = JSON.stringify({ operation_id: 'evo-bad', operations: [{ op: 'SET_ASSET', evidence: 'EVOLVED', asset_id: 'nobody', state: 'LEFT', cause: 'c' }] })
 
-const OPTIONS: MapEvolutionOptions = { enabled: true, intervalHours: 12, onSiteIntervalHours: 1, onSiteIntervalMinutes: 0, onSitePreset: 'dynamic', scope: 'all', count: 2, randomize: false, selectedRoots: [], worldReportLookback: 5, storyLookback: 20, systemPrompt: '', compressEnabled: true, compressThreshold: 10000 }
+const OPTIONS: MapEvolutionOptions = { enabled: true, intervalHours: 12, onSiteIntervalHours: 1, onSiteIntervalMinutes: 0, onSitePreset: 'dynamic', scope: 'all', count: 2, randomize: false, selectedRoots: [], worldReportLookback: 5, storyLookback: 20, systemPrompt: '', compressSystemPrompt: '', compressEnabled: true, compressThreshold: 10000 }
 
 function harness(replies: string[] = [PACK_MOVES, QUIET], over: Partial<MapEvolutionDeps> = {}, options: Partial<MapEvolutionOptions> = {}, seed = SEED()) {
     const books = makeBooks(seed)
@@ -306,6 +306,17 @@ describe('the interval tick after a reply', () => {
         off.world.time = '09:00 AM, Day 6'
         await off.evolution.afterReply('c1', 'u1', 'm4')
         expect(off.calls).toHaveLength(2)
+    })
+
+    it('compresses on the cartridge\'s own compression prompt when it holds one (97), the stock one when blank', async () => {
+        const { evolution, state, calls, world } = harness([PACK_MOVES, '{"digests":[{"at":"Day 1 – Day 4","summary":"Eighty visitors came and went."}]}', QUIET], {}, { compressThreshold: 1, compressSystemPrompt: 'Fold the closed threads, gently.' })
+        let threads = {}
+        for (let i = 0; i < 80; i++) threads = appendThreads(threads, 'Abbey Undercroft', threadsFromTransaction({ operation_id: `old-${i}`, operations: [{ op: 'SET_ASSET', asset_id: `visitor-${i}`, state: 'LEFT', cause: `Visitor ${i} argued with the delvers over the reliquary shelves and went home to the salt road.`, thread_status: 'resolved' }] }, { at: `Day ${i + 1}`, createdAssets: [] }))
+        await state.save('c1', { threadsBySite: threads }, 'u1')
+        await evolution.afterReply('c1', 'u1', 'm2')
+        world.time = '09:00 AM, Day 6'
+        await evolution.afterReply('c1', 'u1', 'm4')
+        expect(calls[1]![0]!.content).toBe('Fold the closed threads, gently.')
     })
 })
 

@@ -28,6 +28,7 @@
  * the `party` module is on (`card-events.js`).
  */
 
+import { createHelpTip } from './help-tip.js'
 import { NARRATIVE_PACING_OPTIONS, RNG_MODE_OPTIONS, readRngMode, writeRngMode, type SettingsBag } from '../settings/schema.js'
 
 export interface NarratorConfigHost {
@@ -52,27 +53,28 @@ export interface NarratorConfig {
 
 /** The optional components, in Multihog's order, each a rulebook flag. */
 export const NARRATOR_COMPONENTS: ReadonlyArray<{ flag: string; label: string; hint: string }> = [
-    { flag: 'loot', label: '🎲 Loot rolls', hint: 'The narrator rolls for what a defeated foe or a searched room yields.' },
-    { flag: 'random_events', label: '🌍 Random event rolls', hint: 'A roll now and then for something the party did not go looking for.' },
-    { flag: 'resting', label: '💤 Resting restrictions', hint: 'At least nine in-world hours between rests.' },
-    { flag: 'party_bench', label: '⛺ Benched party', hint: 'Companions temporarily separated from the party are kept, not forgotten, and come back on their own.' },
-    { flag: 'dungeon_reality_and_hidden_mapping', label: '🗺️ Persistent maps', hint: 'A hidden map is drawn before a dungeon, ruin, town or city is explored, and kept as GM canon. New maps need the CreateAreaMap tool, or the text opener below.' },
-    { flag: 'CYOA_mode', label: '🧭 CYOA mode (action choices every turn)', hint: 'Every reply ends with choices drawn as buttons. The slots and presets are under General & visuals, CYOA Mode.' },
+    { flag: 'loot', label: '🎲 Loot rolls', hint: 'The narrator rolls for what a defeated enemy or a searched room yields.' },
+    { flag: 'random_events', label: '🌍 Random events', hint: 'The narrator rolls now and then for an event the party did not go looking for.' },
+    { flag: 'resting', label: '💤 Rest limits', hint: 'The party must wait at least nine in-world hours between rests.' },
+    { flag: 'party_bench', label: '⛺ Benched party', hint: 'Companions who are away from the party for a while are kept and come back on their own. Turning this on also turns on the tracker’s party and benched party modules.' },
+    { flag: 'dungeon_reality_and_hidden_mapping', label: '🗺️ Persistent maps', hint: 'A hidden map is drawn before the party explores a dungeon, ruin, town or city. The narrator treats the map as fixed canon. New maps need the CreateAreaMap tool or the text command below.' },
+    { flag: 'CYOA_mode', label: '🧭 CYOA mode', hint: 'Every reply ends with action choices, drawn as buttons under the reply. Set the choice slots and presets in General & visuals, under CYOA mode.' },
 ]
 
 export const NARRATOR_CONFIG_CSS = `
-.lh-nc { display: flex; flex-direction: column; gap: 10px; font-size: 0.85em; }
-.lh-nc-lead { opacity: 0.85; line-height: 1.45; }
+.lh-nc { display: flex; flex-direction: column; gap: 10px; font-size: 0.8em; }
 .lh-nc-group { display: flex; flex-direction: column; gap: 4px; }
-.lh-nc-title { font-weight: 600; font-size: 0.95em; letter-spacing: 0.02em; }
-.lh-nc-hint { font-size: 0.9em; opacity: 0.7; line-height: 1.4; }
+.lh-nc-title { font-weight: 600; font-size: 0.92em; letter-spacing: 0.02em; }
+.lh-nc-head { display: flex; flex-direction: column; min-width: 0; }
+.lh-nc-head[hidden] { display: none; }
+.lh-nc-headline { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .lh-nc-choice, .lh-nc-switch { display: flex; align-items: flex-start; gap: 8px; cursor: pointer; }
 .lh-nc-choice input, .lh-nc-switch input { flex: 0 0 auto; margin: 2px 0 0; }
 .lh-nc-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .lh-nc-sub { display: flex; flex-direction: column; gap: 4px; margin-left: 22px; padding-left: 8px; border-left: 2px solid var(--lh-accent-dim, var(--lumiverse-border, rgba(127,127,127,0.25))); }
 .lh-nc-sub[hidden] { display: none; }
 .lh-nc-subtitle { font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.06em; opacity: 0.7; }
-.lh-nc-advanced > summary { cursor: pointer; font-size: 0.9em; opacity: 0.8; }
+.lh-nc-advanced > summary { cursor: pointer; font-size: 0.92em; opacity: 0.8; }
 .lh-nc-advanced .lh-nc-sub { margin-top: 4px; }
 `
 
@@ -114,16 +116,37 @@ export function mountNarratorConfig(
         render()
     }
 
-    function group(title: string, hint?: string): { box: HTMLElement; body: HTMLElement } {
-        const box = el('div', { class: 'lh-nc-group' })
-        const head = el('div', { class: 'lh-nc-title' })
-        head.textContent = title
-        box.append(head)
-        if (hint) {
-            const note = el('div', { class: 'lh-nc-hint' })
-            note.textContent = hint
-            box.append(note)
+    /**
+     * The `[?]` of one heading or one row (96). The block is redrawn whole on
+     * every change, so the help that stood open is opened again by its key.
+     */
+    let openHelp = new Set<string>()
+    function tipFor(key: string, label: string, text: string): { button: HTMLButtonElement; note: HTMLElement } {
+        const tip = createHelpTip(el as never, label, text)
+        tip.note.setAttribute('data-lh-nc-help', key)
+        if (openHelp.has(key)) {
+            tip.note.hidden = false
+            tip.button.setAttribute('aria-expanded', 'true')
         }
+        return tip
+    }
+
+    /** A heading, with its help behind a `[?]` after its text and the note directly under it. */
+    function heading(cls: string, title: string, key: string, hint?: string): HTMLElement {
+        const head = el('div', { class: cls })
+        head.textContent = title
+        if (!hint) return head
+        const tip = tipFor(key, title, hint)
+        const line = el('div', { class: 'lh-nc-headline' })
+        line.append(head, tip.button)
+        const wrap = el('div', { class: 'lh-nc-head lh-search-item' })
+        wrap.append(line, tip.note)
+        return wrap
+    }
+
+    function group(title: string, key: string, hint?: string): { box: HTMLElement; body: HTMLElement } {
+        const box = el('div', { class: 'lh-nc-group' })
+        box.append(heading('lh-nc-title', title, key, hint))
         return { box, body: box }
     }
 
@@ -138,32 +161,34 @@ export function mountNarratorConfig(
         return row
     }
 
+    /** A tick row; with help, the `[?]` beside the label and the note under the line (the label holds neither). */
     function toggle(label: string, hint: string | undefined, checked: boolean, onChange: (value: boolean) => void, field: string): HTMLElement {
-        const row = el('label', { class: 'lh-nc-switch lh-search-item', 'data-lh-field': field })
+        const row = el('label', { class: 'lh-nc-switch', 'data-lh-field': field })
         const input = el('input', { type: 'checkbox' })
         input.checked = checked
         input.addEventListener('change', () => { onChange(input.checked) })
         const text = el('span', { class: 'lh-nc-text' })
-        const name = el('span')
-        name.textContent = label
-        text.append(name)
-        if (hint) {
-            const note = el('span', { class: 'lh-nc-hint' })
-            note.textContent = hint
-            text.append(note)
-        }
+        text.textContent = label
         row.append(input, text)
-        return row
+        if (!hint) {
+            row.classList.add('lh-search-item')
+            return row
+        }
+        const tip = tipFor(field, label, hint)
+        const line = el('div', { class: 'lh-helped-line' })
+        line.append(row, tip.button)
+        const wrap = el('div', { class: 'lh-helped lh-search-item' })
+        wrap.append(line, tip.note)
+        return wrap
     }
 
     function render(): void {
         // A redraw keeps the advanced fold as the hand left it: a switch inside it commits and redraws.
         const advancedOpen = (root.querySelector('[data-lh-field="nc-rng-advanced"]') as HTMLDetailsElement | null)?.open ?? false
-        const lead = el('div', { class: 'lh-nc-lead' })
-        lead.textContent = 'Select your preferred modes and components. They reach the narrator’s rulebook on the next reply; nothing has to be applied.'
+        openHelp = new Set(Array.from(root.querySelectorAll<HTMLElement>('[data-lh-nc-help]')).filter((note) => !note.hidden).map((note) => note.getAttribute('data-lh-nc-help') ?? ''))
 
         // Pacing, the legacy's four radios.
-        const pacing = group('Pacing / output length', 'How much the narrator writes per reply, and how much it drives the story itself.')
+        const pacing = group('Pacing & reply length', 'pacing', 'Sets how much the narrator writes in each reply and how much it drives the story itself. Normal adds no length instructions.')
         const current = String(settings.narrativePacing ?? 'normal')
         for (const option of NARRATIVE_PACING_OPTIONS) {
             pacing.body.append(radio('pacing', option.value, option.label, current === option.value, () => {
@@ -173,7 +198,10 @@ export function mountNarratorConfig(
         }
 
         // The RNG mode, with the dice switches under an advanced fold.
-        const rng = group('RNG', 'Where the narrator’s dice come from. Pre-seeded: a queue of rolls goes with every reply. Tool calls: the narrator calls RollTheDice, which needs function calling on its connection.')
+        const rng = group('Dice (RNG)', 'rng', 'Sets where the narrator’s dice come from. Pre-seeded: a queue of fresh rolls is sent with every reply. Tool calls: the narrator calls the RollTheDice tool, which needs function calling on the narrator’s connection.\n' +
+            'Pre-seeded queue + tool calls: recommended when CYOA mode is off.\n' +
+            'Pre-seeded queue only: recommended when CYOA mode is on.\n' +
+            'No dice rolls: the narrator makes the numbers up. Not recommended.')
         const mode = readRngMode(settings)
         for (const option of RNG_MODE_OPTIONS) {
             rng.body.append(radio('rng', option.value, option.label, mode === option.value, () => {
@@ -185,14 +213,14 @@ export function mountNarratorConfig(
         const advanced = el('details', { class: 'lh-nc-advanced', 'data-lh-field': 'nc-rng-advanced' }) as HTMLDetailsElement
         advanced.open = advancedOpen
         const advancedHead = el('summary')
-        advancedHead.textContent = '⚙️ Advanced RNG settings'
+        advancedHead.textContent = 'Advanced dice'
         const advancedBody = el('div', { class: 'lh-nc-sub' })
         const dice: Array<[string, string, string]> = [
-            ['diceD100Mode', '🎲 d100 mode', 'Percentage rulesets: the rulebook’s dice wording says d100, and the queue and the tool switch to their d100 forms.'],
-            ['rngToolD20', 'RollTheDice (unified tool)', 'The narrator’s dice tool, the DC declared first.'],
-            ['rngToolD100', 'RollTheDiceD100 (d100 tool)', 'The same tool for percentage rulesets. Ticking it turns d100 mode on.'],
-            ['rngQueueD20', '[RNG_QUEUE] (d20 queue)', 'Twelve lines of d20, d4, d6, d8, d10 and d12, fresh for every reply.'],
-            ['rngQueueD100', '[RNG_QUEUE_d100] (d100 queue)', 'Thirty d100 lines, fresh for every reply.'],
+            ['diceD100Mode', 'd100 mode', 'For percentage rulesets. The rulebook’s dice wording says d100. The queue and the tool switch to their d100 versions.'],
+            ['rngToolD20', 'RollTheDice tool', 'The dice tool the narrator calls. The narrator declares the DC before it rolls.'],
+            ['rngToolD100', 'RollTheDiceD100 tool (d100)', 'The same tool for percentage rulesets. Turning it on turns d100 mode on.'],
+            ['rngQueueD20', 'd20 queue [RNG_QUEUE]', 'Sends twelve lines of fresh d20, d4, d6, d8, d10 and d12 rolls with every reply.'],
+            ['rngQueueD100', 'd100 queue [RNG_QUEUE_d100]', 'Sends thirty lines of fresh d100 rolls with every reply. Turning it on turns d100 mode on.'],
         ]
         for (const [key, label, hint] of dice) {
             advancedBody.append(toggle(label, hint, settings[key] === true, (value) => {
@@ -201,7 +229,7 @@ export function mountNarratorConfig(
             }, `nc-${key}`))
         }
         // Legacy Dice Logic (72b): a preference, not a cartridge key — the legacy's vanilla RollTheDice, no DC committed first.
-        advancedBody.append(toggle('Legacy dice logic (vanilla)', 'The vanilla RollTheDice tool, with no DC committed before the roll; the queue’s default die becomes a d6. For a connection that balks at the DC-first tool.', legacyDice, (value) => {
+        advancedBody.append(toggle('Plain dice tool (no DC first)', 'Uses the plain RollTheDice tool, which does not commit a DC before the roll. The queue’s default die becomes a d6. Turn this on if the connection’s model refuses the DC-first tool.', legacyDice, (value) => {
             legacyDice = value
             deps.savePref({ legacyDiceNaming: value })
         }, 'nc-legacyDiceNaming'))
@@ -209,38 +237,38 @@ export function mountNarratorConfig(
         rng.body.append(advanced)
 
         // The quests and their hardcore options.
-        const quests = group('Quests', 'The narrator keeps a quest log in the state memo, drawn as cards.')
+        const quests = group('Quests', 'quests', 'The narrator keeps a quest log in the tracker memo. The log is drawn as quest cards.')
         const questsOn = flagOn('quests')
-        quests.body.append(toggle('Enable quests', undefined, questsOn, (value) => { setFlags({ quests: value }) }, 'nc-quests'))
+        quests.body.append(toggle('Track quests', undefined, questsOn, (value) => { setFlags({ quests: value }) }, 'nc-quests'))
         const questOptions = el('div', { class: 'lh-nc-sub', 'data-lh-field': 'nc-quest-options' })
         questOptions.hidden = !questsOn
         const hardcore = el('div', { class: 'lh-nc-subtitle' })
-        hardcore.textContent = 'Hardcore / optional'
+        hardcore.textContent = 'Optional rules'
         questOptions.append(hardcore)
         const deadlinesOn = flagOn('questsDeadlines')
-        questOptions.append(toggle('Deadlines', 'A quest can run out of time, and the clock on it is in the memo.', deadlinesOn, (value) => {
+        questOptions.append(toggle('Deadlines', 'A quest can run out of time. The memo shows the time left. Turning this off also turns Frustration off.', deadlinesOn, (value) => {
             // Turning deadlines off turns frustration off with it, as the legacy does.
             setFlags(value ? { questsDeadlines: true } : { questsDeadlines: false, questsFrustration: false })
         }, 'nc-questsDeadlines'))
         const frustration = el('div', { class: 'lh-nc-sub', 'data-lh-field': 'nc-frustration-wrap' })
         frustration.hidden = !deadlinesOn
-        frustration.append(toggle('↳ Frustration (experimental)', 'The questgiver’s mood follows the time pressure, for quests an NPC gave.', flagOn('questsFrustration'), (value) => { setFlags({ questsFrustration: value }) }, 'nc-questsFrustration'))
+        frustration.append(toggle('Questgiver frustration (experimental)', 'For quests an NPC gave, the questgiver’s mood follows the time pressure. Only available while Deadlines is on.', flagOn('questsFrustration'), (value) => { setFlags({ questsFrustration: value }) }, 'nc-questsFrustration'))
         questOptions.append(frustration)
-        questOptions.append(toggle('Show completed and failed quests', 'Keep them in the quest cards after they close.', flagOn('questsShowArchive'), (value) => { setFlags({ questsShowArchive: value }) }, 'nc-questsShowArchive'))
+        questOptions.append(toggle('Show closed quests', 'Keeps completed and failed quests in the quest cards after they close.', flagOn('questsShowArchive'), (value) => { setFlags({ questsShowArchive: value }) }, 'nc-questsShowArchive'))
         quests.body.append(questOptions)
 
         // The optional components, each a rulebook section.
-        const components = group('Optional components', 'Each is a section of the narrator’s rulebook; the rulebook card lists them all with their cost.')
+        const components = group('Optional components', 'components', 'Each component is a section of the narrator rulebook. The Narrator rulebook card lists every section with its token cost.')
         for (const component of NARRATOR_COMPONENTS) {
             components.body.append(toggle(component.label, component.hint, flagOn(component.flag), (value) => { setFlags({ [component.flag]: value }) }, `nc-${component.flag}`))
             if (component.flag === 'dungeon_reality_and_hidden_mapping') {
                 // The Map Architect opener (46), a preference, under the maps switch as the legacy's sub-drawer.
                 const wrap = el('div', { class: 'lh-nc-sub', 'data-lh-field': 'nc-opener-wrap' })
                 wrap.hidden = !flagOn('dungeon_reality_and_hidden_mapping')
-                const title = el('div', { class: 'lh-nc-subtitle' })
-                title.textContent = 'Map Architect opener'
-                wrap.append(title)
-                for (const [value, label] of [['tool', 'Tool call (CreateAreaMap) — needs function calling'], ['text', 'Text command — no function calling; the narrator writes a [CREATE_AREA_MAP] block and stops']] as const) {
+                wrap.append(heading('lh-nc-subtitle', 'How the narrator asks for a map', 'opener',
+                    'Tool call (CreateAreaMap): needs function calling on the narrator’s connection. Default.\n' +
+                    'Text block: works without function calling. The narrator writes a [CREATE_AREA_MAP] block at the end of its reply and stops.'))
+                for (const [value, label] of [['tool', 'Tool call (CreateAreaMap)'], ['text', 'Text block']] as const) {
                     wrap.append(radio('opener', value, label, opener === value, () => {
                         opener = value
                         deps.savePref({ mapArchitectOpener: value })
@@ -249,12 +277,12 @@ export function mountNarratorConfig(
                 components.body.append(wrap)
             }
         }
-        components.body.append(toggle('💞 Relationship system (friendship and affection)', 'Every NPC’s standing toward you, two bars each, in the Relationships fold.', settings.npcRelationshipBars === true, (value) => {
+        components.body.append(toggle('💞 Relationship system', 'Tracks each NPC’s friendship and affection toward you. Each NPC card in the Lore widget’s Campaign Records tab shows two bars. Default: on.', settings.npcRelationshipBars === true, (value) => {
             settings = { ...settings, npcRelationshipBars: value }
             deps.commit({ npcRelationshipBars: value })
         }, 'nc-npcRelationshipBars'))
 
-        root.replaceChildren(lead, pacing.box, rng.box, quests.box, components.box)
+        root.replaceChildren(pacing.box, rng.box, quests.box, components.box)
         root.classList.add('lh-nc')
     }
 

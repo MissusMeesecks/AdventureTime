@@ -23,7 +23,9 @@
  *      control is one). The spike assumed one control, one key.
  */
 
+import { setCardIcon } from './icons.js'
 import { coerce, type FieldDef, type SectionDef, type SettingsBag } from '../settings/schema.js'
+import { attachCardHelp, createHelpTip } from './help-tip.js'
 
 export interface BinderDeps {
     /** Host-scoped element factory (`ctx.dom.createElement`). */
@@ -129,21 +131,35 @@ export function bindSettings(
         }, TEXT_DEBOUNCE_MS))
     }
 
-    /** A label + optional help text, shared by every row shape. */
+    /**
+     * The help of the row being built (96): its `[?]` goes after the label, and
+     * its text under the whole row, which only the row's builder can place.
+     */
+    let pendingNote: HTMLElement | null = null
+
+    /** A label and, where the field has help, its `[?]`; shared by every row shape. */
     function labelBlock(field: FieldDef): HTMLElement {
         const block = el('div', { class: 'lh-label' })
         const label = el('span', { class: 'lh-label-text' })
         label.textContent = field.label
         block.append(label)
         if (field.help) {
-            const help = el('small', { class: 'lh-help' })
-            help.textContent = field.help
-            block.append(help)
+            const tip = createHelpTip(el as never, field.label, field.help)
+            block.append(tip.button)
+            pendingNote = tip.note
         }
         return block
     }
 
     function renderRow(field: FieldDef): Row {
+        pendingNote = null
+        const row = buildRow(field)
+        if (pendingNote) row.container.append(pendingNote)
+        pendingNote = null
+        return row
+    }
+
+    function buildRow(field: FieldDef): Row {
         const container = el('div', { class: `lh-row lh-row-${field.type}` })
 
         if (field.type === 'managed') {
@@ -153,6 +169,8 @@ export function bindSettings(
             if (editor) {
                 container.classList.add('lh-row-stacked', 'lh-row-editor')
                 container.append(labelBlock(field))
+                // The help under its heading, not under the whole editor (96, 2c): an editor can be a screen long.
+                if (pendingNote) { container.append(pendingNote); pendingNote = null }
                 const mount = el('div')
                 container.append(mount)
                 // The whole bag, not just this key: a structured editor
@@ -228,37 +246,19 @@ export function bindSettings(
     }
 
     for (const section of schema) {
-        // A card (63d): an icon, the title centred, the reset, a chevron.
+        // A card (63d; 96): an icon, the title, its [?], a chevron. No action sits in a header.
         const details = el('details', { class: 'lh-section lh-card' })
         const summary = el('summary')
         const icon = el('span', { class: 'lh-card-icon', 'aria-hidden': 'true' })
-        icon.textContent = section.icon
+        setCardIcon(icon, section.title, section.icon, true)
         const heading = el('span', { class: 'lh-section-title lh-card-title' })
         heading.textContent = section.title
         summary.append(icon, heading)
 
-        // A split-off section (70) has no reset of its own: its group's card resets it.
-        if (deps.resetSection && !section.group) {
-            const reset = el('button', { type: 'button', class: 'lh-reset' })
-            reset.textContent = 'Reset to factory'
-            // Inside <summary>, a click would otherwise toggle the section
-            // open or shut as a side effect of pressing the button.
-            reset.addEventListener('click', (event) => {
-                event.preventDefault()
-                event.stopPropagation()
-                deps.resetSection?.(section.id)
-            })
-            summary.append(reset)
-        }
-
         summary.append(el('span', { class: 'lh-chevron', 'aria-hidden': 'true' }))
         details.append(summary)
 
-        if (section.description) {
-            const description = el('p', { class: 'lh-section-help' })
-            description.textContent = section.description
-            details.append(description)
-        }
+        if (section.description) attachCardHelp(el as never, details, summary, heading, section.description)
 
         const header = deps.sectionHeader?.(section)
         if (header) details.append(header)
@@ -284,7 +284,7 @@ export function bindSettings(
                     const card = el('details', { class: 'lh-card lh-second-card lh-field-fold', 'data-lh-fold': field.fold })
                     const foldSummary = el('summary')
                     const foldIcon = el('span', { class: 'lh-card-icon', 'aria-hidden': 'true' })
-                    foldIcon.textContent = '📝'
+                    setCardIcon(foldIcon, field.fold, '📝')
                     const foldTitle = el('span', { class: 'lh-card-title' })
                     foldTitle.textContent = field.fold
                     foldSummary.append(foldIcon, foldTitle, el('span', { class: 'lh-chevron', 'aria-hidden': 'true' }))
@@ -299,6 +299,23 @@ export function bindSettings(
 
         const footer = deps.sectionFooter?.(section)
         if (footer) details.append(footer)
+
+        // Reset to factory at the card's foot (96, finding 4): in the header it sat a finger's width from
+        // the fold's toggle. A split-off section (70) has none of its own: its group's card resets it.
+        if (deps.resetSection && !section.group) {
+            const foot = el('div', { class: 'lh-card-foot' })
+            if (section.warning) {
+                // A warning is never behind the [?] (96): it stands in the open, beside the button it is about.
+                const warning = el('span', { class: 'lh-card-foot-warning' })
+                warning.textContent = section.warning
+                foot.append(warning)
+            }
+            const reset = el('button', { type: 'button', class: 'lh-reset' })
+            reset.textContent = 'Reset to factory'
+            reset.addEventListener('click', () => deps.resetSection?.(section.id))
+            foot.append(reset)
+            details.append(foot)
+        }
         ;(deps.sectionHost?.(section) ?? root).append(details)
     }
 

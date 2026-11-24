@@ -29,6 +29,7 @@ import { handleRequest, readCorsImage, writesPrefs, writesSettings } from './bac
 import { frameworkOff } from './backend/chat-switch.js'
 import { createMaintenance } from './backend/maintenance.js'
 import { createStockUpgrade } from './backend/stock-upgrade.js'
+import { carryMapPrompts } from './backend/map-prompt-carry.js'
 import { getFactoryCartridgePayload } from './state/factory.js'
 import { createGeneration } from './backend/generation.js'
 import { createNarratorConnection } from './backend/narrator-connection.js'
@@ -39,6 +40,10 @@ import { createCyoaInjection } from './backend/cyoa-injection.js'
 import { createChoicesDisplay } from './backend/choices-display.js'
 import { createWizard } from './backend/wizard.js'
 import { createThemeWizard } from './backend/theme-wizard.js'
+import { createCompanion } from './backend/companion.js'
+import { stripStamp } from './agent/provenance.js'
+import { stripMapSection } from './tracker/map.js'
+import { GUIDE_TEXT } from './backend/guide-text.js'
 import { createCardAiEdit } from './backend/card-ai-edit.js'
 import { createWizardContext } from './tracker/wizard-context.js'
 import { createWorldLoreReader } from './backend/world-lore.js'
@@ -1564,7 +1569,7 @@ const mapArchitect = createMapArchitect({
     memo: async (chatId, userId) => (await memos.load(chatId, userId)).memo,
     options: async (userId) => {
         const settings = await prefs.load(userId)
-        return { lookback: settings.mapArchitectLookback, systemPrompt: settings.mapArchitectSystemPrompt }
+        return { lookback: settings.mapArchitectLookback, systemPrompt: (await mapPrompts(userId)).architect }
     },
     enabled: mappingEnabled,
     state: mapState,
@@ -1661,7 +1666,7 @@ const mapCreation = createMapCreation({
     },
     options: async (userId) => {
         const settings = await prefs.load(userId)
-        return { lookback: settings.mapArchitectLookback, systemPrompt: settings.mapArchitectSystemPrompt }
+        return { lookback: settings.mapArchitectLookback, systemPrompt: (await mapPrompts(userId)).architect }
     },
     enabled: mappingEnabled,
     state: mapState,
@@ -1692,6 +1697,44 @@ const mapView = createMapView({
     },
     revealAll: async (userId) => (await prefs.load(userId)).mapRevealAll,
     state: mapState,
+    log: spindle.log,
+})
+
+/** The lore the host has active for a chat, each entry with its text (73g's reader, shared with the Companion since 100b). */
+async function activeLoreEntries(chatId: string, forUser: string | undefined): Promise<Array<{ title: string; content: string }>> {
+    const found = await spindle.world_books.getActivated(chatId, forUser)
+    const byBook = new Map<string, Set<string>>()
+    for (const entry of found) {
+        if (!entry.bookId) continue
+        if (!byBook.has(entry.bookId)) byBook.set(entry.bookId, new Set())
+        byBook.get(entry.bookId)!.add(entry.id)
+    }
+    const books = worldBookStore(forUser)
+    const out: Array<{ title: string; content: string }> = []
+    for (const [bookId, ids] of byBook) {
+        const entries = await books.listEntries(bookId).catch(() => [])
+        for (const entry of entries) if (ids.has(entry.id) || ids.has(entry.uid)) out.push({ title: entry.comment, content: entry.content })
+    }
+    return out
+}
+
+// The Adventure Companion (100a): a second conversation per chat, answered from the guide the bundle carries;
+// since 100b shown the story, the sheet, the active lore and the map as the player knows it, by the player's ticks.
+const companion = createCompanion({
+    generate: generation,
+    storage: spindle.userStorage,
+    prefs: { load: (forUser) => prefs.load(forUser) },
+    guide: GUIDE_TEXT,
+    sources: {
+        messages: async (chatId) => (await spindle.chat.getMessages(chatId)).map((m) => ({ role: m.role, content: String(m.content ?? '') })),
+        memo: async (chatId, forUser) => ({
+            memo: (await memos.load(chatId, forUser)).memo,
+            benchedParty: (((await store.load(forUser)).modules ?? {}) as Record<string, boolean>)['benched party'] !== false,
+        }),
+        // A mapped site's entry holds its hidden map: the section comes out, and the stamp off the title, before the Companion sees either.
+        lore: async (chatId, forUser) => (await activeLoreEntries(chatId, forUser)).map((entry) => ({ title: stripStamp(entry.title), content: stripMapSection(entry.content) })),
+        map: (chatId, forUser) => mapView.playerText(chatId, forUser),
+    },
     log: spindle.log,
 })
 
@@ -1729,7 +1772,7 @@ const mapEvolution = createMapEvolution({
     memo: async (chatId, userId) => (await memos.load(chatId, userId)).memo,
     // The recent story (45c): the chat from the Nth user message back, as the legacy's window chooses it.
     recentStory: async (chatId, _userId, turns) => formatRecentStory(await spindle.chat.getMessages(chatId), turns),
-    options: async (userId) => evolutionOptions(await prefs.load(userId)),
+    options: async (userId) => evolutionOptions(await prefs.load(userId), await mapPrompts(userId)),
     enabled: mappingEnabled,
     state: mapState,
     refresh: (chatId, userId) => mapSync.refresh(chatId, userId),
@@ -1771,8 +1814,19 @@ const mapSandbox = createMapSandbox({
     log: spindle.log,
 })
 
-/** Evolution's fourteen preferences as the pass reads them; the named sites split on commas. */
-function evolutionOptions(settings: Awaited<ReturnType<typeof prefs.load>>) {
+/**
+ * The map passes' prompts, from the cartridge (97): Multihog's four keys, read as
+ * the passes read them, a blank text standing for the stock one. Before 97 the
+ * passes read three install preferences and the cartridge's texts went unread.
+ */
+async function mapPrompts(userId: string | undefined): Promise<{ architect: string; updater: string; evolution: string; compress: string }> {
+    const settings = await store.load(userId).catch(() => ({} as Record<string, unknown>))
+    const text = (key: string): string => (typeof settings[key] === 'string' ? (settings[key] as string) : '')
+    return { architect: text('mapArchitectSystemPrompt'), updater: text('mapUpdaterSystemPrompt'), evolution: text('mapEvolutionSystemPrompt'), compress: text('mapEvolutionCompressSystemPrompt') }
+}
+
+/** Evolution's preferences as the pass reads them, the named sites split on commas, and its two prompts from the cartridge (97). */
+function evolutionOptions(settings: Awaited<ReturnType<typeof prefs.load>>, prompts: { evolution: string; compress: string }) {
     return {
         enabled: settings.mapEvolutionEnabled,
         intervalHours: settings.mapEvolutionIntervalHours,
@@ -1785,7 +1839,8 @@ function evolutionOptions(settings: Awaited<ReturnType<typeof prefs.load>>) {
         selectedRoots: settings.mapEvolutionSelectedRoots.split(',').map((r) => r.trim()).filter(Boolean),
         worldReportLookback: settings.mapEvolutionWorldReportLookback,
         storyLookback: settings.mapEvolutionLookback,
-        systemPrompt: settings.mapEvolutionSystemPrompt,
+        systemPrompt: prompts.evolution,
+        compressSystemPrompt: prompts.compress,
         compressEnabled: settings.mapEvolutionCompressEnabled,
         compressThreshold: settings.mapEvolutionCompressThreshold,
     }
@@ -1819,7 +1874,7 @@ const mapUpdater = createMapUpdater({
     memo: async (chatId, userId) => (await memos.load(chatId, userId)).memo,
     options: async (userId) => {
         const settings = await prefs.load(userId)
-        return { enabled: settings.mapUpdaterEnabled, runEvery: settings.mapUpdaterRunEvery, lookback: settings.mapUpdaterLookback, systemPrompt: settings.mapUpdaterSystemPrompt }
+        return { enabled: settings.mapUpdaterEnabled, runEvery: settings.mapUpdaterRunEvery, lookback: settings.mapUpdaterLookback, systemPrompt: (await mapPrompts(userId)).updater }
     },
     enabled: mappingEnabled,
     state: mapState,
@@ -2087,7 +2142,13 @@ function ensureStockUpgrade(userId: string | undefined): Promise<void> {
     const key = userId ?? '@self'
     if (stockUpgradeSeen.has(key)) return Promise.resolve()
     stockUpgradeSeen.add(key)
-    return stockUpgrade.check(userId).then(
+    // The old map prompt boxes' text into the cartridge first (97), so the stock check sees it as an edit and keeps it.
+    return carryMapPrompts({ prefs, store, log: spindle.log }, userId).then(
+        (carried) => {
+            if (carried.settings) spindle.sendToFrontend({ channel: CHANNEL, kind: 'event', name: 'settings.changed', data: { settings: carried.settings } }, userId)
+        },
+        (error) => { spindle.log.warn(`maps: the old map prompt boxes could not be carried into the cartridge: ${error instanceof Error ? error.message : String(error)}`) },
+    ).then(() => stockUpgrade.check(userId)).then(
         (report) => {
             if (report.refreshed.length) spindle.sendToFrontend({ channel: CHANNEL, kind: 'event', name: 'settings.changed', data: { settings: report.settings } }, userId)
         },
@@ -2143,22 +2204,7 @@ spindle.onFrontendMessage(async (payload: unknown, userId: string) => {
                     memo: async (chatId, forUser) => (await memos.load(chatId, forUser)).memo,
                     // The context switches (73g): the cartridge for the module examples, the host's active lore for the lore switch.
                     settings: (forUser) => store.load(forUser),
-                    activeLore: async (chatId, forUser) => {
-                        const found = await spindle.world_books.getActivated(chatId, forUser)
-                        const byBook = new Map<string, Set<string>>()
-                        for (const entry of found) {
-                            if (!entry.bookId) continue
-                            if (!byBook.has(entry.bookId)) byBook.set(entry.bookId, new Set())
-                            byBook.get(entry.bookId)!.add(entry.id)
-                        }
-                        const books = worldBookStore(forUser)
-                        const out: Array<{ title: string; content: string }> = []
-                        for (const [bookId, ids] of byBook) {
-                            const entries = await books.listEntries(bookId).catch(() => [])
-                            for (const entry of entries) if (ids.has(entry.id) || ids.has(entry.uid)) out.push({ title: entry.comment, content: entry.content })
-                        }
-                        return out
-                    },
+                    activeLore: activeLoreEntries,
                     context: createWizardContext((FACTORY_CARTRIDGE_DEFAULTS as { stockPrompts: Record<string, string> }).stockPrompts, resolveTimePromptKey),
                     userName: async (chatId, forUser) =>
                         (await spindle.macros.resolve('{{user}}', { chatId, userId: forUser })).text,
@@ -2171,25 +2217,28 @@ spindle.onFrontendMessage(async (payload: unknown, userId: string) => {
                 // The AI Theme Wizard (74b): one call on the tracker's connection, the theme kept as a preference.
                 theme: createThemeWizard({ generate: generation, prefs: { load: (forUser) => prefs.load(forUser), patch: (patch, forUser) => prefs.patch(patch, forUser) }, log: spindle.log }),
                 // Edit with AI (78c): one call on the agent's connection, the revised text shown before it is applied.
+                companion,
                 cardEdit: createCardAiEdit({ generate: generation, prefs: { load: (forUser) => prefs.load(forUser) }, log: spindle.log }),
                 // The narrator card (72b): the host's cards by name, and one made empty under the chosen name.
                 characters: {
                     list: async (userId) => (await spindle.characters.list({ limit: 500, ...(userId ? { userId } : {}) })).data.map((c) => ({ id: c.id, name: c.name })),
                     create: async (name, userId) => { const made = await spindle.characters.create({ name }, userId); return { id: made.id, name: made.name } },
                 },
+                // The card the open chat is from (98), off the chat's own record as 51-bis reads it.
+                chatCard: async (chatId, userId) => { const chat = await spindle.chats.get(chatId, userId); return chat ? (chat.character_id || null) : undefined },
                 map: {
                     sync: mapSync,
                     state: mapState,
                     enabled: mappingEnabled,
                     architect: async (userId) => {
                         const settings = await prefs.load(userId)
-                        return { toolRegistered: mapTool.registered(), opener: settings.mapArchitectOpener, lookback: settings.mapArchitectLookback, systemPrompt: settings.mapArchitectSystemPrompt }
+                        return { toolRegistered: mapTool.registered(), opener: settings.mapArchitectOpener, lookback: settings.mapArchitectLookback }
                     },
                     updater: {
                         run: (request) => mapUpdater.run(request),
                         options: async (userId) => {
                             const settings = await prefs.load(userId)
-                            return { enabled: settings.mapUpdaterEnabled, runEvery: settings.mapUpdaterRunEvery, lookback: settings.mapUpdaterLookback, systemPrompt: settings.mapUpdaterSystemPrompt }
+                            return { enabled: settings.mapUpdaterEnabled, runEvery: settings.mapUpdaterRunEvery, lookback: settings.mapUpdaterLookback }
                         },
                         running: (chatId) => mapUpdater.running(chatId),
                     },
@@ -2199,7 +2248,8 @@ spindle.onFrontendMessage(async (payload: unknown, userId: string) => {
                         run: (request) => mapEvolution.run(request),
                         status: async (chatId, userId) => {
                             const settings = await prefs.load(userId)
-                            const options = evolutionOptions(settings)
+                            // The status carries no prompt text (97): the prompts are the cartridge's, edited in its own card.
+                            const { systemPrompt: _prompt, compressSystemPrompt: _compress, ...options } = evolutionOptions(settings, { evolution: '', compress: '' })
                             return { ...options, selectedRoots: settings.mapEvolutionSelectedRoots, narratorCommitTokens: settings.mapEvolutionNarratorCommitTokens, connectionId: settings.mapEvolutionConnectionId, running: mapEvolution.running(chatId), ...(await mapEvolution.schedule(chatId, userId)) }
                         },
                         setSiteInterval: (chatId, userId, siteRoot, hours) => mapEvolution.setSiteInterval(chatId, userId, siteRoot, hours),

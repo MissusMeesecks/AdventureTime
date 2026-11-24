@@ -15,6 +15,8 @@
 import type { WaysResult } from '../protocol.js'
 import { CREATOR_GENRES, GEAR_TIERS, normalizeInstantGenre, rollCreatorName, type CreatorGenre } from '../tracker/creator.js'
 import { createCardWordsControl } from './card-words.js'
+import { CREATOR_HELP, gearTierLabel, NO_LEVELS_LABEL } from './creator-fold.js'
+import { createHelpTip, withHelp } from './help-tip.js'
 import { describeCardSteps, reasonText } from './player-card-fold.js'
 
 export interface WaysFoldHost {
@@ -69,7 +71,8 @@ export const WAYS_FOLD_CSS = `
 .lh-ways-body { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
 .lh-ways-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; }
 .lh-ways-field { display: flex; flex-direction: column; gap: 2px; flex: 1 1 8em; min-width: 0; }
-.lh-ways-field > label { font-size: 0.78em; opacity: 0.75; }
+.lh-ways-label-line { display: flex; align-items: center; gap: 4px; }
+.lh-ways-label-line > label { font-size: 0.78em; opacity: 0.75; }
 .lh-ways-field .lh-input { width: 100%; min-width: 0; box-sizing: border-box; }
 .lh-ways-field textarea.lh-input { resize: vertical; font: inherit; font-size: 0.85em; }
 /* In the body's column, a flex basis is a height: the instructions field keeps its own. */
@@ -78,6 +81,7 @@ export const WAYS_FOLD_CSS = `
 .lh-ways-name .lh-input { flex: 1 1 10em; min-width: 0; }
 .lh-ways-hint { font-size: 0.75em; opacity: 0.65; }
 .lh-ways-switches { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; font-size: 0.8em; }
+.lh-ways-buttons { align-items: center; }
 .lh-ways-note:empty { display: none; }
 .lh-ways [hidden] { display: none; }
 `
@@ -94,28 +98,34 @@ export function createWaysFold(host: WaysFoldHost): WaysFold {
 
     const root = el('details', { class: 'lh-ways' }) as HTMLDetailsElement
     const summary = el('summary')
-    // Inside Multihog's Other Ways to Begin drawer since 83, so the fold names its two ways.
-    summary.textContent = 'From the persona or the instructions'
+    // A sub-fold of the starting area's third option card, so it names its two ways.
+    summary.textContent = 'From a persona or a description'
     const body = el('div', { class: 'lh-ways-body' })
-    const lead = el('div', { class: 'lh-world-lead' })
-    lead.textContent = 'Two more ways in. From the active persona: the character embodies the persona Lumiverse has active, with its name and its description, and the instructions below as constraints. From the instructions: a character built entirely from what you write, with a name rolled or typed. Both use the level, genre, gear tier and guide here, and write the Player Card and the persona as the switches say.'
 
-    const field = (name: string, label: string, control: HTMLElement): HTMLElement => {
+    // A field's help is a [?] after its label and a note under its control, in the fold from the first paint.
+    const field = (name: string, label: string, control: HTMLElement, help = ''): HTMLElement => {
         const wrap = el('div', { class: 'lh-ways-field', 'data-lh-field': `ways-${name}` })
+        const line = el('div', { class: 'lh-ways-label-line' })
         const text = el('label')
         text.textContent = label
-        wrap.append(text, control)
+        line.append(text)
+        wrap.append(line, control)
+        if (help) {
+            const tip = createHelpTip(el, label, help)
+            line.append(tip.button)
+            wrap.append(tip.note)
+        }
         return wrap
     }
     const level = el('select', { class: 'lh-input', 'data-lh-field': 'ways-level-input' }) as HTMLSelectElement
-    level.append(option(el, 'none', 'N/A — No Levels'))
+    level.append(option(el, 'none', NO_LEVELS_LABEL))
     for (let i = 1; i <= 20; i++) level.append(option(el, String(i), `Level ${i}`))
     const genre = el('select', { class: 'lh-input', 'data-lh-field': 'ways-genre-input' }) as HTMLSelectElement
     for (const g of CREATOR_GENRES) if (g.value) genre.append(option(el, g.value, g.label))
     const gearTier = el('select', { class: 'lh-input', 'data-lh-field': 'ways-gear-tier-input' }) as HTMLSelectElement
-    for (const t of GEAR_TIERS) gearTier.append(option(el, t.value, t.label))
+    for (const t of GEAR_TIERS) gearTier.append(option(el, t.value, gearTierLabel(t)))
     const settingsRow = el('div', { class: 'lh-ways-row' })
-    settingsRow.append(field('level', 'Level', level), field('genre', 'Genre', genre), field('gear-tier', 'Gear tier', gearTier))
+    settingsRow.append(field('level', 'Starting level', level, CREATOR_HELP.level), field('genre', 'Genre', genre), field('gear-tier', 'Starting gear', gearTier))
 
     // Time & date (72b): Multihog's segment in this drawer — the calendar and the clock format, which are the
     // cartridge's two keys the tracker's time formats hold, and the starting day and time, the creator's two preferences.
@@ -128,9 +138,12 @@ export function createWaysFold(host: WaysFoldHost): WaysFold {
     startDay.value = 'Day 1'
     const startTime = el('input', { type: 'text', class: 'lh-input', 'data-lh-field': 'ways-start-time-input', placeholder: '08:00 AM' }) as HTMLInputElement
     startTime.value = '08:00 AM'
-    timeRow.append(field('calendar', 'Calendar', calendar), field('clock', 'Clock', clock), field('start-day', 'Starting day', startDay), field('start-time', 'Starting time', startTime))
-    const timeHint = el('div', { class: 'lh-ways-hint' })
-    timeHint.textContent = 'What the [TIME] block opens at, and how the tracker writes every clock. The calendar and the clock are the cartridge’s (also under Time formats in the settings); the start is the creator’s, shared with Instant Action.'
+    timeRow.append(
+        field('calendar', 'Calendar', calendar, 'How the tracker writes in-world dates: as a day count, such as Day 5, or as calendar dates. The same setting as "Use DD/MM/YYYY dates" in the State Tracker settings.'),
+        field('clock', 'Clock', clock, 'How the tracker writes the in-world clock. The same setting as "Use 24-hour time" in the State Tracker settings.'),
+        field('start-day', 'Starting day', startDay, CREATOR_HELP.startDay),
+        field('start-time', 'Starting time', startTime, CREATOR_HELP.startTime),
+    )
     calendar.addEventListener('change', () => { host.commitSettings?.({ useDdMmYyFormat: calendar.value === 'date' }).catch(host.fail) })
     clock.addEventListener('change', () => { host.commitSettings?.({ use24hTime: clock.value === '24' }).catch(host.fail) })
     startDay.addEventListener('change', () => { host.savePrefs({ creatorInitialDate: startDay.value.trim() || 'Day 1' }).catch(host.fail) })
@@ -141,7 +154,7 @@ export function createWaysFold(host: WaysFoldHost): WaysFold {
     const combat = el('input', { type: 'checkbox', 'data-lh-field': 'ways-combat-guide-input' }) as HTMLInputElement
     combat.checked = true
     const combatText = el('span')
-    combatText.textContent = 'Use the combat and skill scaling guide'
+    combatText.textContent = 'Use the scaling guide'
     combatRow.append(combat, combatText)
 
     const instructions = el('textarea', { class: 'lh-input', rows: '2', 'data-lh-field': 'ways-instructions-input', placeholder: 'Custom setting/character instructions (e.g. Victorian London, space marine, gritty realism, cyberpunk decker…)' }) as HTMLTextAreaElement
@@ -159,26 +172,29 @@ export function createWaysFold(host: WaysFoldHost): WaysFold {
     const cardLabel = el('label', { class: 'lh-world-switch' })
     const playerCard = el('input', { type: 'checkbox', 'data-lh-field': 'ways-player-card-input' }) as HTMLInputElement
     const cardText = el('span')
-    cardText.textContent = 'Write a Player Card (recommended)'
+    cardText.textContent = 'Write a Player Card'
     cardLabel.append(playerCard, cardText)
     const cardWords = createCardWordsControl(el, 'ways-card-words', (n) => { host.savePrefs({ creatorCardWords: n }).catch(host.fail) })
     const personaLabel = el('label', { class: 'lh-world-switch' })
     const persona = el('input', { type: 'checkbox', 'data-lh-field': 'ways-persona-input' }) as HTMLInputElement
     persona.checked = true
     const personaText = el('span')
-    personaText.textContent = 'Create a persona with the character’s name (recommended)'
+    personaText.textContent = 'Create a matching persona'
     personaLabel.append(persona, personaText)
-    switches.append(cardLabel, cardWords.root, personaLabel)
+    switches.append(withHelp(el, cardLabel, 'Write a Player Card', CREATOR_HELP.playerCard), cardWords.root, withHelp(el, personaLabel, 'Create a matching persona', CREATOR_HELP.persona))
 
-    const buttons = el('div', { class: 'lh-world-buttons' })
+    const buttons = el('div', { class: 'lh-world-buttons lh-ways-buttons' })
     const personaButton = el('button', { type: 'button', class: 'lh-button' }) as HTMLButtonElement
     personaButton.textContent = '🎭 From the active persona'
     const customButton = el('button', { type: 'button', class: 'lh-button' }) as HTMLButtonElement
     customButton.textContent = '⚙️ From the instructions'
-    buttons.append(personaButton, customButton)
+    // What was the lead paragraph: each way's help behind the [?] after its own button.
+    const personaHelp = createHelpTip(el, 'From the active persona', 'One model call writes a character sheet for the persona active in Lumiverse, with its name and its description. The instructions are used as constraints. The starting level, genre, starting gear and scaling guide above apply.')
+    const customHelp = createHelpTip(el, 'From the instructions', 'One model call writes a character sheet from the instructions alone. It needs a name, rolled or typed, and instructions. The starting level, genre, starting gear and scaling guide above apply.')
+    buttons.append(personaButton, personaHelp.button, customButton, customHelp.button, personaHelp.note, customHelp.note)
     const live = el('div', { class: 'lh-world-running', hidden: 'hidden' })
     const note = el('div', { class: 'lh-world-note lh-ways-note' })
-    body.append(lead, settingsRow, timeRow, timeHint, combatRow, instructionsField, nameRow, nameHint, switches, buttons, live, note)
+    body.append(settingsRow, timeRow, withHelp(el, combatRow, 'Use the scaling guide', CREATOR_HELP.scalingGuide), instructionsField, nameRow, nameHint, switches, buttons, live, note)
     root.append(summary, body)
 
     let chatId: string | null = null
@@ -193,9 +209,9 @@ export function createWaysFold(host: WaysFoldHost): WaysFold {
         const named = !!name.value.trim()
         nameHint.textContent = named ? 'Name ready — edit, reroll, or choose From the instructions.' : 'Roll a genre-matched name before using From the instructions.'
         personaButton.disabled = busy || !chatId
-        personaButton.title = chatId ? 'One model call writes a sheet that embodies the active persona.' : 'Open a chat first.'
+        personaButton.title = chatId ? '' : 'Open a chat first.'
         customButton.disabled = busy || !chatId || !named || !instructions.value.trim()
-        customButton.title = !chatId ? 'Open a chat first.' : !named ? 'Roll or type a name first.' : !instructions.value.trim() ? 'Write the instructions first.' : 'One model call writes a sheet from the instructions alone.'
+        customButton.title = !chatId ? 'Open a chat first.' : !named ? 'Roll or type a name first.' : !instructions.value.trim() ? 'Write the instructions first.' : ''
         live.hidden = !busy
         live.textContent = running === 'persona' ? '🎭 Embodying the persona… the tracker’s cards fill in when the sheet is written.' : running === 'custom' ? '⚙️ Customizing… the tracker’s cards fill in when the sheet is written.' : ''
         note.textContent = last ? describeWaysResult(last, host.when) : ''

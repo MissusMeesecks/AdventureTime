@@ -38,6 +38,28 @@ async function harness(over: Partial<MapViewDeps> = {}, record: Record<string, u
     return { view: createMapView(deps), state, log }
 }
 
+describe('the map as prose for the Adventure Companion (100b)', () => {
+    it('writes the party\'s site as the player knows it, and never what is unrevealed, whatever Reveal all says', async () => {
+        const { view } = await harness()
+        const text = await view.playerText('c1', 'u1')
+        expect(text).toContain('Cellar Landing')
+        expect(text).not.toContain('Secret Vault')
+        expect(text).not.toContain('Crawling Dead Pack')
+        const revealed = await (await harness({ revealAll: async () => true })).view.playerText('c1', 'u1')
+        expect(revealed).toBe(text)
+    })
+
+    it('is blank when the party is outside every mapped site, or inside one the books no longer hold', async () => {
+        expect(await (await harness({}, { currentLocation: 'The Salt Road', activeSiteRoot: '' })).view.playerText('c1', 'u1')).toBe('')
+        expect(await (await harness({}, { currentLocation: 'Lost Keep, Hall', activeSiteRoot: 'Lost Keep' })).view.playerText('c1', 'u1')).toBe('')
+    })
+
+    it('throws when the books cannot be read, so the caller can tell the Companion so', async () => {
+        const { view } = await harness({ campaign: async () => { throw new Error('books unreadable') } })
+        await expect(view.playerText('c1', 'u1')).rejects.toThrow('books unreadable')
+    })
+})
+
 describe('the map on screen', () => {
     it('draws the party\'s site under the filter, with their room marked, the entries and the history, and lists every mapped site', async () => {
         const { view } = await harness()

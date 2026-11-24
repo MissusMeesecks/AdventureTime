@@ -10,7 +10,7 @@
 import { mapKindArtCss } from '../tracker/graph-css.js'
 import { CREATOR_FOLD_CSS } from './creator-fold.js'
 import { INSTANT_FOLD_CSS } from './instant-fold.js'
-import { START_AREA_CSS } from './start-area.js'
+import { NARRATOR_CARD_EVENT, START_AREA_CSS } from './start-area.js'
 import { PLAYER_CARD_FOLD_CSS } from './player-card-fold.js'
 import { WAYS_FOLD_CSS } from './ways-fold.js'
 import { IMPORT_FOLD_CSS } from './import-fold.js'
@@ -23,6 +23,8 @@ import { createDisplayGroupsCard, DISPLAY_GROUPS_CARD_CSS } from './display-grou
 import { DISPLAY_GROUP_CSS, readDisplayGroups } from '../tracker/display-groups.js'
 import { TAB_MODE_CSS } from '../tracker/tab-mode.js'
 import { buildGameSystemFile, importGameSystem, readGameSystemFile } from './game-system-file.js'
+import { openSystemCopyDialog, openSystemPasteDialog } from './system-text-dialog.js'
+import { exportSharedSystemText, parseSharedSystemText } from '../tracker/wizard.js'
 import { LIBRARY_FOLD_CSS } from './library-fold.js'
 import { NPC_CREATOR_FOLD_CSS } from './npc-creator-fold.js'
 import { EDITOR_TAB_CSS } from './editor-tab.js'
@@ -34,6 +36,8 @@ import { SECTIONS_EDITOR_CSS, mountSectionsEditor, type SectionsEditor, type Sec
 import { createScenePictureSettings } from './scene-picture-settings.js'
 import { PREF_DIALS_CSS, PREF_DIAL_GROUPS, createPrefDials } from './pref-dials.js'
 import { CARDS_CSS } from './category-copy.js'
+import { HELP_TIP_CSS, attachCardHelp, createHelpTip, helpAfter, withHelp } from './help-tip.js'
+import { ICONS_CSS, setCardIcon } from './icons.js'
 import { ENLARGE_CSS } from './enlarge.js'
 import { CARD_SETTINGS_CSS } from './card-settings.js'
 import { RELATIONSHIP_FLOAT_CSS } from './relationship-float.js'
@@ -42,6 +46,7 @@ import { layoutForOneWindow } from './layout.js'
 import { MAP_PICTURE_CSS } from './map-picture.js'
 import { RECORDS_FOLD_CSS } from './campaign-records.js'
 import { TERMINAL_FOLD_CSS } from './terminal-fold.js'
+import { COMPANION_PANE_CSS } from './companion-pane.js'
 import { AGENT_TOOLS_CSS } from './agent-tools.js'
 import { SANDBOX_FOLD_CSS } from './sandbox-fold.js'
 import { THEME_CSS, THEME_WIZARD_CSS, applyCustomTheme, applyTheme, readThemeId, themeOptions } from './themes.js'
@@ -76,7 +81,7 @@ import { mountGameSystemWizard, type WizardPanel } from './wizard-panel.js'
 import type { WizardSaveTarget } from '../tracker/wizard.js'
 import type { SyspromptSection } from '../settings/sysprompt-library.js'
 import type { Bridge } from './bridge.js'
-import type { BooksListResult, CartridgeExportResult, ConnectionsResult, PrefsResult, PurgePortraitsResult, SceneConnectionsResult, SettingsResult, StatusResult, ThemeGenerateResult } from '../protocol.js'
+import type { NarratorCardResult, BooksListResult, CartridgeExportResult, ConnectionsResult, PrefsResult, SceneConnectionsResult, SettingsResult, StatusResult, ThemeGenerateResult } from '../protocol.js'
 import { CATEGORIES_CSS, createSettingsCategories, createSettingsSearch } from './categories.js'
 import { createConnectionsCategory } from './connections-category.js'
 
@@ -157,6 +162,8 @@ export interface PanelSlots {
         one?: boolean
         /** The mobile widget (92f): the disc over the chat on a phone, made or taken down as the tick moves. */
         mobileWidget?(on: boolean): void
+        /** Hide the boxes while the open chat is switched off, and bring back what was hidden (94c-bis). */
+        suppress?(off: boolean): void
     }
 }
 
@@ -164,6 +171,8 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
     const el = host.dom.createElement
     let bound: BoundSettings | null = null
     let tracker: TrackerPanel | null = null
+    /** The last status read, for a tracker mounted after it arrived. */
+    let lastStatus: StatusResult | null = null
     let customFields: CustomFieldsEditor | null = null
     let gameSystems: GameSystemsEditor | null = null
     let trackerModules: TrackerModulesEditor | null = null
@@ -221,13 +230,16 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
     chatSwitchInput.checked = true
     const chatSwitchText = el('span')
     chatSwitchText.textContent = 'AdventureTime is on in this chat'
-    chatSwitch.title = 'Off, AdventureTime leaves this chat alone: nothing is put into the narrator’s prompt and no pass runs after a reply — no tracker, agent, map, world or picture. The buttons still work, and other chats are not affected. Enable the framework, under State tracker & modules, is the same switch for every chat at once.'
+    chatSwitch.title = 'Off, AdventureTime leaves this chat alone: nothing is put into the narrator’s prompt and no pass runs after a reply — no tracker, agent, map, world or picture. The floating widgets are hidden while it is off, and every one comes back when it is on, a closed one too; the buttons here still work, and other chats are not affected. AdventureTime is on in every chat, under State Tracker → Advanced tracker, is the same switch for every chat at once.'
     chatSwitch.append(chatSwitchInput, chatSwitchText)
     let disabledChats: Record<string, boolean> = {}
     const showChatSwitch = (): void => {
         const chatId = host.getActiveChat().chatId
         chatSwitch.hidden = !chatId
         chatSwitchInput.checked = !(chatId && disabledChats[chatId] === true)
+        // The floating boxes go with the chat (the maintainer's ask of 2026-11-20): hidden while it is off,
+        // back when it is on. The host's home screen has no chat, and holds what stands (93's rule).
+        if (chatId) slots.widgets?.suppress?.(disabledChats[chatId] === true)
     }
     chatSwitchInput.addEventListener('change', () => {
         const chatId = host.getActiveChat().chatId
@@ -240,7 +252,7 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
     showChatSwitch()
     const actions = el('div', { class: 'lh-actions' })
     const importButton = el('button', { type: 'button', class: 'lh-button' })
-    importButton.textContent = 'Import cartridge…'
+    importButton.textContent = 'Import cartridge'
     const exportButton = el('button', { type: 'button', class: 'lh-button' })
     exportButton.textContent = 'Export cartridge'
     actions.append(importButton, exportButton)
@@ -312,20 +324,21 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
     const categories = createSettingsCategories(plainEl)
     const search = createSettingsSearch(plainEl, categories.root)
     /** A folding card of General & visuals in the look of the others (82): an icon, a title, a chevron, the body given. */
-    const settingsCard = (id: string, icon: string, title: string, body: HTMLElement): HTMLDetailsElement => {
+    const settingsCard = (id: string, icon: string, title: string, body: HTMLElement, help?: string): HTMLDetailsElement => {
         const root = plainEl('details', { class: 'lh-card lh-second-card lh-search-item', 'data-lh-card': id }) as HTMLDetailsElement
         const summary = plainEl('summary')
         const iconEl = plainEl('span', { class: 'lh-card-icon', 'aria-hidden': 'true' })
-        iconEl.textContent = icon
+        setCardIcon(iconEl, title, icon)
         const titleEl = plainEl('span', { class: 'lh-card-title' })
         titleEl.textContent = title
         summary.append(iconEl, titleEl, plainEl('span', { class: 'lh-chevron', 'aria-hidden': 'true' }))
         const wrap = plainEl('div', { class: 'lh-second-body' })
         wrap.append(body)
         root.append(summary, wrap)
+        if (help) attachCardHelp(plainEl, root, summary, titleEl, help)
         return root
     }
-    const versionTwin = el('div', { class: 'lh-version-twin lh-search-item' })
+
     // Multihog's Debug & Factory Reset (72a), the last card of General & visuals.
     const developer = createDeveloperCard({
         el: plainEl,
@@ -334,25 +347,26 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
         savePrefs: async (patch) => { await bridge.request<PrefsResult>('prefs.patch', { patch }) },
         // A reset is a load: every editor follows, the custom fields and the world rules too.
         onSettings: (settings) => { seedEditors(settings, 'load') },
+        // Every chat's data went, the open one's with it: the tracker reads its chat again (96: the button is here now).
+        onChatsRemoved: () => { tracker?.refresh().catch(() => undefined) },
         fail: (error) => fail(error),
     })
     // The narrator card's rows (72b) under Help in Core & Branching (81), and the NPC word targets (72b).
     const narratorRows = createNarratorRows({
         el: plainEl,
-        create: (name) => bridge.request('narrator.create', { name }),
+        create: async (name) => {
+            const made = await bridge.request<NarratorCardResult>('narrator.create', { name })
+            root.ownerDocument.dispatchEvent(new Event(NARRATOR_CARD_EVENT))
+            return made
+        },
         savePrefs: async (patch) => { await bridge.request<PrefsResult>('prefs.patch', { patch }) },
         fail: (error) => fail(error),
     })
     // Core & Branching (81): Multihog's first drawer of General & Visuals, as the first card here.
     const coreCard = createCoreCard({
         el: plainEl,
-        confirm: async (title, message, confirmLabel) => (await host.ui.showConfirm({ title, message, variant: 'danger', confirmLabel })).confirmed,
-        request: (op, params) => bridge.request(op as never, params),
         narrator: narratorRows,
         modal: (options) => openDetailsModal(host.ui, options),
-        // Every chat's data went, the open one's with it: the tracker reads its chat again.
-        onChatsRemoved: () => { tracker?.refresh().catch(() => undefined) },
-        fail: (error) => fail(error),
     })
     const npcWords = createNpcWordsCard({
         el: plainEl,
@@ -370,7 +384,7 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
         apply: (theme) => { applyMapTheme(root.ownerDocument.body, theme) },
         fail: (error) => fail(error),
     })
-    categories.folds.maps.insertBefore(mapThemeCard.root, categories.folds.maps.querySelector('.lh-maps-guide'))
+    categories.folds.maps.insertBefore(mapThemeCard.root, categories.bodies.maps)
     // The Display Groups (75): Multihog's manager as a card under State tracker & modules, after the tags library.
     const displayGroupsCard = createDisplayGroupsCard({
         el: plainEl,
@@ -416,8 +430,6 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
     const portraitsSection = createPortraitsSection({
         el: plainEl,
         savePrefs,
-        purge: () => bridge.request<PurgePortraitsResult>('maintenance.purgePortraits'),
-        confirm: async (title, message, label) => (await host.ui.showConfirm({ title, message, variant: 'warning', confirmLabel: label })).confirmed,
         fail: (error) => fail(error),
     }, mirrorPortraits, mirrorScene)
     // The other mirrored dials (63c): a box per category with dials of its own, bound to the folds' keys,
@@ -441,16 +453,15 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
      * layout.ts), so the box opens on what the widgets do.
      */
     const layoutBox = el('div', { class: 'lh-layout' })
-    const layoutHint = el('div', { class: 'lh-section-help' })
-    layoutHint.textContent = 'Two floating widgets: the Tracker widget, and the Lore widget with the Lorebook Agent, the Campaign Records and Visuals/Map as its tabs; drag them where you like, pull the corner to size them, fold them to their heads. This tab holds the rest.'
+
     // Tab Mode (76): Multihog's Panel Layout toggle, under the layout select as it heads
     // Multihog's page — Stacked, or Character and Combat pinned above a tab strip.
     const panelLayoutRow = el('div', { class: 'lh-layout-row lh-panel-layout-row' })
     const panelLayoutLabel = el('span')
-    panelLayoutLabel.textContent = 'Panel layout'
-    const panelLayoutSeg = el('div', { class: 'lh-seg-toggle', role: 'group', 'data-lh-field': 'panelLayoutMode', title: 'Stacked shows every module at once, vertically. Tab Mode pins Character/Combat at the top and puts the rest behind a compact tab strip — better for small screens or mobile.' })
+    panelLayoutLabel.textContent = 'Tracker layout'
+    const panelLayoutSeg = el('div', { class: 'lh-seg-toggle', role: 'group', 'aria-label': 'Tracker layout', 'data-lh-field': 'panelLayoutMode' })
     const panelLayoutButtons = new Map<'stack' | 'tabs', HTMLButtonElement>()
-    for (const [value, text] of [['stack', '📚 Stacked'], ['tabs', '🗂️ Tab Mode (Compact)']] as const) {
+    for (const [value, text] of [['stack', '📚 Stacked'], ['tabs', '🗂️ Tab Mode']] as const) {
         const button = el('button', { type: 'button', class: 'lh-button lh-seg-button', 'data-lh-value': value }) as HTMLButtonElement
         button.textContent = text
         button.addEventListener('click', () => {
@@ -471,15 +482,16 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
     }
     showPanelLayout('stack')
     panelLayoutRow.append(panelLayoutLabel, panelLayoutSeg)
+    const panelLayoutHelped = helpAfter(plainEl, panelLayoutRow, panelLayoutLabel, 'Tracker layout', 'Stacked shows every module card at once, one under another. Tab Mode pins the Character and Combat cards at the top and shows the other modules one at a time behind a tab strip, which suits small screens. Default: stacked.')
     // The visual theme (74a, departure 81): Multihog's select, under the
     // layout as it sits under Multihog's layout buttons. A preference, not a
     // cartridge key (the maintainer's decision of 2026-10-21): the theme
     // travels with the install, not the game. The class goes on the body and
     // reaches every root at once (themes.ts says why).
-    const themeRow = el('label', { class: 'lh-layout-row lh-theme-row' })
+    const themeRow = el('div', { class: 'lh-layout-row lh-theme-row' })
     const themeLabel = el('span')
     themeLabel.textContent = 'Visual theme'
-    const themeSelect = el('select', { class: 'lh-select', 'data-lh-field': 'trackerTheme' }) as HTMLSelectElement
+    const themeSelect = el('select', { class: 'lh-select', 'aria-label': 'Visual theme', 'data-lh-field': 'trackerTheme' }) as HTMLSelectElement
     for (const option of themeOptions()) {
         const item = el('option', { value: option.id }) as HTMLOptionElement
         item.textContent = option.label
@@ -487,8 +499,8 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
         themeSelect.append(item)
     }
     themeRow.append(themeLabel, themeSelect)
-    const themeHint = el('div', { class: 'lh-section-help' })
-    themeHint.textContent = 'Multihog’s looks for the panel, the widgets and the cards under the messages: Hacker, Fantasy, Hologram, Pacific Cove and Cherry Blossom, with their own colours and fonts. Match Lumiverse is the host’s own colours, the look before the theme pass. Custom is the AI Theme Wizard’s: describe a look and a model writes the fifteen values.'
+
+    const themeHelped = helpAfter(plainEl, themeRow, themeLabel, 'Visual theme', 'A theme sets the colours and fonts of the widgets, this tab and the cards under messages. Match Lumiverse uses Lumiverse’s own colours. Custom opens the AI theme wizard, which writes a theme from your description. Default: Match Lumiverse.')
     // The AI Theme Wizard (74b, departure 81): Multihog's block under the
     // select, shown while Custom is chosen. The theme the wizard wrote and
     // the library are preferences; the undo stack is the panel's memory,
@@ -506,8 +518,11 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
     const wizardBox = el('div', { class: 'lh-theme-wizard', 'data-lh-field': 'themeWizard' })
     wizardBox.hidden = true
     const wizardTitle = el('div', { class: 'lh-theme-wizard-title' })
-    wizardTitle.textContent = '🪄 AI Theme Wizard'
-    const wizardPrompt = el('textarea', { class: 'lh-input', rows: '3', placeholder: 'Describe visual style...', 'data-lh-field': 'themeWizardPrompt' }) as HTMLTextAreaElement
+    const wizardTitleText = el('span')
+    wizardTitleText.textContent = '🪄 AI theme wizard'
+    const wizardTip = createHelpTip(plainEl, 'AI theme wizard', 'Generate: Writes a new theme from your description. This makes one model call on the tracker’s connection.\nRefine: Sends the current theme with the change you describe, then applies the result.\nUndo: Restores the theme as it was before the last change. Up to 20 steps are kept, until the page reloads.')
+    wizardTitle.append(wizardTitleText, wizardTip.button)
+    const wizardPrompt = el('textarea', { class: 'lh-input', rows: '3', placeholder: 'Dark parchment, gold accents', 'aria-label': 'Describe the theme', 'data-lh-field': 'themeWizardPrompt' }) as HTMLTextAreaElement
     const wizardStatus = el('div', { class: 'lh-theme-wizard-status', role: 'status' })
     const setWizardStatus = (message: string, isError = false) => {
         wizardStatus.textContent = message
@@ -515,19 +530,19 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
     }
     const wizardRun = el('div', { class: 'lh-theme-wizard-row' })
     const wizardNew = el('button', { type: 'button', class: 'lh-button', 'data-lh-field': 'themeWizardNew' }) as HTMLButtonElement
-    wizardNew.textContent = 'New'
-    wizardNew.title = 'Write a new theme from the description, on the tracker’s connection.'
+    wizardNew.textContent = 'Generate'
+
     const wizardIterate = el('button', { type: 'button', class: 'lh-button', 'data-lh-field': 'themeWizardIterate' }) as HTMLButtonElement
-    wizardIterate.textContent = 'Iterate'
-    wizardIterate.title = 'Send the current theme with the change described, and take the result.'
+    wizardIterate.textContent = 'Refine'
+
     wizardRun.append(wizardNew, wizardIterate)
     const wizardKeep = el('div', { class: 'lh-theme-wizard-row' })
-    const wizardName = el('input', { type: 'text', class: 'lh-input lh-theme-wizard-name', placeholder: 'My Custom Theme', 'data-lh-field': 'themeWizardName' }) as HTMLInputElement
+    const wizardName = el('input', { type: 'text', class: 'lh-input lh-theme-wizard-name', placeholder: 'My custom theme', 'aria-label': 'Theme name', 'data-lh-field': 'themeWizardName' }) as HTMLInputElement
     const wizardSave = el('button', { type: 'button', class: 'lh-button', 'data-lh-field': 'themeWizardSave' }) as HTMLButtonElement
-    wizardSave.textContent = '🔖 Save to Library'
+    wizardSave.textContent = '🔖 Save to library'
     const wizardUndo = el('button', { type: 'button', class: 'lh-button lh-button--quiet', 'data-lh-field': 'themeWizardUndo' }) as HTMLButtonElement
     wizardUndo.textContent = '↶ Undo'
-    wizardUndo.title = 'Put the theme back as it was before the last New, Iterate or Undo-able change, twenty deep.'
+
     wizardKeep.append(wizardName, wizardSave, wizardUndo)
     const wizardLibrary = el('div', { class: 'lh-theme-library', 'data-lh-field': 'themeLibrary' })
     wizardLibrary.hidden = true
@@ -537,33 +552,33 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
         wizardLibrary.hidden = names.length === 0
         if (names.length === 0) return
         const title = el('div', { class: 'lh-theme-library-title' })
-        title.textContent = 'Saved themes — click one to load it'
+        title.textContent = 'Saved themes'
         wizardLibrary.append(title)
         for (const name of names) {
             const row = el('div', { class: 'lh-theme-library-row' })
             const load = el('button', { type: 'button', class: 'lh-button lh-theme-library-name', 'data-lh-theme-load': name })
             load.textContent = name
-            load.title = 'Click to load this theme'
+            load.title = 'Load this theme'
             load.addEventListener('click', () => {
                 const theme = savedThemes[name]
                 if (!theme) return
                 customTheme = { ...theme }
                 showTheme('custom')
                 bridge.request<PrefsResult>('prefs.patch', { patch: { customTheme, trackerTheme: 'custom' } })
-                    .then(() => { setWizardStatus(`⚡ Loaded library theme: ${name}`) })
+                    .then(() => { setWizardStatus(`Loaded the saved theme “${name}”.`) })
                     .catch((error: unknown) => { setWizardStatus(`❌ ${error instanceof Error ? error.message : String(error)}`, true) })
             })
             const remove = el('button', { type: 'button', class: 'lh-button lh-button--quiet', 'data-lh-theme-delete': name })
             remove.textContent = '🗑'
             remove.title = 'Delete theme'
             remove.addEventListener('click', async () => {
-                const { confirmed } = await host.ui.showConfirm({ title: 'Delete the saved theme?', message: `Are you sure you want to delete the theme "${name}"?`, variant: 'warning', confirmLabel: 'Delete' })
+                const { confirmed } = await host.ui.showConfirm({ title: 'Delete theme', message: `Delete the saved theme "${name}"? This cannot be undone.`, variant: 'warning', confirmLabel: 'Delete' })
                 if (!confirmed) return
                 const { [name]: _gone, ...rest } = savedThemes
                 savedThemes = rest
                 drawLibrary()
                 bridge.request<PrefsResult>('prefs.patch', { patch: { savedThemes } })
-                    .then(() => { setWizardStatus(`Deleted theme: ${name}`) })
+                    .then(() => { setWizardStatus(`Deleted the saved theme “${name}”.`) })
                     .catch((error: unknown) => { setWizardStatus(`❌ ${error instanceof Error ? error.message : String(error)}`, true) })
             })
             row.append(load, remove)
@@ -573,12 +588,12 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
     const runWizard = (iterate: boolean) => {
         const description = wizardPrompt.value.trim()
         if (!description) {
-            setWizardStatus(iterate ? '⚠ Please describe the changes you want.' : '⚠ Please describe a theme first.', true)
+            setWizardStatus(iterate ? 'Describe the change you want first.' : 'Describe a theme first.', true)
             return
         }
         wizardNew.disabled = true
         wizardIterate.disabled = true
-        setWizardStatus(iterate && customTheme ? '⚡ Refining theme.' : '⚡ Generating theme.')
+        setWizardStatus(iterate && customTheme ? 'Refining the theme…' : 'Generating the theme…')
         bridge.request<ThemeGenerateResult>('theme.generate', { description, iterate })
             .then((result) => {
                 if (customTheme) {
@@ -587,8 +602,8 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
                 }
                 customTheme = readCustomTheme(result.theme)
                 showTheme('custom')
-                const left = result.missing.length > 0 ? ` The model left out ${result.missing.length} of the fifteen values; those fall to the host’s.` : ''
-                setWizardStatus(`${result.iterated ? '✅ Theme refined!' : '✅ Theme generated!'}${left}`)
+                const left = result.missing.length > 0 ? ` The model left out ${result.missing.length} of the 15 values. Those use Lumiverse’s colours.` : ''
+                setWizardStatus(`${result.iterated ? 'Theme refined.' : 'Theme generated.'}${left}`)
             })
             .catch((error: unknown) => { setWizardStatus(`❌ ${error instanceof Error ? error.message : String(error)}`, true) })
             .finally(() => { wizardNew.disabled = false; wizardIterate.disabled = false })
@@ -597,27 +612,27 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
     wizardIterate.addEventListener('click', () => { runWizard(true) })
     wizardUndo.addEventListener('click', () => {
         const previous = themeUndo.pop()
-        if (!previous) { setWizardStatus('No steps to undo.'); return }
+        if (!previous) { setWizardStatus('Nothing to undo.'); return }
         customTheme = previous
         showTheme('custom')
         bridge.request<PrefsResult>('prefs.patch', { patch: { customTheme: previous, trackerTheme: 'custom' } })
-            .then(() => { setWizardStatus(`Undone last change. (${themeUndo.length} steps remaining)`) })
+            .then(() => { setWizardStatus(`Undid the last change. ${themeUndo.length} steps left.`) })
             .catch((error: unknown) => { setWizardStatus(`❌ ${error instanceof Error ? error.message : String(error)}`, true) })
     })
     wizardSave.addEventListener('click', async () => {
-        if (!customTheme) { setWizardStatus('⚠ No custom theme to save. Generate one first!', true); return }
-        const name = wizardName.value.trim() || 'My Custom Theme'
+        if (!customTheme) { setWizardStatus('There is no custom theme to save. Generate one first.', true); return }
+        const name = wizardName.value.trim() || 'My custom theme'
         if (savedThemes[name]) {
-            const { confirmed } = await host.ui.showConfirm({ title: 'Replace the saved theme?', message: `A theme named "${name}" already exists. Overwrite?`, variant: 'warning', confirmLabel: 'Overwrite' })
+            const { confirmed } = await host.ui.showConfirm({ title: 'Replace theme', message: `A theme named "${name}" already exists. Saving replaces it.`, variant: 'warning', confirmLabel: 'Replace' })
             if (!confirmed) return
         }
         savedThemes = { ...savedThemes, [name]: { ...customTheme } }
         drawLibrary()
         bridge.request<PrefsResult>('prefs.patch', { patch: { savedThemes } })
-            .then(() => { setWizardStatus(`Saved "${name}" to library.`) })
+            .then(() => { setWizardStatus(`Saved “${name}” to the library.`) })
             .catch((error: unknown) => { setWizardStatus(`❌ ${error instanceof Error ? error.message : String(error)}`, true) })
     })
-    wizardBox.append(wizardTitle, wizardPrompt, wizardRun, wizardKeep, wizardStatus, wizardLibrary)
+    wizardBox.append(wizardTitle, wizardTip.note, wizardPrompt, wizardRun, wizardKeep, wizardStatus, wizardLibrary)
     themeSelect.addEventListener('change', () => {
         const trackerTheme = readThemeId(themeSelect.value)
         // Shown at once; the event every save sends confirms it, and a refusal puts the stored one back.
@@ -637,16 +652,16 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
     const choicesBackingRow = el('div', { class: 'lh-layout-row lh-choices-backing-row' })
     const choicesBackingLabel = el('span')
     choicesBackingLabel.textContent = 'Choice buttons'
-    const choicesBackingSelect = el('select', { class: 'lh-input', 'data-lh-field': 'choicesBacking', title: 'What the theme or the day/night cycle does to the narrator’s choice buttons under the replies.' }) as HTMLSelectElement
-    const choicesBackingText = { tinted: 'Tinted, as the theme draws them', solid: 'On a solid backing', hover: 'Solid while hovered' } as const
+    const choicesBackingSelect = el('select', { class: 'lh-input', 'aria-label': 'Choice buttons', 'data-lh-field': 'choicesBacking' }) as HTMLSelectElement
+    const choicesBackingText = { tinted: 'Tinted', solid: 'Solid backing', hover: 'Solid on hover' } as const
     for (const value of CHOICES_BACKINGS) {
         const option = el('option', { value }) as HTMLOptionElement
         option.textContent = choicesBackingText[value]
         choicesBackingSelect.append(option)
     }
     choicesBackingRow.append(choicesBackingLabel, choicesBackingSelect)
-    const choicesBackingHint = el('div', { class: 'lh-section-help' })
-    choicesBackingHint.textContent = 'The narrator’s choice buttons under the replies take the theme’s or the day/night phase’s tint, which can be hard to read over a chat background with Lumiverse’s glass look on. On a solid backing draws them on the theme’s own background (the host’s with Match Lumiverse); Solid while hovered does so only while the pointer is over the list, the hovered choice keeping its highlighted border. Nothing here touches the chat’s own background.'
+
+    const choicesBackingHelped = helpAfter(plainEl, choicesBackingRow, choicesBackingLabel, 'Choice buttons', 'Sets how the CYOA choice buttons under replies are drawn. Tinted uses the theme’s translucent tint, which can be hard to read over a chat background. Solid backing draws them on the theme’s background, and Solid on hover does that only while the pointer is over the list. Default: tinted.')
     const showChoicesBacking = (stored: unknown) => {
         choicesBackingSelect.value = applyChoicesBacking(root.ownerDocument.body, stored)
     }
@@ -666,8 +681,8 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
     const dayNightLabel = el('span')
     dayNightLabel.textContent = 'Day/night cycle'
     dayNightRow.append(dayNightInput, dayNightLabel)
-    const dayNightHint = el('div', { class: 'lh-section-help' })
-    dayNightHint.textContent = 'Shifts every box’s colours and shows a sun or moon in the tracker’s head to match the in-world time from the memo’s [TIME] block (it needs an HH:MM clock). Seven phases: late night, dawn, morning, midday, afternoon, sunset and night, crossfading over two seconds. Purely decorative: no effect on prompts or the memo.'
+
+    const dayNightHelped = withHelp(plainEl, dayNightRow, 'Day/night cycle', 'On: the widgets shift colour through seven phases of the day, and the Tracker widget shows a sun or moon, following the in-world time. This needs an HH:MM clock in the tracker’s [TIME] block. It is decorative only and does not change prompts or the memo. Default: off.')
     const showDayNight = (stored: unknown) => {
         dayNightInput.checked = stored === true
         applyDayNightCycle(root.ownerDocument.body, stored === true)
@@ -686,10 +701,10 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
     const xpBarRow = el('label', { class: 'lh-layout-row lh-xpbar-row' })
     const xpBarInput = el('input', { type: 'checkbox', 'data-lh-field': 'xpBarAtBottom' }) as HTMLInputElement
     const xpBarLabel = el('span')
-    xpBarLabel.textContent = 'XP bar at the foot of the tracker'
+    xpBarLabel.textContent = 'XP bar at the bottom of the Tracker widget'
     xpBarRow.append(xpBarInput, xpBarLabel)
-    const xpBarHint = el('div', { class: 'lh-section-help' })
-    xpBarHint.textContent = 'Moves XP out of its module card and pins it at the foot of the Tracker widget, like an MMO experience bar: the widget’s foot, or the foot of the view in the tabs and classic layouts. The cards under the messages keep their XP card.'
+
+    const xpBarHelped = withHelp(plainEl, xpBarRow, 'XP bar at the bottom of the Tracker widget', 'On: XP leaves its module card and is pinned as a bar at the foot of the Tracker widget. The cards under messages keep their XP card. Default: on.')
     const showXpBar = (stored: unknown) => { xpBarInput.checked = stored === true }
     xpBarInput.addEventListener('change', () => {
         const xpBarAtBottom = xpBarInput.checked
@@ -705,10 +720,10 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
     const animateBarsRow = el('label', { class: 'lh-layout-row lh-animate-bars-row' })
     const animateBarsInput = el('input', { type: 'checkbox', 'data-lh-field': 'animateAllCustomBarChanges' }) as HTMLInputElement
     const animateBarsLabel = el('span')
-    animateBarsLabel.textContent = 'Animate changes on every custom bar'
+    animateBarsLabel.textContent = 'Animate custom bar changes'
     animateBarsRow.append(animateBarsInput, animateBarsLabel)
-    const animateBarsHint = el('div', { class: 'lh-section-help' })
-    animateBarsHint.textContent = 'A green gain or a red loss floated over every custom BAR and BARREL marker as it lands, the changed segment lit while the fill catches up. A bar’s own tick under Bars in the tracker still animates it with this off. The XP row’s gain floats either way.'
+
+    const animateBarsHelped = withHelp(plainEl, animateBarsRow, 'Animate custom bar changes', 'On: when a custom bar’s value changes, the gain or loss floats over it in green or red while the fill catches up. With this off, a bar still animates if Animate changes is on in its own bar settings (click the bar). XP gains always float. Default: on.')
     const showAnimateBars = (stored: unknown) => { animateBarsInput.checked = stored === true }
     animateBarsInput.addEventListener('change', () => {
         const animateAllCustomBarChanges = animateBarsInput.checked
@@ -734,23 +749,31 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
         }
         applyFontSizes(root.ownerDocument.body, { [box]: size })
     }
-    const fontSizeBoxes: Array<{ box: FontSizeBox; key: 'trackerFontSize' | 'agentFontSize' | 'settingsFontSize'; label: string; title: string }> = [
-        { box: 'tracker', key: 'trackerFontSize', label: 'Tracker widget font size', title: 'The Tracker widget, the play tab and the cards under the messages; in the one window, the Tracker pane and the tab row.' },
-        { box: 'agent', key: 'agentFontSize', label: 'Lore widget font size', title: 'The Lore widget: the Lorebook Agent, Campaign Records and Visuals/Map; in the one window, those three panes.' },
-        { box: 'settings', key: 'settingsFontSize', label: 'Settings font size', title: 'The settings tab.' },
+    const fontSizeBoxes: Array<{ box: FontSizeBox; key: 'trackerFontSize' | 'agentFontSize' | 'settingsFontSize'; label: string; help?: string }> = [
+        { box: 'tracker', key: 'trackerFontSize', label: 'Tracker widget font size', help: 'Sets the text size of the Tracker widget and of the cards under messages. With One window on, it sizes the Tracker tab and the tab row.' },
+        { box: 'agent', key: 'agentFontSize', label: 'Lore widget font size', help: 'Sets the text size of the Lore widget. With One window on, it sizes the Lorebook Agent, Campaign Records and Visuals/Map tabs.' },
+        { box: 'settings', key: 'settingsFontSize', label: 'Settings font size' },
     ]
     const fontSizeBlock = el('div', { class: 'lh-font-sizes' })
-    for (const { box, key, label, title } of fontSizeBoxes) {
-        const row = el('label', { class: 'lh-layout-row lh-font-size-row', title })
+    // One [?] for the three sliders (96), on a caption over them; a slider's own says what it sizes.
+    const fontSizeCaption = el('div', { class: 'lh-caption lh-font-size-caption' })
+    const fontSizeCaptionText = el('span')
+    fontSizeCaptionText.textContent = 'Font sizes'
+    const fontSizeTip = createHelpTip(plainEl, 'Font sizes', 'Each slider sets a text size from 8 to 32 px. Until you move a slider, that area uses Lumiverse’s own size. Press × to return to Lumiverse’s size.')
+    fontSizeCaption.append(fontSizeCaptionText, fontSizeTip.button)
+    fontSizeBlock.append(fontSizeCaption, fontSizeTip.note)
+    for (const { box, key, label, help } of fontSizeBoxes) {
+        const row = el('div', { class: 'lh-layout-row lh-font-size-row' })
         const name = el('span')
         name.textContent = label
-        const slider = el('input', { type: 'range', min: String(FONT_SIZE_MIN), max: String(FONT_SIZE_MAX), step: '1', 'data-lh-field': key }) as HTMLInputElement
+        const slider = el('input', { type: 'range', min: String(FONT_SIZE_MIN), max: String(FONT_SIZE_MAX), step: '1', 'aria-label': label, 'data-lh-field': key }) as HTMLInputElement
         slider.value = '13'
         const value = el('span', { class: 'lh-font-size-value' })
         value.textContent = fontSizeLabel(0)
         const reset = el('button', { type: 'button', class: 'lh-button lh-button--quiet', 'data-lh-field': `${key}-reset` }) as HTMLButtonElement
         reset.textContent = '×'
-        reset.title = 'Use the host’s own size.'
+        reset.title = 'Use Lumiverse’s size'
+        reset.setAttribute('aria-label', 'Use Lumiverse’s size')
         reset.disabled = true
         row.append(name, slider, value, reset)
         fontSizeRows[box] = { slider, value, reset }
@@ -768,10 +791,9 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
         }
         slider.addEventListener('change', () => { save(readFontSize(slider.value)) })
         reset.addEventListener('click', () => { save(0) })
-        fontSizeBlock.append(row)
+        fontSizeBlock.append(help ? helpAfter(plainEl, row, name, label, help) : row)
     }
-    const fontSizeHint = el('div', { class: 'lh-section-help' })
-    fontSizeHint.textContent = 'Three sliders, 8 to 32 px: one per widget and one for the settings tab. Until a slider moves, each keeps the host’s own size; × puts it back. In the one window each pane keeps its own size and the tab row takes the Tracker widget’s, so the four names match.'
+
     // The cards under the messages (67, the maintainer's ask): the switch
     // sat with the tracker since Phase 4 and lives under General & visuals
     // now. Not a cartridge key — the install's furniture, as the layout is.
@@ -780,13 +802,13 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
     // Off as it ships since 82; the preference read fills it.
     cardsToggle.checked = false
     const cardsLabel = el('span')
-    cardsLabel.textContent = 'Show a tracker card under each message'
+    cardsLabel.textContent = 'Tracker card under each message'
     cardsRow.append(cardsToggle, cardsLabel)
     cardsToggle.addEventListener('change', () => {
         // Put the box back if the write failed, rather than showing a state the backend does not have.
         const wanted = cardsToggle.checked
         bridge.request<PrefsResult>('prefs.patch', { patch: { messageCards: wanted } })
-            .then(() => { say(wanted ? 'Cards will show under each message.' : 'Cards under messages are off.') })
+            .then(() => { say(wanted ? 'Cards under messages are on.' : 'Cards under messages are off.') })
             .catch((error: unknown) => { cardsToggle.checked = !wanted; fail(error) })
     })
     // One window (92, the maintainer's ask of 2026-11-05): the tracker and the Lorebook Agent & maps as
@@ -796,14 +818,14 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
     const oneWindowToggle = el('input', { type: 'checkbox', 'data-lh-field': 'one-window' }) as HTMLInputElement
     oneWindowToggle.checked = slots.widgets?.one === true
     const oneWindowLabel = el('span')
-    oneWindowLabel.textContent = 'One window: the Tracker and Lore widgets as tabs of one box'
+    oneWindowLabel.textContent = 'One window'
     oneWindowRow.append(oneWindowToggle, oneWindowLabel)
-    const oneWindowHint = el('div', { class: 'lh-section-help' })
-    oneWindowHint.textContent = 'Off, the two widgets. On, one box with four tabs — Tracker, Lorebook Agent, Campaign Records, Visuals/Map — that folds, drags and keeps its place as a box does; on a phone it opens full-screen from one button in this tab, its tabs drawn as icons. Until the tick is pressed, a phone has the one box and a desktop the two; pressed anywhere, it is the choice for every device of this install.'
+
+    const oneWindowHelped = withHelp(plainEl, oneWindowRow, 'One window', 'On: the Tracker widget and the Lore widget become one box with four tabs. Until you set this, a phone uses one window and a desktop uses two widgets. Once you set it, the choice applies on every device.')
     oneWindowToggle.addEventListener('change', () => {
         const wanted = oneWindowToggle.checked
         bridge.request<PrefsResult>('prefs.patch', { patch: { oneWindow: wanted } })
-            .then(() => { say(wanted ? 'One window: the boxes are remade as one.' : 'Two boxes again.') })
+            .then(() => { say(wanted ? 'One window is on.' : 'One window is off. The two widgets are back.') })
             .catch((error: unknown) => { oneWindowToggle.checked = !wanted; fail(error) })
     })
     // A hidden widget needs a way back (47c), and a shown one a way out (67):
@@ -820,18 +842,17 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
         for (const [which, text] of toggles) {
             const button = el('button', { type: 'button', class: 'lh-button', 'data-lh-widget': which })
             button.textContent = text
-            button.title = which === 'scene'
-                ? 'Hide the Lore widget, or bring it back where it was if it was hidden with its ×.'
-                : which === 'one' ? 'Hide the AdventureTime window, or bring it back where it was if it was hidden with its ×.'
-                    : 'Hide the Tracker widget, or bring it back where it was if it was hidden with its ×.'
             button.addEventListener('click', () => { slots.widgets?.toggle(which) })
             widgetButtons.append(button)
         }
-        const reset = el('button', { type: 'button', class: 'lh-button lh-button--quiet', 'data-lh-widget': 'reset' })
-        reset.textContent = oneWindow ? 'Reset Widget' : 'Reset Widgets'
-        reset.title = oneWindow ? 'Put the window back where a fresh install draws it, unfolded, and show it.' : 'Put both widgets back where a fresh install draws them, and show them. Their sizes are kept.'
+        const reset = el('button', { type: 'button', class: 'lh-button', 'data-lh-widget': 'reset' })
+        reset.textContent = oneWindow ? 'Reset widget' : 'Reset widgets'
         reset.addEventListener('click', () => { slots.widgets?.reset() })
-        widgetButtons.append(reset)
+        // One [?] for the row (96): the buttons' hover texts were the only place this was said.
+        const widgetTip = createHelpTip(plainEl, 'Widget buttons', oneWindow
+            ? 'Toggle: Hides the window, or shows it again in the same place if it was hidden.\nReset widget: Shows the window and puts it back in its starting position, at its starting size and unfolded.'
+            : 'Toggle: Hides the widget, or shows it again in the same place if it was hidden.\nReset widgets: Shows both widgets and puts them back in their starting positions, at their starting sizes and unfolded.')
+        widgetButtons.append(reset, widgetTip.button, widgetTip.note)
     } else {
         widgetButtons.hidden = true
     }
@@ -902,23 +923,22 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
         applyBackdrops(backdropTargets, { trackerBackdrop: backdrops.tracker, settingsBackdrop: backdrops.settings })
     }
     const backdropBoxes: Array<{ box: BackdropBox; title: string; help: string }> = [
-        { box: 'tracker', title: 'Backdrop behind the Tracker widget', help: 'Optional scenario art behind the Tracker widget — the one window too — or the play tab or the one classic tab. A tint keeps the text readable; with the day/night cycle on it shifts with the in-world time. The night image swaps in during night and late night from [TIME], cycle or no cycle.' },
-        { box: 'settings', title: 'Backdrop behind the Lore widget', help: 'The Lore widget and the settings tab. With the one window on, the Tracker widget’s backdrop dresses the box and this one shows on the settings tab alone.' },
+        { box: 'tracker', title: 'Tracker widget backdrop', help: 'Shows an image behind the Tracker widget, or behind the single box when One window is on. A tint over the image keeps the text readable, and with Day/night cycle on the tint follows the in-world time. The night image replaces the day image during night and late night, whether Day/night cycle is on or off. You can also paste an https image address. AdventureTime fetches the picture and stores it with Lumiverse.' },
+        { box: 'settings', title: 'Lore widget & settings backdrop', help: 'Shows an image behind the Lore widget and behind the settings tab. With One window on, it shows behind the settings tab only. You can also paste an https image address. AdventureTime fetches the picture and stores it with Lumiverse.' },
     ]
     for (const { box, title, help } of backdropBoxes) {
         const card = el('details', { class: 'lh-card lh-second-card lh-backdrop-box', 'data-lh-backdrop-box': box })
         const cardSummary = el('summary')
         const cardIcon = el('span', { class: 'lh-card-icon', 'aria-hidden': 'true' })
-        cardIcon.textContent = box === 'tracker' ? '🖼️' : '🌄'
+        setCardIcon(cardIcon, title, box === 'tracker' ? '🖼️' : '🌄')
         const cardTitle = el('span', { class: 'lh-card-title lh-backdrop-title' })
         cardTitle.textContent = title
         cardSummary.append(cardIcon, cardTitle, el('span', { class: 'lh-chevron', 'aria-hidden': 'true' }))
         const cardBody = el('div', { class: 'lh-second-body lh-backdrop-body' })
-        const cardHelp = el('div', { class: 'lh-section-help' })
-        cardHelp.textContent = help
+
         const note = el('div', { class: 'lh-backdrop-note', role: 'status' })
         const say = (message: string, error = false) => { note.textContent = message; note.classList.toggle('lh-backdrop-note--error', error) }
-        const boxName = box === 'tracker' ? 'Tracker widget' : 'Lore widget'
+        const boxName = box === 'tracker' ? 'Tracker widget' : 'Lore widget & settings'
         const save = (next: Backdrop, done: string) => {
             bridge.request<PrefsResult>('prefs.patch', { patch: { [BACKDROP_PREF[box]]: next } })
                 .then((result) => { showBackdrop(box, result.prefs?.[BACKDROP_PREF[box]]); say(done) })
@@ -926,48 +946,51 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
         }
         const upload = async (slot: 'day' | 'night') => {
             const [picked] = await host.uploads.pickFile({ accept: ['image/png', 'image/jpeg', 'image/webp', 'image/gif'], maxSizeBytes: MAX_PORTRAIT_BYTES })
-            if (!picked) { say('No picture was picked.'); return }
-            say('Storing the picture…')
+            if (!picked) { say('No image was chosen.'); return }
+            say('Uploading the image…')
             const mime = picked.mimeType || (/\.jpe?g$/i.test(picked.name) ? 'image/jpeg' : /\.webp$/i.test(picked.name) ? 'image/webp' : /\.gif$/i.test(picked.name) ? 'image/gif' : 'image/png')
             const dataUrl = await scaleBackdropImage(toDataUrl(picked.bytes, mime))
             const filename = dataUrl.startsWith('data:image/jpeg') ? `backdrop-${box}-${slot}.jpg` : picked.name || `backdrop-${box}-${slot}.png`
             const result = await bridge.request<PrefsResult>('backdrop.upload', { box, slot, dataUrl, filename })
             showBackdrop(box, result.prefs?.[BACKDROP_PREF[box]])
-            say(slot === 'day' ? `The ${boxName}’s backdrop is set.` : `The ${boxName}’s night backdrop is set.`)
+            say(slot === 'day' ? `The ${boxName} backdrop is set.` : `The ${boxName} night image is set.`)
         }
         const slotRow = (slot: 'day' | 'night') => {
             const row = el('div', { class: 'lh-backdrop-row' })
-            const preview = el('div', { class: `lh-backdrop-preview${slot === 'night' ? ' lh-backdrop-preview--night' : ''}`, title: slot === 'day' ? 'Day / default background' : 'Night / late night background (optional)' })
+            const preview = el('div', { class: `lh-backdrop-preview${slot === 'night' ? ' lh-backdrop-preview--night' : ''}`, 'aria-hidden': 'true' })
             const fields = el('div', { class: 'lh-backdrop-fields' })
-            if (slot === 'night') { const label = el('span', { class: 'lh-backdrop-slot' }); label.textContent = 'Night image (optional)'; fields.append(label) }
+            // Each image is named in words (96): the day's name was a hover text alone.
+            const slotLabel = el('span', { class: 'lh-backdrop-slot' })
+            slotLabel.textContent = slot === 'day' ? 'Day image (default)' : 'Night image (optional)'
+            fields.append(slotLabel)
             const buttons = el('div', { class: 'lh-backdrop-buttons' })
             const uploadButton = el('button', { type: 'button', class: 'lh-button', 'data-lh-backdrop-upload': `${box}:${slot}` })
-            uploadButton.textContent = slot === 'day' ? '⬆ Upload' : '🌙 Upload'
+            uploadButton.textContent = slot === 'day' ? '⬆ Upload image' : '🌙 Upload image'
             uploadButton.addEventListener('click', () => { upload(slot).catch((error: unknown) => { say(error instanceof Error ? error.message : String(error), true) }) })
             const clearButton = el('button', { type: 'button', class: 'lh-button', 'data-lh-backdrop-clear': `${box}:${slot}` })
-            clearButton.textContent = 'Clear'
+            clearButton.textContent = 'Clear image'
             clearButton.addEventListener('click', () => { save({ ...backdrops[box], [slot]: '' }, slot === 'day' ? 'The backdrop is cleared.' : 'The night image is cleared.') })
             buttons.append(uploadButton, clearButton)
             fields.append(buttons)
             // An address box on both rows (74d-bis, the maintainer's ask: the
             // legacy's night row takes a file only).
-            const url = el('input', { type: 'text', class: 'lh-input lh-backdrop-url', placeholder: slot === 'day' ? 'Or paste an image URL…' : 'Or paste a night image URL…', 'data-lh-backdrop-url': `${box}:${slot}` }) as HTMLInputElement
+            const url = el('input', { type: 'text', class: 'lh-input lh-backdrop-url', placeholder: slot === 'day' ? 'https://…/day-image.png' : 'https://…/night-image.png', 'aria-label': slot === 'day' ? 'Day image address' : 'Night image address', 'data-lh-backdrop-url': `${box}:${slot}` }) as HTMLInputElement
             url.addEventListener('change', () => {
                 const value = url.value.trim()
                 if (!value) { save({ ...backdrops[box], [slot]: '' }, slot === 'day' ? 'The backdrop is cleared.' : 'The night image is cleared.'); return }
                 // The legacy's rule: an https address, or a file.
-                if (!/^https?:\/\//i.test(value)) { say('Use an https image URL or upload a file.', true); return }
-                const done = slot === 'day' ? `The ${boxName}’s backdrop is set.` : `The ${boxName}’s night backdrop is set.`
+                if (!/^https?:\/\//i.test(value)) { say('Enter an https image address, or upload a file.', true); return }
+                const done = slot === 'day' ? `The ${boxName} backdrop is set.` : `The ${boxName} night image is set.`
                 // The address is fetched by the backend and stored with the host as an upload is (94b): the
                 // browser loading it from the site itself drew nothing where the site refused a hotlink or the
                 // link expired. When the fetch fails the address is kept as before, and the note says what that
                 // means.
-                say('Fetching the picture…')
+                say('Fetching the image…')
                 bridge.request<PrefsResult>('backdrop.fetch', { box, slot, url: value })
-                    .then((result) => { showBackdrop(box, result.prefs?.[BACKDROP_PREF[box]]); url.value = ''; say(`${done} The picture is fetched from the address and stored with the host.`) })
+                    .then((result) => { showBackdrop(box, result.prefs?.[BACKDROP_PREF[box]]); url.value = ''; say(`${done} The image was fetched and stored with Lumiverse.`) })
                     .catch((error: unknown) => {
                         const reason = error instanceof Error ? error.message : String(error)
-                        save({ ...backdrops[box], [slot]: value }, `${done} The picture could not be fetched (${reason}); the address is kept as it is and shows only if the browser can load it from there.`)
+                        save({ ...backdrops[box], [slot]: value }, `${done} The image could not be fetched (${reason}). The address is kept, and the image shows only if your browser can load it directly.`)
                     })
             })
             fields.append(url)
@@ -978,8 +1001,8 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
         const night = slotRow('night')
         const strengthRow = el('div', { class: 'lh-backdrop-strength' })
         const strengthLabel = el('span')
-        strengthLabel.textContent = 'Overlay strength'
-        const strength = el('input', { type: 'range', min: '0', max: '100', step: '1', 'data-lh-backdrop-strength': box, title: 'Higher = a stronger day/night (or neutral) tint over the image' }) as HTMLInputElement
+        strengthLabel.textContent = 'Tint strength'
+        const strength = el('input', { type: 'range', min: '0', max: '100', step: '1', 'aria-label': 'Tint strength', 'data-lh-backdrop-strength': box }) as HTMLInputElement
         const value = el('span', { class: 'lh-backdrop-strength-value' })
         strength.addEventListener('input', () => {
             const next = Math.max(0, Math.min(100, Math.round(Number(strength.value) || 0)))
@@ -989,19 +1012,21 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
         })
         strength.addEventListener('change', () => { save(backdrops[box], '') })
         strengthRow.append(strengthLabel, strength, value)
+        const strengthHelped = helpAfter(plainEl, strengthRow, strengthLabel, 'Tint strength', 'Higher values put a stronger tint over the image. Default: 55%.')
         backdropRows[box] = { day: day.preview, night: night.preview, url: day.url, nightUrl: night.url, strength, value, note }
-        cardBody.append(cardHelp, day.row, night.row, strengthRow, note)
+        cardBody.append(day.row, night.row, strengthHelped, note)
         card.append(cardSummary, cardBody)
+        attachCardHelp(plainEl, card as HTMLDetailsElement, cardSummary, cardTitle, help)
         backdropBlock.append(card)
         showBackdrop(box, null)
     }
     // The two tick rows under the Panel layout row (92d, the maintainer's ask of 2026-11-06); the backdrops close the card.
-    layoutBox.append(widgetButtons, layoutHint, panelLayoutRow, cardsRow, oneWindowRow, oneWindowHint, themeRow, themeHint, choicesBackingRow, choicesBackingHint, wizardBox, dayNightRow, dayNightHint, xpBarRow, xpBarHint, animateBarsRow, animateBarsHint, fontSizeBlock, fontSizeHint, backdropBlock)
+    layoutBox.append(widgetButtons, panelLayoutHelped, cardsRow, oneWindowHelped, themeHelped, choicesBackingHelped, wizardBox, dayNightHelped, xpBarHelped, animateBarsHelped, fontSizeBlock, backdropBlock)
     // Each in a folding card of its own (82, the maintainer's ask), as the cards around them.
     // Multihog's name for the drawer since 84 (the maintainer's ask): the theme, the sizes, the backdrops and the widgets live in it.
-    const layoutCard = settingsCard('layout', '🎨', 'UI Appearance', layoutBox)
+    const layoutCard = settingsCard('layout', '🎨', 'Appearance', layoutBox, 'AdventureTime shows two floating widgets: the Tracker widget and the Lore widget. Drag a widget by its head, resize it from its corner, or fold it to its head. Everything else is on this tab.')
     const cartridgesCard = settingsCard('cartridges', '💾', 'Cartridges', cartridges)
-    categories.bodies.general.append(versionTwin, coreCard.root, layoutCard, cartridgesCard)
+    categories.bodies.general.append(coreCard.root, layoutCard, cartridgesCard)
     settingsRoot.append(search.root, categories.root)
     body.append(settingsRoot)
     // Two tabs: the play tab holds the tracker's play parts; the other holds
@@ -1085,7 +1110,7 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
             return
         }
         if (dice.absent === 'mode') {
-            diceLine.textContent = 'Dice tool: off — RNG mode is not "Pre-seeded + tool calls".'
+            diceLine.textContent = 'Dice tool: off — Dice (RNG) is not "Pre-seeded queue + tool calls".'
             return
         }
         if (dice.absent === 'flags') {
@@ -1102,11 +1127,12 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
 
     /** Draw the diagnostics line from what the backend reported. */
     function drawDiagnostics(result: StatusResult): void {
+        lastStatus = result
+        // The starting area's checks (98) show the checklist's marks, off the same read.
+        tracker?.applyStatus(result)
         drawDiagnosticsLine(result)
         developer.applyStatus(result)
         coreCard.applyStatus(result)
-        versionTwin.textContent = diagnostics.textContent
-        versionTwin.className = `lh-version-twin lh-search-item${diagnostics.classList.contains('lh-diagnostics--warn') ? ' lh-version-twin--warn' : ''}`
     }
 
     function drawDiagnosticsLine(result: StatusResult): void {
@@ -1134,7 +1160,7 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
         diagnostics.className = 'lh-diagnostics lh-diagnostics--warn'
         const headline = el('div', { class: 'lh-diagnostics-headline' })
         headline.textContent =
-            `${name}${hostVersion} — ${result.missing.length} permission` +
+            `${name}${hostVersion} · ${result.missing.length} permission` +
             `${result.missing.length === 1 ? '' : 's'} not granted`
         diagnostics.append(headline)
 
@@ -1146,8 +1172,8 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
 
         const fix = el('div', { class: 'lh-diagnostics-fix' })
         fix.textContent =
-            'Press Update in the Lumiverse extension panel so it re-reads the manifest, then reload the page. ' +
-            'If the version above is already the latest, grant the permission there instead.'
+            'Press Update in Lumiverse’s extension panel, then reload the page. ' +
+            'If the version above is already the latest, grant the permission in that panel.'
         diagnostics.append(fix)
     }
 
@@ -1254,7 +1280,7 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
         savePresets: async (kind, presets) => {
             await commit({ [kind === 'npc' ? 'npcSectionPresets' : 'pcSectionPresets']: presets })
         },
-        confirm: async (message) => (await host.ui.showConfirm({ title: 'The sections', message, variant: 'warning', confirmLabel: 'Yes' })).confirmed,
+        confirm: async (title, message, confirmLabel) => (await host.ui.showConfirm({ title, message, variant: 'warning', confirmLabel })).confirmed,
     }
 
     async function commit(patch: SettingsBag): Promise<void> {
@@ -1269,9 +1295,12 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
 
     async function resetSection(sectionId: string): Promise<void> {
         const group = CARTRIDGE_PAYLOAD_GROUPS.find((candidate) => candidate.id === sectionId)
+        // The card's name as the pane shows it (96): the payload group's label is the cartridge's own, and stays.
+        const card = SETTINGS_SCHEMA.find((section) => section.id === sectionId)
+        const cardName = card?.title ?? group?.label ?? sectionId
         const { confirmed } = await host.ui.showConfirm({
             title: 'Reset to factory',
-            message: `Restore "${group?.label ?? sectionId}" to its factory values? Your current settings for this section will be replaced.`,
+            message: card?.resetConfirm ?? `Reset "${cardName}" to factory values? This replaces your current settings in this card.`,
             variant: 'warning',
             confirmLabel: 'Reset',
         })
@@ -1279,7 +1308,7 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
 
         const result = await bridge.request<SettingsResult>('settings.reset', { groupIds: [sectionId] })
         seedEditors(result.settings, 'reset')
-        say(`Reset ${group?.label ?? sectionId} to factory values.`)
+        say(card?.resetDone ?? `Reset ${cardName} to factory values.`)
     }
 
     // ── cartridges ────────────────────────────────────────────────────────
@@ -1326,7 +1355,7 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
             name: 'Game Cartridge',
         })
         download(result.filename, result.file)
-        say(`Exported ${result.filename} — check your browser's downloads.`)
+        say(`Exported ${result.filename}. Check your browser’s downloads.`)
     }
 
     async function importCartridge(): Promise<void> {
@@ -1336,10 +1365,10 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
         // A cartridge load replaces the entire cartridge surface. That is what
         // it is for, and it is also not undoable, so it gets asked about.
         const { confirmed } = await host.ui.showConfirm({
-            title: 'Load cartridge',
-            message: `Load "${file.name}"? This replaces your tracker, agent, portrait and map settings. Export your current setup first if you want to keep it.`,
+            title: 'Import cartridge',
+            message: `Import "${file.name}"? This replaces your prompts, modules, rulebook and game systems. Export the current ones first if you want to keep them.`,
             variant: 'warning',
-            confirmLabel: 'Load',
+            confirmLabel: 'Import',
         })
         if (!confirmed) return
 
@@ -1347,7 +1376,7 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
         const result = await bridge.request<SettingsResult & { name?: string }>('cartridge.import', { text })
         // A cartridge carries every key, so every editor follows it (43).
         seedEditors(result.settings, 'load')
-        say(`Loaded ${result.name ?? file.name}.`)
+        say(`Imported ${result.name ?? file.name}.`)
     }
 
     importButton.addEventListener('click', () => { importCartridge().catch(fail) })
@@ -1364,7 +1393,6 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
                 // Each section into its category's fold (63).
                 sectionHost: (section) => categories.bodies[section.category],
                 sectionHeader: (section) => (section.id === 'portraits' ? portraitsSection.header : null),
-                sectionFooter: (section) => (section.id === 'portraits' ? portraitsSection.footer : null),
                 commit,
                 onError: (message) => say(message, 'error'),
                 onSaveFailed: (patch, message) => {
@@ -1398,7 +1426,7 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
                             load: (id) => through('portraits.presets.load', { id }),
                             save: (name, overwrite) => through('portraits.presets.save', { name, overwrite }),
                             remove: (name) => through('portraits.presets.delete', { name }),
-                            confirm: async (message) => (await host.ui.showConfirm({ title: 'Portrait prompt library', message, variant: 'warning', confirmLabel: 'Yes' })).confirmed,
+                            confirm: async (title, message, confirmLabel) => (await host.ui.showConfirm({ title, message, variant: 'warning', confirmLabel })).confirmed,
                         })
                     },
                     // The NPC and PC sections (77): Multihog's two section editors on the Character Sheets card, one
@@ -1517,7 +1545,7 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
                                     if (!file) { say('That system is no longer in the settings.', 'error'); return }
                                     const slug = String(file.adventuretimeGameSystem.system.name ?? 'system').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'system'
                                     download(`adventuretime-system-${slug}.json`, JSON.stringify(file, null, 2))
-                                    say(`Exported the system “${file.adventuretimeGameSystem.system.name}” — check your browser's downloads.`)
+                                    say(`Exported “${file.adventuretimeGameSystem.system.name}”. Check your browser’s downloads.`)
                                 },
                                 onImport: () => {
                                     host.uploads.pickFile({ accept: ['.json', 'application/json'] })
@@ -1526,10 +1554,26 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
                                             const read = readGameSystemFile(new TextDecoder().decode(file.bytes))
                                             const { patch, name, tag } = importGameSystem((latestSettings ?? settings) as Record<string, unknown>, read)
                                             return commit(patch as SettingsBag).then(() => {
-                                                say(`Imported the system “${name}”${tag ? ` with its field [${tag}]` : ''}. Its switch is under Custom fields; it is off until the tracker is told to maintain it.`)
+                                                say(`Imported “${name}”${tag ? ` with its field [${tag}]. It is off. Turn it on in Custom fields.` : '.'}`)
                                             })
                                         })
                                         .catch((error: unknown) => { fail(error, 'The system could not be imported') })
+                                },
+                                // Multihog's shareable text, both ways (departure 174): a paste opens the
+                                // wizard's preview, and nothing is written until its Save.
+                                onPaste: (inline) => {
+                                    openSystemPasteDialog({ el, ui: host.ui, inline }, (text) => {
+                                        const draft = parseSharedSystemText(text)
+                                        if (!wizard) throw new Error('The wizard is not on screen.')
+                                        wizard.preview(draft)
+                                        say(`“${draft.name}” is in the wizard’s preview. Read it, then press Save there.`)
+                                    })
+                                },
+                                onCopyText: (id, inline) => {
+                                    const target = wizardTarget(latestSettings ?? settings)
+                                    const system = target.gameSystems.find((s) => s.id === id)
+                                    if (!system) { say('That system is no longer in the settings.', 'error'); return }
+                                    openSystemCopyDialog({ el, ui: host.ui, inline }, String(system.name ?? 'System'), exportSharedSystemText(system, target))
                                 },
                             },
                         )
@@ -1551,7 +1595,7 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
                                         // failed pass is not a failed save, and says so.
                                         if (!seed || !tracker) return undefined
                                         return tracker.instruct(seed).catch((error: unknown) => {
-                                            fail(error, 'The system is saved, but the tracker pass to add its block failed')
+                                            fail(error, 'The system is saved, but the tracker pass that adds its block failed')
                                         })
                                     })
                                     .catch((error: unknown) => {
@@ -1571,7 +1615,8 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
                                     const [file] = await host.uploads.pickFile({ accept: ['.json', 'application/json'] })
                                     return file ? new TextDecoder().decode(file.bytes) : null
                                 },
-                                confirm: async (message) => (await host.ui.showConfirm({ title: 'Clear all custom fields', message, variant: 'danger', confirmLabel: 'Clear all' })).confirmed,
+                                // A field's delete and Remove all fields: the title names the action, the button is its verb (96).
+                                confirm: async (title, message, confirmLabel) => (await host.ui.showConfirm({ title, message, variant: 'danger', confirmLabel })).confirmed,
                             },
                             Array.isArray(value) ? (value as CustomField[]) : [],
                             (fields) => {
@@ -1614,6 +1659,7 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
             tracker = mountTrackerPanel(trackerRoot, bridge, host, result.settings, trackerRest
                 ? { rest: trackerRest, scene: slots.scene, head: slots.trackerHead, lights: slots.trackerLights, foot: slots.trackerFoot, sceneHead: slots.sceneHead, sceneFoot: slots.sceneFoot, repertoire, world: categories.bodies.world }
                 : { repertoire, world: categories.bodies.world })
+            if (lastStatus) tracker.applyStatus(lastStatus)
             say('Ready.')
         })
         .catch(fail)
@@ -1621,7 +1667,7 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
     // Asked separately, not chained onto the settings load: a diagnostic that
     // only appears when everything else worked is no use on the day something
     // did not.
-    bridge.request<StatusResult>('status.get')
+    bridge.request<StatusResult>('status.get', { chatId: host.getActiveChat().chatId })
         .then(drawDiagnostics)
         .catch(() => {
             // An older backend does not know this op. Say so plainly rather
@@ -1635,9 +1681,17 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
     // tracker pass that started or ended combat. Re-read the status rather
     // than trusting the event's payload, so the line and the backend agree.
     const unsubscribeDice = bridge.on((event) => {
-        if (event.name !== 'dice.rolled' && event.name !== 'settings.changed' && event.name !== 'tracker.changed') return
-        bridge.request<StatusResult>('status.get').then(drawDiagnostics).catch(() => undefined)
+        // The narrator check (98) reads the card's name and the cards' list, so a changed name re-reads too.
+        if (event.name !== 'dice.rolled' && event.name !== 'settings.changed' && event.name !== 'tracker.changed' && event.name !== 'prefs.changed') return
+        bridge.request<StatusResult>('status.get', { chatId: host.getActiveChat().chatId }).then(drawDiagnostics).catch(() => undefined)
     })
+    // A narrator card made here or in the starting area, or the tracker's chat changed: the status reads again,
+    // for the chat the tracker names when it names one (the host's own view of the chat can lag the tracker's).
+    const onNarratorCard = (event: Event): void => {
+        const named = (event as CustomEvent<{ chatId?: string | null }>).detail?.chatId
+        bridge.request<StatusResult>('status.get', { chatId: named === undefined ? host.getActiveChat().chatId : named }).then(drawDiagnostics).catch(() => undefined)
+    }
+    root.ownerDocument.addEventListener(NARRATOR_CARD_EVENT, onNarratorCard)
 
     // A settings change made elsewhere (70) — the narrator's block in the
     // tracker's starting area, a cartridge loaded — re-seeds every editor
@@ -1735,6 +1789,7 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
         },
         destroy(): void {
             unsubscribeDice()
+            root.ownerDocument.removeEventListener(NARRATOR_CARD_EVENT, onNarratorCard)
             unsubscribePrefs()
             unsubscribeSettings()
             customFields?.destroy()
@@ -1810,7 +1865,8 @@ export const PANEL_CSS = `
     cursor: pointer;
     font: inherit;
 }
-.adventuretime-panel .lh-reset { font-size: 0.78em; padding: 2px 8px; margin-left: auto; }
+.adventuretime-panel .lh-reset { font-size: 0.8em; padding: 3px 10px; opacity: 0.75; }
+.adventuretime-panel .lh-reset:hover, .adventuretime-panel .lh-reset:focus-visible { opacity: 1; color: var(--lumiverse-danger, #d9534f); border-color: var(--lumiverse-danger, #d9534f); }
 .adventuretime-panel .lh-status { font-size: 0.82em; opacity: 0.75; min-height: 1.2em; }
 .adventuretime-panel .lh-status-error { opacity: 1; color: var(--lumiverse-danger, #d9534f); }
 /* Something the user did that did not work.
@@ -1847,7 +1903,7 @@ export const PANEL_CSS = `
 }
 
 /* What is running, and what it is allowed to do. Quiet until it is not. */
-.adventuretime-panel .lh-diagnostics { font-size: 0.75em; opacity: 0.55; }
+.adventuretime-panel .lh-diagnostics { font-size: 0.72em; opacity: 0.55; }
 .adventuretime-panel .lh-dice-line { font-size: 0.75em; opacity: 0.55; margin-top: 2px; }
 .adventuretime-panel .lh-dice-line:empty { display: none; }
 .adventuretime-panel .lh-dice-line--warn {
@@ -1870,16 +1926,18 @@ export const PANEL_CSS = `
 /* A section is a card since 63d (the cards' CSS); its rows keep their own gutter. */
 .adventuretime-panel .lh-section > .lh-row { margin-left: 10px; margin-right: 10px; }
 .adventuretime-panel .lh-section-help { font-size: 0.8em; opacity: 0.7; margin: 4px 0 8px; color: var(--lh-text-muted, inherit); }
-/* The version line's twin at the head of General & visuals (63). */
 .adventuretime-panel .lh-portraits-drawing { margin-top: 8px; }
-.lh-version-twin { font-size: 0.8em; opacity: 0.75; }
-.adventuretime-panel .lh-version-twin--warn { opacity: 1; color: var(--lumiverse-danger, #ff6b6b); }
-.adventuretime-panel .lh-row { display: flex; align-items: center; gap: 10px; padding: 5px 0; }
-.adventuretime-panel .lh-row-stacked { flex-direction: column; align-items: stretch; }
+.adventuretime-panel .lh-row { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; padding: 5px 0; }
+.adventuretime-panel .lh-row-stacked { flex-direction: column; flex-wrap: nowrap; align-items: stretch; }
+.adventuretime-panel .lh-row-stacked > .lh-help-note { flex: none; order: -1; }
+.adventuretime-panel .lh-row-stacked > .lh-label { order: -2; flex: none; }
 .adventuretime-panel .lh-row[hidden] { display: none; }
-.adventuretime-panel .lh-label { display: flex; flex-direction: column; gap: 2px; flex: 1; }
-.adventuretime-panel .lh-help { font-size: 0.75em; opacity: 0.65; }
-.adventuretime-panel .lh-check { display: flex; align-items: flex-start; gap: 8px; width: 100%; }
+/* A label and its [?] on one line (96); the help itself is a block under the row. */
+.adventuretime-panel .lh-label { display: flex; align-items: center; gap: 4px; flex: 1 1 10em; min-width: 0; }
+.adventuretime-panel .lh-label-text { min-width: 0; }
+.adventuretime-panel .lh-check { display: flex; align-items: center; gap: 8px; flex: 1 1 100%; min-width: 0; }
+/* Every tick in the host's accent (96, finding 13): unclassed, they were the browser's blue. */
+.adventuretime-panel input[type="checkbox"], .adventuretime-panel input[type="radio"] { accent-color: var(--lh-accent, var(--lumiverse-primary, #d4a940)); }
 .adventuretime-panel .lh-managed { font-size: 0.75em; opacity: 0.55; font-style: italic; }
 .adventuretime-panel textarea,
 .adventuretime-panel input[type="text"],
@@ -1892,6 +1950,17 @@ export const PANEL_CSS = `
     font: inherit;
     padding: 5px 8px;
 }
+/* One focus look for every box (96, finding 12), the host's: the border in the accent. */
+.adventuretime-panel textarea:focus, .adventuretime-panel input[type="text"]:focus, .adventuretime-panel input[type="number"]:focus, .adventuretime-panel select:focus { outline: none; border-color: var(--lh-accent, var(--lumiverse-primary, #d4a940)); }
+/* The three folds that kept the browser's triangle (96, finding 2) take the cards' chevron, at the right. */
+.adventuretime-panel .lh-nc-advanced > summary, .adventuretime-panel .lh-wizard-fold > summary, .adventuretime-panel .lh-wizard-prompt-fold > summary { display: flex; align-items: center; gap: 8px; list-style: none; }
+.adventuretime-panel .lh-nc-advanced > summary::-webkit-details-marker, .adventuretime-panel .lh-wizard-fold > summary::-webkit-details-marker, .adventuretime-panel .lh-wizard-prompt-fold > summary::-webkit-details-marker { display: none; }
+.adventuretime-panel .lh-nc-advanced > summary::after, .adventuretime-panel .lh-wizard-fold > summary::after, .adventuretime-panel .lh-wizard-prompt-fold > summary::after {
+    content: ""; width: 0.55em; height: 0.55em; flex: none; margin-left: auto; margin-right: 4px;
+    border-right: 2px solid currentColor; border-bottom: 2px solid currentColor;
+    transform: rotate(-45deg); transition: transform 0.15s; opacity: 0.7;
+}
+.adventuretime-panel .lh-nc-advanced[open] > summary::after, .adventuretime-panel .lh-wizard-fold[open] > summary::after, .adventuretime-panel .lh-wizard-prompt-fold[open] > summary::after { transform: rotate(45deg); }
 .adventuretime-panel textarea { width: 100%; font-family: ui-monospace, monospace; font-size: 0.8em; resize: vertical; }
 
 /* ── tracker cards under the messages ────────────────────────────────── */
@@ -1950,9 +2019,14 @@ export const PANEL_CSS = `
 .lh-tracker-fold > :not(summary) { margin-bottom: 8px; }
 .adventuretime-panel .lh-cartridges { margin-bottom: 10px; }
 .adventuretime-panel .lh-layout { margin-bottom: 12px; }
-.adventuretime-panel .lh-layout-row { display: flex; align-items: center; gap: 8px; font-size: 0.9em; flex-wrap: wrap; }
+.adventuretime-panel .lh-layout-row { display: flex; align-items: center; gap: 8px; font-size: 0.92em; flex-wrap: wrap; }
 .adventuretime-panel .lh-layout-row .lh-select { max-width: 100%; }
 .adventuretime-panel .lh-widget-buttons { margin-bottom: 8px; }
+.adventuretime-panel .lh-widget-buttons { align-items: center; }
+/* An in-card group label (96, finding 16): the host's uppercase caption, with room for a [?]. */
+.adventuretime-panel .lh-caption { display: flex; align-items: center; gap: 4px; font-size: 0.72em; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.75; }
+.adventuretime-panel .lh-caption .lh-help-tip { text-transform: none; }
+.adventuretime-panel .lh-layout > .lh-helped, .adventuretime-panel .lh-layout > .lh-layout-row { margin-top: 2px; }
 /* The two tick rows of the card (92c): a long label wrapped under its box in a narrow panel, since the row
    wraps as its sibling rows do; here the box keeps its line and the words wrap beside it. */
 .adventuretime-panel .lh-layout-row.lh-tracker-pref { flex-wrap: nowrap; align-items: flex-start; }
@@ -2147,10 +2221,11 @@ export const PANEL_CSS = `
 .lh-cyoa-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .lh-cyoa-row .lh-select, .lh-cyoa-row .lh-input { flex: 1 1 10em; min-width: 0; }
 .lh-cyoa-switches { display: flex; flex-direction: column; gap: 3px; }
-.lh-cyoa-switch { display: flex; align-items: center; gap: 6px; font-size: 0.85em; }
+.lh-cyoa-switch { display: flex; align-items: center; gap: 6px; font-size: 0.8em; }
 .lh-cyoa-prompt { width: 100%; box-sizing: border-box; font: inherit; font-size: 0.8em; resize: vertical; }
 .lh-cyoa-prompt[hidden] { display: none; }
-.lh-cyoa-hint { font-size: 0.75em; opacity: 0.65; overflow-wrap: anywhere; }
+.lh-cyoa-line { display: flex; align-items: center; gap: 4px; }
+.lh-cyoa-line > .lh-cyoa-switch { min-width: 0; }
 .lh-cyoa > .lh-button { align-self: flex-start; }
 /* The portrait on an entity card, in the panel and under every message. */
 .rt-entity-portrait {
@@ -2364,9 +2439,13 @@ export const PANEL_CSS = `
    the agent hint class across sections has bitten this panel before.
    (No backticks in here -- PANEL_CSS is a template literal and one ends it.) */
 .lh-conn { display: flex; flex-direction: column; gap: 2px; margin: 6px 0; }
-.lh-conn-label { font-size: 0.85em; opacity: 0.8; }
-.lh-conn-hint { font-size: 0.78em; opacity: 0.65; }
+.lh-conn-label { font-size: 0.8em; opacity: 0.8; }
+.lh-conn-hint { font-size: 0.8em; opacity: 0.65; }
 .lh-conn select { width: 100%; }
+/* The connections category's rows (96): the label with its [?] on one line, and the status line
+   under the control hidden while it has nothing to say, by a rule of its own (lesson 60). */
+.lh-conn-label-line { display: flex; align-items: center; gap: 4px; }
+.lh-connections .lh-conn-hint[hidden] { display: none; }
 /* A one- or two-digit number does not need the full width of the panel. The
    selects above still stretch, because their options are whole sentences.
    Caught by looking at the cadence row rather than by any test - a 420px box
@@ -2424,7 +2503,7 @@ export const PANEL_CSS = `
 .lh-ct-tag { width: 9em !important; font-family: var(--lh-font-mono, var(--lumiverse-font-mono, ui-monospace, monospace)); text-transform: uppercase; }
 .lh-ct-book { flex: 1; min-width: 0; font-size: 0.8em; opacity: 0.6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lh-ct-remove { flex-shrink: 0; }
-.lh-ct-error { color: var(--lumiverse-danger, #ff6b6b); font-size: 0.85em; margin-bottom: 4px; }
+.lh-ct-error { color: var(--lumiverse-danger, #ff6b6b); font-size: 0.8em; margin-bottom: 4px; }
 .lh-ct-text { width: 100%; box-sizing: border-box; }
 .lh-report-history { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 0.85em; }
 .lh-report-history[hidden] { display: none; }
@@ -2449,7 +2528,10 @@ export const PANEL_CSS = `
 .lh-row-editor { align-items: stretch; }
 .lh-fields { display: flex; flex-direction: column; gap: 8px; width: 100%; }
 .lh-fields-summary { font-size: 0.8em; opacity: 0.8; display: flex; flex-direction: column; gap: 2px; }
-.lh-fields-tools { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.lh-fields-tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.lh-fields-tools-warning { font-size: 0.8em; opacity: 0.8; }
+.lh-field-caption { display: flex; align-items: center; gap: 4px; }
+.lh-help-note .lh-field-example { display: block; margin-top: 4px; font-size: 1em; }
 .lh-fields-tools-note { font-size: 0.8em; opacity: 0.8; }
 .lh-fields-tools-note:empty { display: none; }
 .lh-world-tools { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
@@ -2466,7 +2548,7 @@ export const PANEL_CSS = `
 .lh-field-name { flex: 1; }
 .lh-field-tag { font-size: 0.8em; opacity: 0.65; }
 .lh-field-body { display: flex; flex-direction: column; gap: 8px; padding-top: 8px; }
-.lh-field-input { display: flex; flex-direction: column; gap: 3px; font-size: 0.85em; }
+.lh-field-input { display: flex; flex-direction: column; gap: 3px; font-size: 0.8em; }
 .lh-field-error { color: var(--lumiverse-danger, #d9534f); }
 .lh-field-delete { align-self: flex-start; }
 /* Switched on and still not maintained. The green "on" border would otherwise
@@ -2506,16 +2588,8 @@ export const PANEL_CSS = `
    the user's own interleaved in the saved order. Laid out like the other
    editors; the stock rows carry a switch, the others say why they do not. */
 .lh-rb-summary { font-size: 0.8em; opacity: 0.85; display: flex; flex-direction: column; gap: 6px; }
-.lh-rb-lead { line-height: 1.45; }
 .lh-rb-counts { opacity: 0.75; }
 /* An engine limit, said once above the list rather than on every row it touches. */
-.lh-rb-limit {
-    line-height: 1.45;
-    padding: 6px 8px;
-    border-radius: var(--lumiverse-radius, 6px);
-    border: 1px solid var(--lumiverse-warning, #d0a24c);
-    color: var(--lumiverse-warning, #d0a24c);
-}
 .lh-rb-list { display: flex; flex-direction: column; gap: 4px; }
 .lh-rb-row {
     border: 1px solid var(--lh-accent-dim, var(--lumiverse-border, rgba(127,127,127,0.25)));
@@ -2540,14 +2614,14 @@ export const PANEL_CSS = `
 }
 .lh-rb-badge--engine { border-color: var(--lumiverse-warning, #d0a24c); color: var(--lumiverse-warning, #d0a24c); }
 /* Two fixed columns so the tags and the costs each read as a list. */
-.lh-rb-tag { flex: 0 1 auto; min-width: 0; max-width: 23em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.78em; opacity: 0.55; }
+.lh-rb-tag { flex: 0 1 auto; min-width: 0; max-width: 23em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.8em; opacity: 0.55; }
 .lh-rb-size { flex: 0 0 auto; width: 8.5em; text-align: right; font-size: 0.8em; opacity: 0.6; white-space: nowrap; }
 /* Where the user's own sections sit in the order: one quiet line per run of
    them, with their switches one section down. Forty-four rows here drowned
    the twenty-two this editor is for. */
-.lh-rb-marker { font-size: 0.78em; opacity: 0.6; padding: 2px 8px 2px 29px; line-height: 1.4; }
+.lh-rb-marker { font-size: 0.8em; opacity: 0.6; padding: 2px 8px 2px 29px; line-height: 1.4; }
 /* Sub-switches indented under the section that carries them. */
-.lh-rb-children { display: flex; gap: 14px; flex-wrap: wrap; padding: 2px 0 2px 21px; font-size: 0.82em; opacity: 0.85; }
+.lh-rb-children { display: flex; gap: 14px; flex-wrap: wrap; padding: 2px 0 2px 21px; font-size: 0.8em; opacity: 0.85; }
 .lh-rb-child { display: flex; align-items: center; gap: 5px; cursor: pointer; }
 .lh-rb-child input { margin: 0; }
 
@@ -2680,12 +2754,6 @@ export const PANEL_CSS = `
     border: 1px solid transparent;
     color: var(--lh-accent-contrast, var(--lumiverse-primary-contrast, #10131a));
 }
-.lh-tm-badge--unsupported {
-    background: none;
-    border-color: var(--lh-accent-dim, var(--lumiverse-border, rgba(127,127,127,0.35)));
-    color: inherit;
-    opacity: 0.8;
-}
 .lh-tm-badge--no-prompt { background: var(--lumiverse-danger, #d9534f); }
 
 /* The opening sentence of the module's own instructions, so a row is not just
@@ -2693,19 +2761,18 @@ export const PANEL_CSS = `
 .lh-tm-summary-line { margin-top: 4px; font-size: 0.8em; line-height: 1.4; opacity: 0.7; }
 .lh-tm-badge--edited { background: rgba(255, 200, 80, 0.25); border: 1px solid rgba(255, 200, 80, 0.6); }
 .lh-tm-badge--world { background: rgba(120, 180, 255, 0.2); border: 1px solid rgba(120, 180, 255, 0.5); }
-.lh-tm-edit { flex: 0 0 auto; font-size: 0.75em; padding: 1px 6px; }
+.lh-tm-edit { flex: 0 0 auto; font-size: 0.72em; padding: 1px 6px; }
 .lh-tm-editor { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
-.lh-tm-hint { font-size: 0.75em; opacity: 0.65; line-height: 1.4; }
-.lh-tm-text { width: 100%; box-sizing: border-box; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.78em; line-height: 1.45; }
+.lh-tm-hint { font-size: 0.72em; opacity: 0.65; line-height: 1.4; }
+.lh-tm-text { width: 100%; box-sizing: border-box; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8em; line-height: 1.45; }
 
 /* The cards' order in the same list (82, the section order editor of 37 folded in): the arrows on
    every row, a custom field's row and a Display Group's dashed row (75), the foot with the reset. */
-.lh-tm-order-lead { line-height: 1.45; opacity: 0.8; }
 .lh-tm-row--off { opacity: 0.65; }
 .lh-tm-row--custom { border-style: dotted; }
 .lh-tm-group { border-style: dashed; }
 .lh-tm-icon { flex: 0 0 auto; }
-.lh-tm-move { flex: 0 0 auto; font-size: 0.7em; padding: 1px 6px; }
+.lh-tm-move { flex: 0 0 auto; font-size: 0.72em; padding: 1px 6px; }
 .lh-tm-noplace { flex: 0 0 auto; font-size: 0.72em; opacity: 0.6; font-style: italic; }
 .lh-tm-badge--custom, .lh-tm-badge--group { background: none; border-color: var(--lh-accent-dim, var(--lumiverse-border, rgba(127,127,127,0.35))); color: inherit; opacity: 0.8; }
 .lh-tm-foot { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 0.8em; }
@@ -2723,19 +2790,8 @@ export const PANEL_CSS = `
 /* One badge explained once, rather than the same sentence on twenty rows. Only
    the verdicts actually present are listed, so this is two lines on a healthy
    cartridge and never mentions a fault the user does not have. */
-.lh-gs-legend {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-    padding: 6px 8px;
-    border-radius: var(--lumiverse-radius, 6px);
-    background: var(--lh-accent-bg, var(--lumiverse-fill, rgba(127,127,127,0.08)));
-}
-.lh-gs-legend-line { display: flex; align-items: baseline; gap: 6px; }
 /* The chips are four different widths, so without a column the four meanings
    start at four different places and stop reading as a list. */
-.lh-gs-legend-line .lh-gs-badge { min-width: 8.6em; text-align: center; }
-.lh-gs-legend-text { flex: 1; line-height: 1.4; opacity: 0.85; }
 
 .lh-gs-warning {
     color: var(--lumiverse-danger, #d9534f);
@@ -2806,7 +2862,7 @@ export const PANEL_CSS = `
 
 /* The game system wizard (roadmap row 7). */
 .lh-wizard { margin-top: 8px; }
-.lh-wizard-fold > summary { cursor: pointer; font-size: 0.85em; opacity: 0.85; }
+.lh-wizard-fold > summary { cursor: pointer; font-size: 0.8em; opacity: 0.85; }
 .lh-wizard-body { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
 .lh-wizard-screen { display: flex; flex-direction: column; gap: 6px; }
 .lh-wizard-screen[hidden] { display: none; }
@@ -2815,11 +2871,11 @@ export const PANEL_CSS = `
 .lh-wizard-busy { font-size: 0.8em; margin-top: 6px; color: var(--lumiverse-warning, #e3b341); animation: lh-tracker-pulse 1.4s ease-in-out infinite; }
 .lh-wizard-busy:empty { display: none; }
 .lh-wizard-problem { font-size: 0.8em; color: var(--lumiverse-danger, #ff6b6b); }
-.lh-wizard-hint { font-size: 0.75em; opacity: 0.65; line-height: 1.4; }
-.lh-wizard-desc, .lh-wizard-half, .lh-wizard-feedback, .lh-wizard-prompt { width: 100%; box-sizing: border-box; font: inherit; font-size: 0.85em; resize: vertical; }
-.lh-wizard-half, .lh-wizard-prompt { font-size: 0.78em; }
+.lh-wizard-hint { font-size: 0.72em; opacity: 0.65; line-height: 1.4; }
+.lh-wizard-desc, .lh-wizard-half, .lh-wizard-feedback, .lh-wizard-prompt { width: 100%; box-sizing: border-box; font: inherit; font-size: 0.8em; resize: vertical; }
+.lh-wizard-half, .lh-wizard-prompt { font-size: 0.8em; }
 .lh-wizard-chips { display: flex; flex-wrap: wrap; gap: 4px; }
-.lh-wizard-chip { font: inherit; font-size: 0.75em; padding: 2px 7px; border-radius: 999px; border: 1px solid var(--lh-accent-dim, var(--lumiverse-border, rgba(128,128,128,0.4))); background: transparent; color: inherit; cursor: pointer; }
+.lh-wizard-chip { font: inherit; font-size: 0.72em; padding: 2px 7px; border-radius: 999px; border: 1px solid var(--lh-accent-dim, var(--lumiverse-border, rgba(128,128,128,0.4))); background: transparent; color: inherit; cursor: pointer; }
 .lh-wizard-chip:hover { border-color: var(--lh-accent, var(--lumiverse-primary, #d4a940)); }
 .lh-wizard-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .lh-wizard-option { display: inline-flex; align-items: center; gap: 5px; font-size: 0.8em; }
@@ -2842,6 +2898,13 @@ export const PANEL_CSS = `
 /* The dialog's box carries the panel's root class too, since the host's modal is outside the panel (73g-bis). */
 .adventuretime-panel.lh-prompt-dialog { display: flex; flex-direction: column; gap: 8px; padding: 4px 0; border: var(--lh-border, none); box-shadow: var(--lh-shadow, none); }
 .lh-prompt-dialog-intro { font-size: 0.8em; opacity: 0.7; line-height: 1.4; }
+.lh-system-text { display: flex; flex-direction: column; gap: 8px; padding: 4px 0; }
+.lh-system-text-intro { font-size: 0.8em; opacity: 0.7; line-height: 1.4; }
+.lh-system-text-box { width: 100%; box-sizing: border-box; font-family: monospace; font-size: 0.8em; resize: vertical; min-height: 9em; }
+.lh-system-text-problem { font-size: 0.8em; color: var(--lumiverse-danger, #d9534f); }
+.lh-system-text-note { font-size: 0.8em; opacity: 0.8; min-height: 1em; }
+.lh-system-text-buttons { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
+.lh-gs-inline:empty { display: none; }
 .lh-prompt-dialog-prefix { font-size: 0.8em; opacity: 0.85; line-height: 1.4; }
 .lh-prompt-dialog-text { width: 100%; box-sizing: border-box; font: inherit; font-size: 0.85em; resize: vertical; min-height: 9em; }
 .lh-prompt-dialog-skip { display: inline-flex; align-items: center; gap: 6px; font-size: 0.78em; opacity: 0.85; cursor: pointer; }
@@ -3191,4 +3254,4 @@ export const PANEL_CSS = `
     .adventuretime-panel .lh-portrait-row { flex-wrap: wrap; }
     .adventuretime-panel .lh-portrait-labels { flex: 1 1 8em; }
 }
-` + '\n' + MAP_PICTURE_CSS + '\n' + RECORDS_FOLD_CSS + '\n' + TERMINAL_FOLD_CSS + '\n' + AGENT_TOOLS_CSS + '\n' + SANDBOX_FOLD_CSS + '\n' + CREATOR_FOLD_CSS + '\n' + NARRATOR_CONFIG_CSS + '\n' + DEVELOPER_CARD_CSS + '\n' + SECOND_PASS_CSS + '\n' + CORE_CARD_CSS + '\n' + INSTANT_FOLD_CSS + '\n' + START_AREA_CSS + '\n' + PLAYER_CARD_FOLD_CSS + '\n' + WAYS_FOLD_CSS + '\n' + IMPORT_FOLD_CSS + '\n' + LIBRARY_FOLD_CSS + '\n' + NPC_CREATOR_FOLD_CSS + '\n' + EDITOR_TAB_CSS + '\n' + SCENE_FOLD_CSS + '\n' + CARD_SETTINGS_CSS + '\n' + PORTRAIT_DRAW_CSS + '\n' + PORTRAITS_SECTION_CSS + '\n' + PORTRAIT_STYLES_CSS + '\n' + PREF_DIALS_CSS + '\n' + CARDS_CSS + '\n' + CATEGORIES_CSS + '\n' + ENLARGE_CSS + '\n' + mapKindArtCss() + '\n' + THEME_CSS + THEME_WIZARD_CSS + FONT_SIZE_CSS + DAY_NIGHT_CSS + CHOICES_BACKING_CSS + BACKDROP_CSS + MAP_THEME_CSS + '\n' + BAR_ANIMATION_CSS + '\n' + RECOLOR_CSS + '\n' + DISPLAY_GROUP_CSS + DISPLAY_GROUPS_CARD_CSS + '\n' + TAB_MODE_CSS + TAB_MODE_PANEL_CSS + SECTIONS_EDITOR_CSS + '\n' + RELATIONSHIP_FLOAT_CSS
+` + '\n' + MAP_PICTURE_CSS + '\n' + RECORDS_FOLD_CSS + '\n' + TERMINAL_FOLD_CSS + '\n' + COMPANION_PANE_CSS + '\n' + AGENT_TOOLS_CSS + '\n' + SANDBOX_FOLD_CSS + '\n' + CREATOR_FOLD_CSS + '\n' + NARRATOR_CONFIG_CSS + '\n' + DEVELOPER_CARD_CSS + '\n' + SECOND_PASS_CSS + '\n' + CORE_CARD_CSS + '\n' + INSTANT_FOLD_CSS + '\n' + START_AREA_CSS + '\n' + PLAYER_CARD_FOLD_CSS + '\n' + WAYS_FOLD_CSS + '\n' + IMPORT_FOLD_CSS + '\n' + LIBRARY_FOLD_CSS + '\n' + NPC_CREATOR_FOLD_CSS + '\n' + EDITOR_TAB_CSS + '\n' + SCENE_FOLD_CSS + '\n' + CARD_SETTINGS_CSS + '\n' + PORTRAIT_DRAW_CSS + '\n' + PORTRAITS_SECTION_CSS + '\n' + PORTRAIT_STYLES_CSS + '\n' + PREF_DIALS_CSS + '\n' + CARDS_CSS + '\n' + CATEGORIES_CSS + '\n' + ICONS_CSS + HELP_TIP_CSS + '\n' + ENLARGE_CSS + '\n' + mapKindArtCss() + '\n' + THEME_CSS + THEME_WIZARD_CSS + FONT_SIZE_CSS + DAY_NIGHT_CSS + CHOICES_BACKING_CSS + BACKDROP_CSS + MAP_THEME_CSS + '\n' + BAR_ANIMATION_CSS + '\n' + RECOLOR_CSS + '\n' + DISPLAY_GROUP_CSS + DISPLAY_GROUPS_CARD_CSS + '\n' + TAB_MODE_CSS + TAB_MODE_PANEL_CSS + SECTIONS_EDITOR_CSS + '\n' + RELATIONSHIP_FLOAT_CSS

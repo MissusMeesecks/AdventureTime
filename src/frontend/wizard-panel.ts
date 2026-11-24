@@ -19,7 +19,8 @@
  * formatting examples with Multihog's picker of which — the stock modules
  * that are on, the custom fields, the GM sections — a tick with nothing
  * picked picking everything, as the legacy's does. All four are
- * preferences, mirrored in the category's dials but for the picker.
+ * preferences, and these controls are their one place on screen since 96
+ * (audit D6): the category's *Wizard advanced options* card is gone.
  *
  * The tracker half is drawn as it will look (73e, departure 41, Multihog's
  * *UI Live Preview*): the last complete `[TAG]…[/TAG]` sample block in the
@@ -29,6 +30,7 @@
  */
 
 import { RequestTimeoutError, type Bridge } from './bridge.js'
+import { attachCardHelp, createHelpTip, helpAfter, withHelp } from './help-tip.js'
 import type { PrefsResult, WizardDraftResult, WizardReviseResult } from '../protocol.js'
 import { renderBlockCard } from '../tracker/render.js'
 import type { BarPrefs } from '../tracker/bars.js'
@@ -70,16 +72,49 @@ export interface WizardPanelDeps {
 export interface WizardPanel {
     /** Open the preview on an existing system, to edit it. */
     edit(systemId: string): void
+    /** Open the preview on a system pasted as Multihog's text, saved as a new one (departure 174). */
+    preview(draft: WizardDraft): void
     setSettings(settings: WizardSaveTarget): void
-    /** The preferences as the backend holds them (63c): the lookback, the memo switch and the prompt follow a change made in the category. */
+    /** The preferences as the backend holds them (63c): the lookback, the switches and the prompt follow a change announced by the backend. */
     applyPrefs(prefs: PrefsResult['prefs']): void
     destroy(): void
 }
 
 type Screen = 'describe' | 'preview'
 
+/**
+ * The names shown in place of three the generated `wizard-legacy.js` carries
+ * (96, the copy deck's SYS-087, SYS-091 and SYS-D17): keyed by the generated
+ * original, so the file is never edited. The test holds every key to a string
+ * the generated file still produces, so a pin move that renames one is noticed.
+ */
+export const WIZARD_DISPLAY_NAMES: Readonly<Record<string, string>> = {
+    '🍖 Hunger & Thirst': '🍖 Hunger & thirst',
+    '⛽ Vehicle Fuel': '⛽ Vehicle fuel',
+    'Custom GM / narrator sections': 'Custom narrator sections',
+}
+
+const shownName = (generated: string): string => WIZARD_DISPLAY_NAMES[generated] ?? generated
+
+const WIZARD_HELP = 'Describe one mechanic in plain language. The model drafts a rule for the narrator and, if the mechanic needs numbers kept, a tracker module. You can edit both before anything is saved.'
+const LOOKBACK_HELP = 'How many recent messages the wizard reads for context when it drafts a system. Range: 0 to 200. 0 reads none. Default: 10.'
+const LOOKBACK_ALL_HELP = 'Reads the whole chat. The message count is ignored. Default: off.'
+const LORE_HELP = 'Sends the wizard the lorebook entries Lumiverse has active for this chat, each under its title. Default: off.'
+const EXAMPLES_HELP = 'Shows the wizard the tracker module and narrator rule texts your campaign already uses, so the draft matches your tags, layout and wording. Live values such as current HP are not sent. Default: off.'
+const ARCHITECT_HELP = 'The instructions the model gets for designing a system. Clear the box to restore the stock text.'
+const DRIVERS_HELP = [
+    'These choices are used when a half is rewritten.',
+    'With in-world time: the tracker applies a rate per minute of in-world time, read from the [TIME] block.',
+    'When the narrator annotates a change: the narrator writes a note such as *(Category: Event. +N Metric)* in its reply. The tracker applies it.',
+    'From a number in the story: the tracker reads a plain number from the story text.',
+].join('\n')
+const REVISE_HELP = 'Say what to change. The model revises the draft and keeps the rest.'
+const previewHelp = (tag: string): string =>
+    `The preview draws the last complete [${tag}] … [/${tag}] sample block in the module text, the way the Tracker widget draws cards. Edit that block to change the preview.`
+
 export function mountGameSystemWizard(root: HTMLElement, host: WizardHost, deps: WizardPanelDeps): WizardPanel {
     const el = host.createElement
+    const plainEl = el as never
     let settings = deps.settings()
     let screen: Screen = 'describe'
     let draft: WizardDraft | null = null
@@ -96,9 +131,13 @@ export function mountGameSystemWizard(root: HTMLElement, host: WizardHost, deps:
     root.classList.add('lh-wizard')
     const fold = el('details', { class: 'lh-wizard-fold' })
     const summary = el('summary')
-    summary.textContent = 'Game system wizard'
+    const summaryTitle = el('span')
+    summaryTitle.textContent = 'Game system wizard'
+    summary.append(summaryTitle)
     const body = el('div', { class: 'lh-wizard-body' })
     fold.append(summary, body)
+    // The lead is behind the title's [?] (96): in the fold from the first paint, hidden until pressed.
+    attachCardHelp(plainEl, fold, summary, summaryTitle, WIZARD_HELP)
     root.append(fold)
 
     const note = el('div', { class: 'lh-wizard-note' })
@@ -107,16 +146,12 @@ export function mountGameSystemWizard(root: HTMLElement, host: WizardHost, deps:
 
     // ── describe ──
     const describe = el('div', { class: 'lh-wizard-screen', 'data-lh-screen': 'describe' })
-    const lead = el('div', { class: 'lh-wizard-lead' })
-    lead.textContent =
-        'Describe one mechanic in plain language. The model drafts a rule for the narrator and, if the mechanic '
-        + 'needs numbers kept, a tracker module to keep them — both yours to edit before anything is saved.'
     const descBox = el('textarea', { class: 'lh-wizard-desc', rows: '3', 'data-lh-field': 'wizard-description', placeholder: 'Example: Irradiated zones where the player accumulates RADS the longer they stay, with escalating debuffs at higher exposure.' })
     descBox.addEventListener('input', () => { description = descBox.value })
     const chips = el('div', { class: 'lh-wizard-chips' })
     for (const example of WIZARD_EXAMPLE_SYSTEMS) {
         const chip = el('button', { type: 'button', class: 'lh-wizard-chip' })
-        chip.textContent = example.label
+        chip.textContent = shownName(example.label)
         chip.title = example.text
         chip.addEventListener('click', () => {
             description = example.text
@@ -129,7 +164,7 @@ export function mountGameSystemWizard(root: HTMLElement, host: WizardHost, deps:
     const ownerText = el('span')
     ownerText.textContent = 'Threshold effects narrated by'
     const owner = el('select', { class: 'lh-select', 'data-lh-field': 'wizard-owner' })
-    for (const [value, label] of [['tracker', 'the tracker, a turn later (recommended)'], ['gm', 'the narrator, the same turn']]) {
+    for (const [value, label] of [['tracker', 'The tracker, one turn later (recommended)'], ['gm', 'The narrator, same turn']]) {
         const option = el('option', { value: value! })
         option.textContent = label!
         owner.append(option)
@@ -139,7 +174,7 @@ export function mountGameSystemWizard(root: HTMLElement, host: WizardHost, deps:
     const contextRow = el('div', { class: 'lh-wizard-row' })
     const lookbackLabel = el('label', { class: 'lh-wizard-option' })
     const lookbackText = el('span')
-    lookbackText.textContent = 'reading the last'
+    lookbackText.textContent = 'Messages to read'
     const lookbackInput = el('input', { type: 'number', min: '0', max: '200', step: '1', class: 'lh-input', 'data-lh-field': 'wizard-lookback' })
     const lookbackTail = el('span')
     lookbackTail.textContent = 'messages'
@@ -148,46 +183,49 @@ export function mountGameSystemWizard(root: HTMLElement, host: WizardHost, deps:
     const memoLabel = el('label', { class: 'lh-wizard-option' })
     const memoBox = el('input', { type: 'checkbox', 'data-lh-field': 'wizard-memo' })
     const memoText = el('span')
-    memoText.textContent = 'show it the tracker state'
+    memoText.textContent = 'Include tracker state'
     memoLabel.append(memoBox, memoText)
     memoBox.addEventListener('change', () => { savePrefs({ wizardInjectMemo: memoBox.checked }).catch(fail) })
     // Every message (73g, Multihog's Read every message): the count greyed while it is on, as the legacy greys it.
     const allLabel = el('label', { class: 'lh-wizard-option' })
     const allBox = el('input', { type: 'checkbox', 'data-lh-field': 'wizard-lookback-all' })
     const allText = el('span')
-    allText.textContent = 'or all of them'
-    allLabel.title = 'Multihog’s Read every message: the whole chat goes in, the count ignored.'
+    allText.textContent = 'Read every message'
     allLabel.append(allBox, allText)
     allBox.addEventListener('change', () => { lookbackInput.disabled = allBox.checked; savePrefs({ wizardLookbackAll: allBox.checked }).catch(fail) })
     const loreLabel = el('label', { class: 'lh-wizard-option' })
     const loreBox = el('input', { type: 'checkbox', 'data-lh-field': 'wizard-lore' })
     const loreText = el('span')
-    loreText.textContent = 'show it the lore the host has active'
-    loreLabel.title = 'Multihog’s Inject lorebooks: the entries Lumiverse has active for this chat, each under its title.'
+    loreText.textContent = 'Include active lore'
     loreLabel.append(loreBox, loreText)
     loreBox.addEventListener('change', () => { savePrefs({ wizardInjectLore: loreBox.checked }).catch(fail) })
-    contextRow.append(lookbackLabel, allLabel, memoLabel, loreLabel)
+    // Each control's help is behind a [?] beside its label, outside it (96); the tracker state has none to give.
+    contextRow.append(
+        withHelp(plainEl, lookbackLabel, 'Messages to read', LOOKBACK_HELP),
+        withHelp(plainEl, allLabel, 'Read every message', LOOKBACK_ALL_HELP),
+        memoLabel,
+        withHelp(plainEl, loreLabel, 'Include active lore', LORE_HELP),
+    )
     // Existing module prompts as formatting examples (73g), with Multihog's picker of which.
     const examplesRow = el('div', { class: 'lh-wizard-examples' })
     const examplesLabel = el('label', { class: 'lh-wizard-option' })
     const examplesBox = el('input', { type: 'checkbox', 'data-lh-field': 'wizard-modules' })
     const examplesText = el('span')
-    examplesText.textContent = 'cite existing module prompts as formatting examples'
-    examplesLabel.title = 'Multihog’s: the State Tracker and GM section texts your campaign already uses — not live values — so the wizard matches your tags, layout and wording.'
+    examplesText.textContent = 'Use existing modules as format examples'
     examplesLabel.append(examplesBox, examplesText)
     const picker = el('div', { class: 'lh-wizard-picker', 'data-lh-field': 'wizard-picker' })
     picker.hidden = true
     const pickerHint = el('div', { class: 'lh-wizard-hint' })
-    pickerHint.textContent = 'Choose which prompt instructions to include. These are the State Tracker / GM section texts your campaign already uses — not current HP, inventory, or other live numbers.'
+    pickerHint.textContent = 'Prompts to include'
     const pickRow = el('div', { class: 'lh-wizard-row' })
     const pickAll = el('button', { type: 'button', class: 'lh-button lh-button--quiet' })
-    pickAll.textContent = 'All'
+    pickAll.textContent = 'Select all'
     const pickNone = el('button', { type: 'button', class: 'lh-button lh-button--quiet' })
-    pickNone.textContent = 'None'
+    pickNone.textContent = 'Select none'
     pickRow.append(pickAll, pickNone)
     const pickList = el('div', { class: 'lh-wizard-picker-list' })
     picker.append(pickerHint, pickRow, pickList)
-    examplesRow.append(examplesLabel, picker)
+    examplesRow.append(withHelp(plainEl, examplesLabel, 'Use existing modules as format examples', EXAMPLES_HELP), picker)
     const exampleBoxes = (): HTMLInputElement[] => Array.from(pickList.querySelectorAll<HTMLInputElement>('input[data-lh-example-key]'))
     const pickedKeys = (): string[] => exampleBoxes().filter((box) => box.checked).map((box) => box.getAttribute('data-lh-example-key') ?? '').filter(Boolean)
     function saveKeys(): void {
@@ -204,7 +242,7 @@ export function mountGameSystemWizard(root: HTMLElement, host: WizardHost, deps:
         pickList.replaceChildren()
         for (const [group, items] of groups) {
             const head = el('div', { class: 'lh-wizard-hint lh-wizard-picker-group' })
-            head.textContent = group
+            head.textContent = shownName(group)
             pickList.append(head)
             for (const item of items) {
                 const row = el('label', { class: 'lh-wizard-option' })
@@ -219,7 +257,7 @@ export function mountGameSystemWizard(root: HTMLElement, host: WizardHost, deps:
         }
         if (!options.length) {
             const none = el('div', { class: 'lh-wizard-hint' })
-            none.textContent = 'No enabled tracker modules or GM sections are available to cite.'
+            none.textContent = 'No tracker modules or narrator rules are on to use as examples.'
             pickList.append(none)
         }
         pickRow.hidden = !options.length
@@ -240,23 +278,24 @@ export function mountGameSystemWizard(root: HTMLElement, host: WizardHost, deps:
     pickNone.addEventListener('click', () => { for (const box of exampleBoxes()) box.checked = false; saveKeys() })
     const promptFold = el('details', { class: 'lh-wizard-prompt-fold' })
     const promptSummary = el('summary')
-    promptSummary.textContent = 'The architect prompt'
-    const promptHint = el('div', { class: 'lh-wizard-hint' })
-    promptHint.textContent = 'What the model is told about designing a system. Multihog’s own, editable; blank it to go back to the stock text.'
+    const promptTitle = el('span')
+    promptTitle.textContent = 'Architect prompt'
+    promptSummary.append(promptTitle)
     const promptBox = el('textarea', { class: 'lh-wizard-prompt', rows: '10', spellcheck: 'false', 'data-lh-field': 'wizard-system-prompt' })
     promptBox.addEventListener('change', () => {
         const value = promptBox.value.trim() === defaultWizardSystemPrompt().trim() ? '' : promptBox.value
         savePrefs({ wizardSystemPrompt: value }).catch(fail)
     })
-    promptFold.append(promptSummary, promptHint, promptBox)
+    promptFold.append(promptSummary, promptBox)
+    attachCardHelp(plainEl, promptFold, promptSummary, promptTitle, ARCHITECT_HELP)
     const draftButton = el('button', { type: 'button', class: 'lh-button' })
-    draftButton.textContent = 'Draft it'
+    draftButton.textContent = 'Draft system'
     draftButton.addEventListener('click', () => { runDraft().catch(fail) })
     // The busy line sits beside the button that started the call (72b-ter): the note at the top of the fold
     // is out of view when the form is long, and a press with no answer near it was pressed five times.
     const describeBusy = el('div', { class: 'lh-wizard-busy', 'data-lh-field': 'wizard-busy-describe' })
     describeBusy.hidden = true
-    describe.append(lead, descBox, chips, optionRow, contextRow, examplesRow, promptFold, draftButton, describeBusy)
+    describe.append(descBox, chips, optionRow, contextRow, examplesRow, promptFold, draftButton, describeBusy)
 
     // ── preview ──
     const preview = el('div', { class: 'lh-wizard-screen', 'data-lh-screen': 'preview' })
@@ -264,7 +303,7 @@ export function mountGameSystemWizard(root: HTMLElement, host: WizardHost, deps:
     const previewLead = el('div', { class: 'lh-wizard-lead' })
     const nameRow = el('div', { class: 'lh-wizard-row' })
     const iconInput = el('input', { type: 'text', class: 'lh-input lh-wizard-icon', 'data-lh-field': 'wizard-icon', placeholder: '✨' })
-    const nameInput = el('input', { type: 'text', class: 'lh-input', 'data-lh-field': 'wizard-name', placeholder: 'Name' })
+    const nameInput = el('input', { type: 'text', class: 'lh-input', 'data-lh-field': 'wizard-name', placeholder: 'System name' })
     nameRow.append(iconInput, nameInput)
     iconInput.addEventListener('change', () => { if (draft) draft.icon = iconInput.value })
     nameInput.addEventListener('change', () => { if (draft) draft.name = nameInput.value })
@@ -272,7 +311,7 @@ export function mountGameSystemWizard(root: HTMLElement, host: WizardHost, deps:
     const gmHead = el('label', { class: 'lh-wizard-half-head' })
     const gmBox = el('input', { type: 'checkbox', 'data-lh-field': 'wizard-include-gm' })
     const gmTitle = el('span')
-    gmTitle.textContent = 'A rule for the narrator, in the section'
+    gmTitle.textContent = 'Narrator rule, in section'
     const gmTag = el('input', { type: 'text', class: 'lh-input lh-wizard-tag', 'data-lh-field': 'wizard-gm-tag' })
     gmHead.append(gmBox, gmTitle, gmTag)
     const gmContent = el('textarea', { class: 'lh-wizard-half', rows: '10', spellcheck: 'false', 'data-lh-field': 'wizard-gm-content' })
@@ -280,18 +319,18 @@ export function mountGameSystemWizard(root: HTMLElement, host: WizardHost, deps:
     gmTag.addEventListener('change', () => { if (draft) draft.gmTag = gmTag.value })
     gmContent.addEventListener('change', () => { if (draft) draft.gmContent = gmContent.value })
     const gmRegen = el('button', { type: 'button', class: 'lh-button lh-button--quiet' })
-    gmRegen.textContent = 'Rewrite this half'
+    gmRegen.textContent = 'Rewrite narrator rule'
     gmRegen.addEventListener('click', () => { runRevise('gm').catch(fail) })
 
     const trHead = el('label', { class: 'lh-wizard-half-head' })
     const trBox = el('input', { type: 'checkbox', 'data-lh-field': 'wizard-include-tracker' })
     const trTitle = el('span')
-    trTitle.textContent = 'A tracker module, in the block'
+    trTitle.textContent = 'Tracker module, in block'
     const trTag = el('input', { type: 'text', class: 'lh-input lh-wizard-tag', 'data-lh-field': 'wizard-tracker-tag' })
     trHead.append(trBox, trTitle, trTag)
     const trMeta = el('div', { class: 'lh-wizard-row' })
     const trIcon = el('input', { type: 'text', class: 'lh-input lh-wizard-icon', 'data-lh-field': 'wizard-tracker-icon', placeholder: '📄' })
-    const trLabel = el('input', { type: 'text', class: 'lh-input', 'data-lh-field': 'wizard-tracker-label', placeholder: 'Label on the card' })
+    const trLabel = el('input', { type: 'text', class: 'lh-input', 'data-lh-field': 'wizard-tracker-label', placeholder: 'Card label' })
     trMeta.append(trIcon, trLabel)
     const trContent = el('textarea', { class: 'lh-wizard-half', rows: '12', spellcheck: 'false', 'data-lh-field': 'wizard-tracker-content' })
     trBox.addEventListener('change', () => { if (draft) { draft.needsTracker = trBox.checked; render() } })
@@ -305,17 +344,24 @@ export function mountGameSystemWizard(root: HTMLElement, host: WizardHost, deps:
     trLabel.addEventListener('input', () => { if (draft) { draft.trackerLabel = trLabel.value; drawPreview() } })
     trContent.addEventListener('input', () => { if (draft) { draft.trackerContent = trContent.value; drawPreview() } })
     const previewHead = el('div', { class: 'lh-wizard-half-head lh-wizard-preview-head' })
-    previewHead.textContent = 'How the card will look'
-    const previewHint = el('div', { class: 'lh-wizard-hint', 'data-lh-field': 'wizard-preview-hint' })
+    const previewTitle = el('span')
+    previewTitle.textContent = 'Card preview'
+    previewHead.append(previewTitle)
+    // The hint is the heading's [?] (96): one note, kept across every redraw, its text following the tag typed.
+    const previewTip = createHelpTip(plainEl, 'Card preview', previewHelp('TRACKER_TAG'))
+    const previewHint = previewTip.note
+    previewHint.setAttribute('data-lh-field', 'wizard-preview-hint')
+    previewHead.append(previewTip.button)
+    const previewHeadWrap = el('div', { class: 'lh-helped' })
+    previewHeadWrap.append(previewHead, previewHint)
     const previewBox = el('div', { class: 'lh-wizard-preview', 'data-lh-field': 'wizard-preview' })
     const trRegen = el('button', { type: 'button', class: 'lh-button lh-button--quiet' })
-    trRegen.textContent = 'Rewrite this half'
+    trRegen.textContent = 'Rewrite tracker module'
     trRegen.addEventListener('click', () => { runRevise('tracker').catch(fail) })
 
     const drivers = el('div', { class: 'lh-wizard-drivers' })
-    const driverBox = (key: 'driverTime' | 'driverGmAnnotation' | 'driverStatedFact', label: string, hint: string): HTMLInputElement => {
+    const driverBox = (key: 'driverTime' | 'driverGmAnnotation' | 'driverStatedFact', label: string): HTMLInputElement => {
         const row = el('label', { class: 'lh-wizard-option' })
-        row.title = hint
         const box = el('input', { type: 'checkbox', 'data-lh-field': `wizard-${key}` })
         const text = el('span')
         text.textContent = label
@@ -325,16 +371,19 @@ export function mountGameSystemWizard(root: HTMLElement, host: WizardHost, deps:
         return box
     }
     const driversHead = el('div', { class: 'lh-wizard-hint' })
-    driversHead.textContent = 'How the value moves (used when a half is rewritten):'
-    drivers.append(driversHead)
-    const timeBox = driverBox('driverTime', 'with in-world time', 'A rate per minute of elapsed [TIME], applied by the tracker.')
-    const annotationBox = driverBox('driverGmAnnotation', 'when the narrator annotates a change', 'The narrator writes *(Category: Event. +N Metric)* and the tracker applies it.')
-    const factBox = driverBox('driverStatedFact', 'from a number stated in the story', 'The tracker reads a plain number out of the narration.')
+    const driversTitle = el('span')
+    driversTitle.textContent = 'How the value moves'
+    driversHead.append(driversTitle)
+    // One [?] for the three ticks (96): an option cannot carry its own, so each is a line opening with its name.
+    drivers.append(helpAfter(plainEl, driversHead, driversTitle, 'How the value moves', DRIVERS_HELP))
+    const timeBox = driverBox('driverTime', 'With in-world time')
+    const annotationBox = driverBox('driverGmAnnotation', 'When the narrator annotates a change')
+    const factBox = driverBox('driverStatedFact', 'From a number in the story')
     const ownerRow = el('label', { class: 'lh-wizard-option' })
     const ownerRowText = el('span')
     ownerRowText.textContent = 'Threshold effects narrated by'
     const ownerSelect = el('select', { class: 'lh-select', 'data-lh-field': 'wizard-owner-preview' })
-    for (const [value, label] of [['tracker', 'the tracker, a turn later'], ['gm', 'the narrator, the same turn']]) {
+    for (const [value, label] of [['tracker', 'The tracker, one turn later'], ['gm', 'The narrator, same turn']]) {
         const option = el('option', { value: value! })
         option.textContent = label!
         ownerSelect.append(option)
@@ -343,43 +392,42 @@ export function mountGameSystemWizard(root: HTMLElement, host: WizardHost, deps:
     ownerSelect.addEventListener('change', () => { if (draft) draft.effectOwner = ownerSelect.value === 'gm' ? 'gm' : 'tracker' })
     drivers.append(ownerRow)
 
-    const reviseHead = el('div', { class: 'lh-wizard-hint' })
-    reviseHead.textContent = 'Not quite it? Say what to change and the model revises the draft, keeping the rest.'
     const feedback = el('textarea', { class: 'lh-wizard-feedback', rows: '2', 'data-lh-field': 'wizard-feedback', placeholder: 'Example: drain twice as fast at night, and add a Frostbitten tier at 0.' })
     const reviseRow = el('div', { class: 'lh-wizard-row' })
     const reviseButton = el('button', { type: 'button', class: 'lh-button' })
-    reviseButton.textContent = 'Revise'
+    reviseButton.textContent = 'Revise draft'
     reviseButton.addEventListener('click', () => { runRevise('revise').catch(fail) })
     const bothButton = el('button', { type: 'button', class: 'lh-button lh-button--quiet' })
     bothButton.textContent = 'Rewrite both halves'
     bothButton.addEventListener('click', () => { runRevise('both').catch(fail) })
     reviseRow.append(reviseButton, bothButton)
+    const reviseHelped = helpAfter(plainEl, reviseRow, reviseButton, 'Revise draft', REVISE_HELP)
     const previewBusy = el('div', { class: 'lh-wizard-busy', 'data-lh-field': 'wizard-busy-preview' })
     previewBusy.hidden = true
 
     const saveRow = el('div', { class: 'lh-wizard-row' })
     const saveOn = el('button', { type: 'button', class: 'lh-button' })
-    saveOn.textContent = 'Save and switch on'
+    saveOn.textContent = 'Save and turn on'
     saveOn.addEventListener('click', () => { save(true) })
     const saveOff = el('button', { type: 'button', class: 'lh-button lh-button--quiet' })
-    saveOff.textContent = 'Save switched off'
+    saveOff.textContent = 'Save, leave off'
     saveOff.addEventListener('click', () => { save(false) })
     const backButton = el('button', { type: 'button', class: 'lh-button lh-button--quiet' })
     backButton.textContent = 'Back'
     backButton.addEventListener('click', () => { screen = 'describe'; render() })
     saveRow.append(saveOn, saveOff, backButton)
-    preview.append(previewLead, nameRow, gmHead, gmContent, gmRegen, trHead, trMeta, trContent, previewHead, previewHint, previewBox, trRegen, drivers, reviseHead, feedback, reviseRow, previewBusy, saveRow)
+    preview.append(previewLead, nameRow, gmHead, gmContent, gmRegen, trHead, trMeta, trContent, previewHeadWrap, previewBox, trRegen, drivers, feedback, reviseHelped, previewBusy, saveRow)
 
     body.append(note, problem, describe, preview)
 
     const controls = (): HTMLElement[] =>
-        Array.from(body.querySelectorAll<HTMLElement>('button, textarea, input, select'))
+        Array.from(body.querySelectorAll<HTMLElement>('button:not(.lh-help-tip), textarea, input, select'))
 
     function fail(error: unknown): void {
         // A timeout is the panel giving up, not the model failing: the reply may
         // still arrive at the backend and be thrown away. Say so, with the wait.
         problem.textContent = error instanceof RequestTimeoutError
-            ? `The model took longer than the panel waits (${Math.round(error.timeoutMs / 60_000)} minutes) and the draft was not kept. Try again, or shorten what it has to write.`
+            ? `The model took longer than ${Math.round(error.timeoutMs / 60_000)} minutes. The draft was not kept. Try again, or ask for less.`
             : error instanceof Error ? error.message : String(error)
         problem.hidden = false
     }
@@ -418,11 +466,11 @@ export function mountGameSystemWizard(root: HTMLElement, host: WizardHost, deps:
 
     async function runDraft(): Promise<void> {
         const chatId = deps.chatId()
-        if (!chatId) { fail(new Error('No chat open.')); return }
+        if (!chatId) { fail(new Error('Open a chat first.')); return }
         const text = description.trim()
         if (!text) { fail(new Error('Describe the mechanic first.')); return }
         problem.hidden = true
-        setBusy(true, 'Drafting with the model… this takes about as long as a reply does.')
+        setBusy(true, 'Drafting… This takes about as long as a reply.')
         try {
             const result = await deps.bridge.request<WizardDraftResult>('wizard.draft', {
                 chatId,
@@ -481,8 +529,8 @@ export function mountGameSystemWizard(root: HTMLElement, host: WizardHost, deps:
         const seed = enabled && draft.needsTracker ? seedInstruction(draft) : null
         deps.onSave(patch, seed)
         note.textContent = seed
-            ? `Saved "${draft.name}", switched on, and asked the tracker to add its block now — the Tracker section shows the pass and its report.`
-            : `Saved "${draft.name}"${enabled ? ', switched on' : ', switched off'}. It is in the lists above and in your cartridge.`
+            ? `Saved “${draft.name}” and turned it on. A tracker pass is adding its block now.`
+            : `Saved “${draft.name}”, ${enabled ? 'on' : 'off'}. It is in the Game systems list and in your cartridge.`
         draft = null
         editingId = null
         description = ''
@@ -500,15 +548,15 @@ export function mountGameSystemWizard(root: HTMLElement, host: WizardHost, deps:
     function drawPreview(): void {
         const shown = draft && draft.needsTracker
         previewHead.hidden = !shown
-        previewHint.hidden = !shown
+        previewHeadWrap.hidden = !shown
         previewBox.hidden = !shown
         if (!draft || !shown) { previewBox.replaceChildren(); return }
         const typed = draft.trackerTag.trim().toUpperCase() || 'TRACKER_TAG'
-        previewHint.textContent = `Drawn from the last complete [${typed}] … [/${typed}] sample block in the module above, as the tracker's cards draw it. Edit that block to change it.`
+        previewHint.textContent = previewHelp(typed)
         const memo = buildWizardPreviewMemo(draft.trackerContent, draft.trackerTag)
         if (!memo) {
             const empty = el('div', { class: 'rt-empty' })
-            empty.textContent = `Add a complete [${typed}] … [/${typed}] example block above to see its card.`
+            empty.textContent = `Add a complete [${typed}] … [/${typed}] example block to the module text to see its card.`
             previewBox.replaceChildren(empty)
             return
         }
@@ -525,8 +573,8 @@ export function mountGameSystemWizard(root: HTMLElement, host: WizardHost, deps:
         preview.hidden = screen !== 'preview'
         if (screen !== 'preview' || !draft) { drawPreview(); return }
         previewLead.textContent = editingId
-            ? 'Editing a saved system. Save writes your changes over it.'
-            : 'The draft. Read both halves, change what you like, or ask for a revision. Nothing is saved until you press Save.'
+            ? 'Editing a saved system. Saving replaces it.'
+            : 'Draft ready. Edit either half or ask for a revision. Nothing is saved until you press a Save button.'
         iconInput.value = draft.icon
         nameInput.value = draft.name
         gmBox.checked = draft.includeGm
@@ -561,6 +609,15 @@ export function mountGameSystemWizard(root: HTMLElement, host: WizardHost, deps:
             draft = draftFromSystem(system, settings)
             editingId = systemId
             description = String(system.description ?? '')
+            screen = 'preview'
+            fold.open = true
+            problem.hidden = true
+            render()
+        },
+        preview(next) {
+            draft = { ...next }
+            editingId = null
+            description = ''
             screen = 'preview'
             fold.open = true
             problem.hidden = true

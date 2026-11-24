@@ -4,6 +4,7 @@
  * text back for the user to read before it is applied. Nothing is written here:
  * the panel's Apply goes through `records.update` or `creator.card.save`.
  */
+import { connectionField } from './agent-pass.js'
 import { readGenerationText } from './tracker-pass.js'
 import { buildCardAiEditPrompt, CARD_AI_EDIT_TEXT, type CardAiEditKind } from '../tracker/card-ai-edit.js'
 
@@ -28,7 +29,7 @@ export function createCardAiEdit(deps: CardAiEditDeps): CardAiEdit {
             deps.log.info(`card edit: rewriting ${what} with AI from "${asked.slice(0, 60)}" (${content.length} characters)`)
             const raw = await deps.generate.quiet({
                 userId,
-                ...(prefs.agentConnectionId ? { connectionId: prefs.agentConnectionId } : {}),
+                ...connectionField(prefs.agentConnectionId || undefined),
                 messages: [
                     { role: 'system', content: prompt.system },
                     { role: 'user', content: prompt.user },

@@ -20,7 +20,7 @@ describe('Edit with AI’s call (78c)', () => {
         const result = await h.edit.edit('u1', 'npc', '[CORE]\nSpecies: Human\n[/CORE]', ' make her an elf ')
         expect(result).toEqual({ text: '[CORE]\nSpecies: Elf\n[/CORE]' })
         expect(h.calls).toHaveLength(1)
-        expect(h.calls[0]).toMatchObject({ userId: 'u1', connectionId: 'conn-agent' })
+        expect(h.calls[0]).toMatchObject({ userId: 'u1', connection_id: 'conn-agent' })
         const messages = h.calls[0]!.messages as Array<{ role: string; content: string }>
         expect(messages[0]).toEqual({ role: 'system', content: CARD_AI_EDIT_TEXT.npcSystem })
         expect(messages[1]!.content).toBe('CURRENT NPC ENTRY:\n[CORE]\nSpecies: Human\n[/CORE]\n\nREQUESTED CHANGES:\nmake her an elf\n\nOutput the full revised entry now.')
@@ -30,7 +30,7 @@ describe('Edit with AI’s call (78c)', () => {
     it('uses the persona prompt for the Player Card, and the host’s own connection when none is set', async () => {
         const h = harness()
         await h.edit.edit(undefined, 'pc', 'Species: Human', 'older')
-        expect(h.calls[0]).not.toHaveProperty('connectionId')
+        expect(h.calls[0]).not.toHaveProperty('connection_id')
         const messages = h.calls[0]!.messages as Array<{ role: string; content: string }>
         expect(messages[0]!.content).toBe(CARD_AI_EDIT_TEXT.pcSystem)
         expect(messages[1]!.content).toBe('CURRENT PERSONA:\nSpecies: Human\n\nREQUESTED CHANGES:\nolder\n\nOutput the full revised persona now.')

@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
 import type { InstantResult } from '../protocol.js'
-import { createInstantFold, describeInstantResult, instantGenreLabel, type InstantFold, type InstantFoldHost } from './instant-fold.js'
+import { createInstantFold, describeInstantResult, INSTANT_FOLD_CSS, INSTANT_HELP, INSTANT_SWITCH_HELP, instantGenreLabel, type InstantFold, type InstantFoldHost } from './instant-fold.js'
 
 afterEach(() => { document.body.replaceChildren() })
 
@@ -48,10 +48,10 @@ describe('the words', () => {
 })
 
 describe('the fold', () => {
-    it('starts closed with nothing picked, stays folded on a chat with no memo (84; it opened itself before), wears the drawers’ chevron, and keeps Roll and Begin off until a genre is picked', () => {
+    it('starts closed with nothing picked, stays folded on a chat with no memo (84; it opened itself before), wears the option card’s header, and keeps Roll and Begin off until a genre is picked', () => {
         const { fold } = harness()
         expect(fold.root.open).toBe(false)
-        expect(fold.root.querySelector('summary .lh-start-fold-chevron')!.textContent).toBe('▸')
+        expect(fold.root.querySelector('summary > .lh-chevron')).not.toBeNull()
         expect(status(fold).textContent).toBe('Select a genre to begin')
         expect(fold.genre()).toBe('')
         expect(button(fold, '🎲 Roll name').disabled).toBe(true)
@@ -183,10 +183,14 @@ describe('the fold', () => {
         fold.setChat('chat-1', false)
         genre(fold, 'fantasy').click()
         expect(button(fold, BEGIN).title).toBe('This chat already has a character sheet; Instant Action replaces it, and asks first.')
+        // The tooltip alone said so before: it stands in the open now, for a chat with a sheet only.
+        const sheetNote = fold.root.querySelector('[data-lh-field="instant-sheet-note"]') as HTMLElement
+        expect(sheetNote.hidden).toBe(false)
+        expect(sheetNote.textContent).toBe('This chat already has a character sheet. Instant Action replaces it, and asks first.')
         answers.push(false)
         button(fold, BEGIN).click()
         await settle()
-        expect(asked).toEqual([['Begin Instant Action', 'This chat already has a character sheet. Instant Action writes a new sheet over it, makes a new persona and Player Card, and sends the first message. Multihog allows this on an empty chat only.', 'Replace the sheet']])
+        expect(asked).toEqual([['Begin Instant Action', 'This chat already has a character sheet. Instant Action writes a new sheet over it, makes a new persona and Player Card, and sends the first message.', 'Replace the sheet']])
         expect(begun).toEqual([])
         expect(fold.busy()).toBe(false)
         answers.push(true)
@@ -223,5 +227,92 @@ describe('the fold', () => {
         expect(status(failed.fold).textContent).toBe('Instant Action failed: no sheet. Rolled Occultist, level 3. Ran at t.')
         failed.fold.setChat(null, false)
         expect(status(failed.fold).textContent).toBe('Horror selected — name optional')
+    })
+})
+
+/** Every piece of help is a [?] and a hidden note: nothing explanatory stands in the open or lives in a tooltip alone. */
+function expectNoVisibleHelp(root: HTMLElement, statusClasses: string[], titles: string[]): void {
+    expect(root.querySelectorAll('.lh-world-lead')).toHaveLength(0)
+    const hints = Array.from(root.querySelectorAll('[class*="-hint"], [class*="-sub"]')).filter((n) => !statusClasses.some((c) => n.classList.contains(c)))
+    expect(hints.map((n) => n.className)).toEqual([])
+    // A tooltip may name an icon-only button or say why a button is off; it never carries the help.
+    const titled = Array.from(root.querySelectorAll('[title]')).filter((n) => n.getAttribute('title'))
+    expect(titled.every((n) => n.tagName === 'BUTTON')).toBe(true)
+    expect(titled.map((n) => n.getAttribute('title')).filter((t) => !titles.includes(t!))).toEqual([])
+    const notes = Array.from(root.querySelectorAll<HTMLElement>('.lh-help-note'))
+    expect(notes.length).toBeGreaterThan(0)
+    for (const note of notes) {
+        expect(note.hidden).toBe(true)
+        expect(note.textContent).not.toMatch(/the host|Multihog|\bPhase\b|creator[A-Z]\w+/)
+        const tip = root.querySelector(`button.lh-help-tip[aria-controls="${note.id}"]`)!
+        expect(tip).not.toBeNull()
+        // Neither the [?] nor its note may sit in a label that wraps a tick: a press would be the label's.
+        for (const node of [tip, note]) expect(node.closest('label')?.querySelector('input[type="checkbox"]') ?? null).toBeNull()
+    }
+}
+
+describe('the option card and its copy (98)', () => {
+    const tip = (fold: InstantFold) => fold.root.querySelector('summary > .lh-help-tip') as HTMLButtonElement
+    const help = (fold: InstantFold) => fold.root.querySelector('.lh-instant-body')!.firstElementChild as HTMLElement
+
+    it('wears the starting area’s shared header as the recommended option: the icon, the name, its line, the [?], the chevron', () => {
+        const { fold } = harness()
+        expect(fold.root.className).toBe('lh-instant lh-start-option lh-start-option--recommended')
+        expect(fold.root.getAttribute('data-lh-option')).toBe('instant')
+        const summary = fold.root.querySelector('summary')!
+        expect(Array.from(summary.children).map((n) => `${n.tagName.toLowerCase()}.${n.className}`)).toEqual(['span.lh-start-option-icon', 'span.lh-start-option-label', 'button.lh-help-tip', 'span.lh-chevron'])
+        expect(summary.querySelector('.lh-start-option-icon')!.textContent).toBe('⚡')
+        expect(summary.querySelector('.lh-start-option-icon')!.getAttribute('aria-hidden')).toBe('true')
+        expect(Array.from(summary.querySelector('.lh-start-option-label')!.children).map((n) => `${n.tagName.toLowerCase()}.${n.className}`)).toEqual(['span.lh-start-option-title', 'small.lh-start-option-sub'])
+        expect(summary.querySelector('.lh-start-option-title')!.textContent).toBe('Instant Action')
+        expect(summary.querySelector('.lh-start-option-sub')!.textContent).toBe('Fastest. Pick a genre and go; everything else is rolled.')
+        expect(summary.querySelector('.lh-chevron')!.textContent).toBe('')
+        expect(summary.querySelector('.lh-chevron')!.getAttribute('aria-hidden')).toBe('true')
+        expect(fold.root.querySelector('.lh-instant-sub, .lh-instant-title, .lh-start-fold-chevron, .lh-start-drawer-chevron')).toBeNull()
+        // The header's look is the starting area's: the fold's own sheet draws no frame and no summary.
+        expect(INSTANT_FOLD_CSS).not.toMatch(/\.lh-instant\s*\{|\.lh-instant > summary|lh-instant-sub|lh-instant-title/)
+    })
+
+    it('keeps the lead paragraph behind the [?] on its name: in the body from the first paint, hidden, and a press never folds the card', () => {
+        const { fold } = harness()
+        expect(help(fold).className).toBe('lh-help-note')
+        expect(help(fold).textContent).toBe('Pick a genre. A name and a setup line are optional. Everything else is rolled, and the character starts at level 1 unless Random level is on.')
+        expect(help(fold).textContent).toBe(INSTANT_HELP)
+        expect(help(fold).hidden).toBe(true)
+        expect(tip(fold).getAttribute('aria-label')).toBe('Help: Instant Action')
+        expect(tip(fold).getAttribute('aria-controls')).toBe(help(fold).id)
+        // Open: the press shows the help and the card stays open; a second press hides the help and the card still stays open.
+        fold.root.open = true
+        const press = () => { const event = new MouseEvent('click', { bubbles: true, cancelable: true }); tip(fold).dispatchEvent(event); return event }
+        expect(press().defaultPrevented).toBe(true)
+        expect(fold.root.open).toBe(true)
+        expect(help(fold).hidden).toBe(false)
+        expect(tip(fold).getAttribute('aria-expanded')).toBe('true')
+        expect(press().defaultPrevented).toBe(true)
+        expect(fold.root.open).toBe(true)
+        expect(help(fold).hidden).toBe(true)
+        // Closed: the press opens the card with the help, so the help is never shown inside a folded card.
+        fold.root.open = false
+        press()
+        expect(fold.root.open).toBe(true)
+        expect(help(fold).hidden).toBe(false)
+    })
+
+    it('says its twins’ decided labels and help, and keeps every help behind a [?]', () => {
+        const { fold } = harness()
+        fold.setChat('chat-1', true)
+        genre(fold, 'fantasy').click()
+        const row = (name: string) => control(fold, name).closest('.lh-helped')!
+        expect(control(fold, 'send-starter').closest('label')!.textContent).toBe('Instant Action sends the opening message')
+        expect(row('send-starter').querySelector('.lh-help-note')!.textContent).toBe(INSTANT_SWITCH_HELP.sendStarter)
+        expect(INSTANT_SWITCH_HELP.sendStarter).toBe('When on, Instant Action sends the opening message for you and the narrator replies. When off, you type your first action. Default: on.')
+        expect(control(fold, 'random-level').closest('label')!.textContent).toBe('Instant Action: random level (1–10)')
+        expect(row('random-level').querySelector('.lh-help-note')!.textContent).toBe(INSTANT_SWITCH_HELP.randomLevel)
+        expect(fold.root.querySelector('.lh-instant-field .lh-instant-label')!.textContent).toBe('Initial setup (optional)')
+        expect(fold.root.querySelector('.lh-instant-field .lh-help-note')!.textContent).toBe('Guide the character, setting, premise or tone. Anything left unsaid is still rolled. A level named here overrides the rolled one.')
+        expect(Array.from(fold.root.querySelectorAll('.lh-instant-label')).map((n) => n.textContent)).toEqual(['Initial setup (optional)', 'Player Card length (words)'])
+        expect((fold.root.querySelector('[data-lh-field="instant-sheet-note"]') as HTMLElement).hidden).toBe(true)
+        expectNoVisibleHelp(fold.root, ['lh-start-option-sub'], ['Roll the character, write the sheet, and begin.'])
+        expect(fold.root.querySelectorAll('.lh-help-note')).toHaveLength(4)
     })
 })

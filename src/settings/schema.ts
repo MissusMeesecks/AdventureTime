@@ -125,11 +125,11 @@ export interface SettingsCategory {
 export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
     { id: 'general', icon: '⚙️', title: 'General & visuals', description: 'The cartridges, the layout, the choices, and the portraits and pictures.' },
     { id: 'connections', icon: '🔌', title: 'Connections & models', description: 'Every connection AdventureTime’s passes and draws run on, in one place; each is also beside what it drives.' },
-    { id: 'systems', icon: '🎩', title: 'Game systems & customisation', description: 'The game systems and custom fields, the wizard, and the narrator’s rulebook.' },
-    { id: 'tracker', icon: '🧠', title: 'State tracker & modules', description: 'The extractor prompt, the dice, the time formats, the modules and the cards’ order.' },
-    { id: 'agent', icon: '🧭', title: 'Lorebook agent', description: 'The agent’s prompts and modules, the custom tags, and the character sheets.' },
-    { id: 'maps', icon: '🗺️', title: 'Persistent maps', description: 'The Map Architect, the Updater and Evolution.' },
-    { id: 'world', icon: '🌐', title: 'World progression', description: 'The report prompt.' },
+    { id: 'systems', icon: '🎩', title: 'Game systems & rulebook', description: 'The game systems and custom fields, the wizard, and the narrator rulebook.' },
+    { id: 'tracker', icon: '🧠', title: 'State Tracker', description: 'The tracker’s system prompt, the time formats, the modules and the order of the cards.' },
+    { id: 'agent', icon: '🧭', title: 'Lorebook Agent', description: 'The agent’s prompts, the character sheets, and how often and how far back it runs.' },
+    { id: 'maps', icon: '🗺️', title: 'Persistent maps', description: 'The map themes, the map prompts, and how Map Architect, Map Updater and Map Evolution run.' },
+    { id: 'world', icon: '🌐', title: 'World Progression', description: 'The report prompt, the World Skeleton, and when and where reports are written.' },
 ]
 
 export interface SectionDef {
@@ -145,6 +145,12 @@ export interface SectionDef {
     group?: string
     title: string
     description?: string
+    /** One visible sentence beside the card's Reset to factory (96): what else the reset takes with it. */
+    warning?: string
+    /** The reset's confirm message, where the card's own sentence says more than the shared one (96). */
+    resetConfirm?: string
+    /** The line said after the reset, in place of the shared one (96). */
+    resetDone?: string
     /** The category fold the section is drawn in (63). */
     category: SettingsCategoryId
     /** The card's icon (63d). */
@@ -161,10 +167,10 @@ export interface SectionDef {
 
 /** Valid `narrativePacing` values, with the labels the legacy UI used. */
 export const NARRATIVE_PACING_OPTIONS: SelectOption[] = [
-    { value: 'normal', label: 'Normal (no length instructions)' },
-    { value: 'shorter_outputs', label: 'Shorter Outputs' },
-    { value: 'high_agency', label: 'High-Agency Mode' },
-    { value: 'downtime', label: 'Downtime / Slice of Life Mode' },
+    { value: 'normal', label: 'Normal' },
+    { value: 'shorter_outputs', label: 'Shorter replies' },
+    { value: 'high_agency', label: 'High agency' },
+    { value: 'downtime', label: 'Downtime / slice of life' },
 ]
 
 /**
@@ -175,9 +181,9 @@ export const NARRATIVE_PACING_OPTIONS: SelectOption[] = [
  * never seen, so they stay behind one control.
  */
 export const RNG_MODE_OPTIONS: SelectOption[] = [
-    { value: 'hybrid', label: 'Pre-seeded + tool calls (recommended without CYOA Mode)' },
-    { value: 'legacy', label: 'Pre-seeded only (recommended with CYOA Mode)' },
-    { value: 'none', label: 'No RNG (the model makes numbers up — not recommended)' },
+    { value: 'hybrid', label: 'Pre-seeded queue + tool calls' },
+    { value: 'legacy', label: 'Pre-seeded queue only' },
+    { value: 'none', label: 'No dice rolls' },
 ]
 
 export function readRngMode(settings: SettingsBag): string {
@@ -244,16 +250,27 @@ export const SETTINGS_SCHEMA: SectionDef[] = [
         icon: '🧠',
         category: 'tracker',
         title: 'State Tracker',
-        description: 'The extractor prompt, the time formats, the modules and the cards’ order. Reset to factory here resets the narrator’s configuration and the rulebook with them: they are one group in a cartridge.',
+        description: 'The tracker’s system prompt, the time formats, the modules and the order of the cards.',
+        // Stays in the open, beside the card's Reset to factory (96, TRK-013b): the two cards it names are in another category.
+        warning: 'Reset to factory also resets the Narrator card and the Narrator rulebook.',
         fields: [
-            prompt('systemPromptTemplate', 'Extractor system prompt',
-                'The prompt the State Extractor model runs. Tuned text — edit with care.'),
-            { key: 'use24hTime', type: 'boolean', label: 'Use 24-hour time' },
-            { key: 'useDdMmYyFormat', type: 'boolean', label: 'Use DD/MM/YYYY calendar dates' },
-            managed('modules', 'Tracker modules', 'Per-module enable/tag/format/instruction table.', readFlagTable('modules')),
+            prompt('systemPromptTemplate', 'Tracker system prompt',
+                'The system prompt for every tracker pass. It is tuned text, so edit with care. While Full Review Mode is on, a built-in prompt is used in its place.'),
+            { key: 'use24hTime', type: 'boolean', label: 'Use 24-hour time', help: 'When on, the in-world clock is written in 24-hour time. When off, it is written in 12-hour time. Default: off.' },
+            { key: 'useDdMmYyFormat', type: 'boolean', label: 'Use DD/MM/YYYY dates', help: 'When on, in-world dates are written as calendar dates (DD/MM/YYYY). When off, they are written as a day count, such as Day 5. Default: off.' },
+            // One [?] for the whole list (96): its rows are redrawn on every switch and move, so the rows' own help is lines of it.
+            managed('modules', 'Tracker modules',
+                'These are the tracker’s built-in blocks. When a module is on, the tracker is told about it on every pass and keeps its block up to date. When it is off, its block stops updating, but it keeps what it holds and still travels in the cartridge.\n\n' +
+                'The arrows set the order of the cards, in the Tracker widget and under each message. A module that is off keeps its place, because its card is still drawn while the memo holds its block. The order does not change the tracker’s prompt.\n\n' +
+                'Edited: this module’s text differs from the stock text.\n' +
+                'In the Party card: benched party members are drawn inside the Party card, so this block has no place of its own in the order.\n' +
+                'Custom field: turn it on or off and edit its text under Custom fields. Its place among the cards is set here. While it is off under Custom fields, its card is drawn only while the memo still holds its block.\n' +
+                'Display group: its arrows move all its member modules together.',
+                readFlagTable('modules')),
             // Drawn as the arrows of the modules editor (82); listed here so the store takes the key.
             { ...managed('blockOrder', 'Section order', 'The order the cards are drawn in, in the panel and under each message.', readBlockOrder), hidden: true },
-            managed('stockPrompts', 'Stock prompts', 'Per-module stock prompt text.', readStockPrompts),
+            // Edited through Edit text on the modules' rows (36); the row itself had no control (96, TRK-106). The store still takes the key.
+            { ...managed('stockPrompts', 'Stock prompts', 'Per-module stock prompt text.', readStockPrompts), hidden: true },
         ],
     },
     {
@@ -264,8 +281,8 @@ export const SETTINGS_SCHEMA: SectionDef[] = [
         group: 'stateTracker',
         icon: '🎭',
         category: 'systems',
-        title: 'Narrator configuration',
-        description: 'Pacing, the dice, the quests and the optional components the narrator plays with. The same block is in the starting area of the tracker.',
+        title: 'Narrator',
+        description: 'Sets pacing, dice, quests and optional components for the narrator. Changes take effect on the next reply. The same controls also appear under Starting the adventure.',
         editor: 'narrator',
         fields: [
             { key: 'narrativePacing', type: 'select', label: 'Narrative pacing', options: NARRATIVE_PACING_OPTIONS },
@@ -322,24 +339,37 @@ export const SETTINGS_SCHEMA: SectionDef[] = [
         id: 'cyoa',
         icon: '🔀',
         category: 'general',
-        title: 'CYOA Mode',
-        description: 'Choice slots, custom prompt, button appearance, and saved CYOA presets.',
+        title: 'CYOA mode',
+        description: 'Sets how many choices the narrator offers after each reply and what kind each one is. You can save choice lists as presets or write the instruction yourself.',
         fields: [
-            managed('cyoaConfig', 'CYOA configuration', 'Slot setup, custom prompt text, and button appearance.', readCyoaConfig),
+            managed('cyoaConfig', 'Choice setup', '', readCyoaConfig),
         ],
     },
     {
         id: 'gameSystems',
         icon: '🎩',
         category: 'systems',
-        title: 'Game Systems & Custom Fields',
-        description: 'Linked GM-section / tracker-module pairs, and custom tracker fields.',
+        title: 'Game systems & custom fields',
+        description: 'A game system pairs a narrator rule with a tracker module. Custom fields are extra blocks the tracker keeps.',
         fields: [
-            managed('gameSystems', 'Game systems', 'Paired GM section + tracker module definitions.', readGameSystems),
+            // One `[?]` for the list (96): what a system is, the four badges, the row's export. The rows are redrawn, so none carries help of its own.
+            managed('gameSystems', 'Game systems',
+                'A game system pairs a narrator rule with a tracker module. Turn the tracker module on or off in Custom fields. Turn the narrator rule on or off in World rules.\n\n' +
+                'Tracked: the tracker module is on, so the tracker updates it on every pass.\n' +
+                'Off: the tracker module is off, so the tracker is not told about it.\n' +
+                'Narrator rule only: there is no tracker module.\n' +
+                'Broken link: the system names a tracker module that no longer exists.\n\n' +
+                'Export system saves a system as a file with its tracker field and its narrator rule.\n\n' +
+                'More in this category’s guide.',
+                readGameSystems),
             // Both managed keys now have an editor, and so a validator each.
             // A managed key without one is still refused (see
             // `managed-values.ts`); nothing is left in that state today.
-            managed('customFields', 'Custom fields', 'Extra tracker fields.', readCustomFields),
+            managed('customFields', 'Custom fields',
+                'Extra blocks the tracker keeps, beyond the stock modules.\n\n' +
+                'A field that is off is still saved in cartridges. Its card still shows if its block is already in the memo. The tracker is not told about it, so it does not update.\n\n' +
+                'The instruction is everything the tracker is told about a block. A field with no instruction is left out of the tracker prompt, even when it is on.',
+                readCustomFields),
         ],
     },
     {
@@ -349,56 +379,59 @@ export const SETTINGS_SCHEMA: SectionDef[] = [
         group: 'stateTracker',
         icon: '📜',
         category: 'systems',
-        title: 'The narrator’s rulebook',
-        description: 'Which of Multihog’s rules are sent, in what order, and your own sections among them.',
+        title: 'Narrator rulebook',
+        description: 'Chooses which rulebook sections are sent to the narrator. Your own sections are sent among them.',
         fields: [
-            managed('syspromptModules', 'The rulebook', 'Which of Multihog’s narrator rules are sent.', readFlagTable('syspromptModules')),
-            managed('syspromptSectionOrder', 'Sysprompt section order', 'Order of the sysprompt sections.', readSectionOrder),
-            managed('customSyspromptLibrary', 'Your world rules', 'Your own instructions to the storyteller.', readSyspromptLibrary),
+            managed('syspromptModules', 'Stock sections', 'The rules the narrator plays by: combat, resting, loot, levelling and more. Sections are listed in the order they are sent.\n\nYour own sections are shown in the list at the place they are sent.', readFlagTable('syspromptModules')),
+            // Not drawn (96): the row showed a saved order no control changes. The key stays the store's and the
+            // cartridge's; the world rules editor writes it when a section is deleted.
+            { ...managed('syspromptSectionOrder', 'Sysprompt section order', 'Order of the sysprompt sections.', readSectionOrder), hidden: true },
+            managed('customSyspromptLibrary', 'World rules', 'Your own instructions to the narrator. Every section that is on is sent with every reply.', readSyspromptLibrary),
         ],
     },
     {
         id: 'characterSheets',
         icon: '👤',
         category: 'agent',
-        title: 'Character Sheets',
-        description: 'NPC and PC sheet sections, saved section presets, relationship bars.',
+        title: 'Character sheets',
+        description: 'The sections of NPC and Player Card sheets, their saved presets, and the relationship system switch.',
         fields: [
             {
                 key: 'npcRelationshipBars',
                 type: 'boolean',
                 label: 'Relationship system',
-                help: "Tracks each NPC's friendship and affection toward you.",
+                help: 'Tracks each NPC’s friendship and affection toward your character. When on, the narrator sees every NPC’s standing, and the tracker or the narrator changes the values. Default: on.',
             },
-            managed('npcCoreSections', 'NPC sections', 'The [CORE] identity sections every NPC is recorded under: the name the agent writes, the instruction telling it what the section holds, the icon and colour the cards draw. Save rebuilds the agent’s NPC, LOC and FAC instructions where they still read as stock.', validateCoreSections),
-            managed('pcCoreSections', 'PC sections', 'The Player Card’s sections, read when a character is generated or a card imported.', validateCoreSections),
-            { ...managed('npcSectionPresets', 'NPC section presets', 'Saved NPC section layouts.', validateSectionPresets), visibleWhen: () => false },
-            { ...managed('pcSectionPresets', 'PC section presets', 'Saved PC section layouts.', validateSectionPresets), visibleWhen: () => false },
+            managed('npcCoreSections', 'NPC sections', 'The [CORE] identity sections every NPC is recorded under, in this order. Each section has a name, an icon, a colour and an instruction that tells the agent what to record. Saving rebuilds the agent’s NPC, location and faction instructions if they are still stock. An instruction you have edited is kept.\n\nOverwrite preset: replaces the chosen preset with the sections in the list. Choose a preset first, or use Save as new preset to make one.\nSave as new preset: saves the sections in the list as a preset under the name typed. Presets are stored in the cartridge.\nReset to stock: puts the stock sections in the list. Nothing changes until you press Save sections.\nRevert changes: discards unsaved edits and restores the list saved in the cartridge.\nHidden until set: a section marked this way is written only once it has a value. The stock Combat Profile section is one.', validateCoreSections),
+            managed('pcCoreSections', 'PC sections', 'The sections of the Player Card, in this order. They are used when a character is generated or a character card is imported.\n\nOverwrite preset: replaces the chosen preset with the sections in the list. Choose a preset first, or use Save as new preset to make one.\nSave as new preset: saves the sections in the list as a preset under the name typed. Presets are stored in the cartridge.\nReset to stock: puts the stock sections in the list. Nothing changes until you press Save sections.\nRevert changes: discards unsaved edits and restores the list saved in the cartridge.\nHidden until set: a section marked this way is written only once it has a value. The stock Combat Profile section is one.', validateCoreSections),
+            { ...managed('npcSectionPresets', 'NPC section presets', 'Saved sets of NPC sections.', validateSectionPresets), hidden: true },
+            { ...managed('pcSectionPresets', 'PC section presets', 'Saved sets of PC sections.', validateSectionPresets), hidden: true },
         ],
     },
     {
         id: 'portraits',
         icon: '🖼️',
         category: 'general',
-        title: 'Portraits and location images',
-        description: 'Who is drawn and when, the location images, the scene drawn as you play, the art styles, and the prompts a portrait and a scene picture are written from. The connections are under Connections & models.',
+        title: 'Portraits & location images',
+        description: 'Sets who gets a portrait and when, how location images are shown and drawn, and the prompts the pictures are written from. The image and prompt connections for portraits and location images are set under Connections & models.',
         // Multihog's order (83): the switches the panel draws first, then the art
         // styles, then the three prompts and the word target under a folded card
         // of their own at the foot, Multihog's *Portrait Prompt Templates*.
         fields: [
             // The art styles (63b): the styles editor is mounted on the saved
-            // setups' row and shows which is active, so the id's own row is
-            // hidden; both are written by the backend's preset ops and carried
-            // in every cartridge.
-            { ...managed('activePortraitPromptPresetId', 'Active art style', 'Which art style or saved setup was loaded last; empty once a prompt is edited.', validateActivePreset), visibleWhen: () => false },
-            managed('savedPortraitPromptPresets', 'Portrait and location image styles', 'Multihog’s seven art styles, each loading the three prompt templates below, and your own setups saved under a name.', validateSavedPresets),
+            // setups' row and shows which is active, so the id has no row of
+            // its own (96, the audit's finding 22: it was drawn and always
+            // hidden); both are written by the backend's preset ops and
+            // carried in every cartridge.
+            { ...managed('activePortraitPromptPresetId', 'Active art style', 'Shows which art style or saved setup was loaded last. It is empty once a prompt is edited.', validateActivePreset), hidden: true },
+            managed('savedPortraitPromptPresets', 'Art styles', 'Loading a style replaces the three prompt templates and the word target below. You can save your own prompts as a named setup. The style loaded last is marked "loaded" until you edit a prompt.', validateSavedPresets),
             { ...prompt('portraitNpcSystemPrompt', 'NPC portrait prompt'), fold: 'Portrait prompt templates' },
             { ...prompt('portraitCharacterSystemPrompt', 'Character portrait prompt'), fold: 'Portrait prompt templates' },
-            { ...prompt('portraitLocationSystemPrompt', 'Location portrait prompt'), fold: 'Portrait prompt templates' },
+            { ...prompt('portraitLocationSystemPrompt', 'Location image prompt'), fold: 'Portrait prompt templates' },
             {
                 key: 'portraitPromptWordTarget',
                 type: 'number',
-                label: 'Portrait prompt word target',
+                label: 'Prompt word target',
                 min: 10,
                 max: 2000,
                 step: 10,
@@ -410,8 +443,8 @@ export const SETTINGS_SCHEMA: SectionDef[] = [
         id: 'lorebookAgent',
         icon: '🧭',
         category: 'agent',
-        title: 'Lorebook Agent',
-        description: 'The researcher agent: its prompts, module definitions, and custom tags.',
+        title: 'Agent prompts',
+        description: 'The prompt texts the Lorebook Agent is sent on each pass.',
         // The seven texts the agent is told (72c), where Multihog's agent
         // mode reads them. The four Basic Mode texts — the basic system
         // prompt, the modular format prompt, the basic Combat Profile
@@ -419,13 +452,13 @@ export const SETTINGS_SCHEMA: SectionDef[] = [
         // (one-shot tag parsing, with activation) is not ported, so nothing
         // would read an edit. The keys ride through every cartridge untouched.
         fields: [
-            prompt('routerSystemPromptTemplate', 'Agent system prompt', 'Multihog’s system prompt for the agent, sent first. Its three activation sections — basic_instructions, context_maximization, bravery — are not sent: the active set they curate is Lumiverse’s to keep. So the text the agent reads opens at <player_character_safeguard>, about sixty lines down this box; an edit above that line is never sent. Every other section goes in as written here, with its date examples rewritten to the time format.'),
-            prompt('routerAgentSharedContextTemplate', 'Shared context template', 'Multihog’s shared context, sent after the tools. Its {{…}} placeholders are filled on every pass — the eligible [CORE] fields, the pass restriction, the nudge, the campaign’s books, the module instructions, the Combat Profile guidance, the relationship section. The MEMORY LIMIT section is not sent, and the DUNGEON LOCATION OWNERSHIP section is swapped for the mapped-site note as Multihog swaps it.'),
-            prompt('routerCombatProfileGuidanceAgentTemplate', 'Combat profile guidance (agent)', 'Sent while the memo holds a [COMBAT] or [PARTY] block, where the shared context asks for it.'),
-            prompt('routerAutoPassRestrictionTemplate', 'Auto-pass restriction', 'Sent on the pass after a reply: a core edit may touch the Combat Profile and nothing else, and the writer refuses any other field.'),
-            prompt('routerManualPassRestrictionTemplate', 'Manual-pass restriction', 'Sent on a pressed or an instructed pass; {{eligibleCoreFields}} is the identity fields the NPC sections name.'),
-            prompt('routerExistingNpcNudgeTemplate', 'Existing-NPC nudge', 'Sent on every pass, where the shared context asks for it.'),
-            prompt('routerRelSectionAgentTemplate', 'Relationship section (agent)', 'Sent while the relationship system is on, its {{max}} and {{p30}}-style placeholders expanded for the scale.'),
+            prompt('routerSystemPromptTemplate', 'Agent system prompt', 'The system prompt for the agent. It is sent first on every agent pass. The agent reads this text from <player_character_safeguard> onward, about sixty lines down. An edit above that line is never sent. Every other section is sent as written. Its date examples are rewritten to the campaign’s time format.\n\nDifferent from Multihog: the three activation sections (basic_instructions, context_maximization, bravery) are not sent. Lumiverse decides which lorebook entries are active, so those sections have nothing to manage.'),
+            prompt('routerAgentSharedContextTemplate', 'Shared context template', 'The shared context for the agent. It is sent after the tool descriptions. Its {{…}} placeholders are filled on every pass with the other texts on this card, the campaign’s lorebooks and the module instructions. While the party is inside a mapped site, the DUNGEON LOCATION OWNERSHIP section is replaced by a short mapped-site note.\n\nDifferent from Multihog: the MEMORY LIMIT section is not sent.'),
+            prompt('routerCombatProfileGuidanceAgentTemplate', 'Combat profile guidance', 'Sent while the tracker memo holds a [COMBAT] or [PARTY] block. It is inserted where the shared context template asks for it.'),
+            prompt('routerAutoPassRestrictionTemplate', 'Automatic-pass restriction', 'Sent on an automatic pass after a reply. On that pass the agent may edit an NPC’s Combat Profile and no other [CORE] field. Edits to other fields are refused.'),
+            prompt('routerManualPassRestrictionTemplate', 'Manual-pass restriction', 'Sent on a pass you run by hand or with an instruction. {{eligibleCoreFields}} is replaced by the identity fields named in NPC sections.'),
+            prompt('routerExistingNpcNudgeTemplate', 'Existing-NPC nudge', 'Sent on every pass. It is inserted where the shared context template asks for it.'),
+            prompt('routerRelSectionAgentTemplate', 'Relationship section', 'Sent while the relationship system is on. Placeholders such as {{max}} and {{p30}} are replaced with values for the current relationship scale.'),
             managed('routerModules', 'Agent modules', 'What the Lorebook Agent is told about each category it records.', readRouterModules),
             managed('routerCustomTags', 'Custom tags', 'Your own categories for the Lorebook Agent.', readRouterCustomTags),
         ],
@@ -434,23 +467,25 @@ export const SETTINGS_SCHEMA: SectionDef[] = [
         id: 'mapArchitect',
         icon: '🗺️',
         category: 'maps',
-        title: 'Map Architect',
-        description: 'Hidden-site generation, occupancy, and off-screen evolution prompts. The map itself is Phase 2.',
+        title: 'Map prompts',
+        description: 'The system prompts of the map passes: Map Architect’s contents pass, Map Updater, Map Evolution and Map Evolution’s history compression. They are saved in the cartridge. Reset to factory restores the stock text.',
+        resetConfirm: 'This replaces the four map prompts with the factory text.',
+        resetDone: 'Map prompts reset to factory values.',
         fields: [
-            prompt('mapArchitectSystemPrompt', 'Map architect prompt'),
-            prompt('mapUpdaterSystemPrompt', 'Map updater prompt'),
-            prompt('mapEvolutionSystemPrompt', 'Map evolution prompt'),
-            prompt('mapEvolutionCompressSystemPrompt', 'Map evolution compression prompt'),
+            prompt('mapArchitectSystemPrompt', 'Map Architect prompt'),
+            prompt('mapUpdaterSystemPrompt', 'Map Updater prompt'),
+            prompt('mapEvolutionSystemPrompt', 'Map Evolution prompt'),
+            prompt('mapEvolutionCompressSystemPrompt', 'Map Evolution compression prompt'),
         ],
     },
     {
         id: 'worldProgression',
         icon: '🖥️',
         category: 'world',
-        title: 'World Progression',
-        description: 'The report prompt used by the World Progression engine.',
+        title: 'Report prompt',
+        description: 'The system prompt for the model that writes World Progression reports.',
         fields: [
-            prompt('worldProgressionSystemPrompt', 'World progression prompt'),
+            prompt('worldProgressionSystemPrompt', 'World Progression prompt'),
         ],
     },
 ]

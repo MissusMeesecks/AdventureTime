@@ -65,7 +65,7 @@ describe('knownDisplayGroupModules', () => {
             null,
         ] })
         expect(modules.map((m) => m.tag)).toEqual(['CHARACTER', 'PARTY', 'INVENTORY', 'ABILITIES', 'SPELLS', 'XP', 'TIME', 'RADS', 'WAYSTONE'])
-        expect(modules[0]).toEqual({ tag: 'CHARACTER', icon: '🧙', label: 'CHARACTER', kind: 'Stock' })
+        expect(modules[0]).toEqual({ tag: 'CHARACTER', icon: '🧙', label: 'CHARACTER', kind: 'Built-in' })
         expect(modules[7]).toEqual({ tag: 'RADS', icon: '☢️', label: 'Radiation', kind: 'Custom' })
         expect(modules[8]).toEqual({ tag: 'WAYSTONE', icon: '📄', label: 'Waystone', kind: 'Wizard' })
         expect(knownDisplayGroupModules({}).map((m) => m.tag)).toHaveLength(7)

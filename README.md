@@ -38,18 +38,24 @@ please report them here rather than upstream.
 - **Starting a new adventure:** the character creator, Instant Action and
   the setup around them.
 
-**Not in yet:** the Adventure Companion, Multihog's help bot. It arrives with
-the new-adventure work, once the documentation it guides people from is
-written.
+**New, and lightly tested:** the Adventure Companion, Multihog's help bot.
+It answers questions about AdventureTime from
+[the guide](guide/AdventureTime-guide.md#22-the-adventure-companion), talks
+over the story with what you choose to show it, and can update the
+character sheet, the lore and the map when you ask. It can take your turn
+too, and shows you the message first.
 
 Feature requests are welcome and get logged, but they wait until the work
 above is done. Reports are worked through in batches, not in real time.
 
 ## What it does
 
+[The AdventureTime guide](guide/AdventureTime-guide.md) has a chapter for
+each part below; the links go to it.
+
 ![Screenshot of AdventureTime for Lumiverse extension interface](AdventureTime.png)
 
-- **The State Tracker.** After every reply a second model call reads what
+- **[The State Tracker](guide/AdventureTime-guide.md#10-the-state-tracker).** After every reply a second model call reads what
   changed and keeps a memo of it: the character, the party, the inventory
   with its worth, the quests, combat, the in-world time and date, spell
   slots, and whatever custom modules you add. The memo is drawn as cards —
@@ -58,36 +64,36 @@ above is done. Reports are worked through in batches, not in real time.
   sit under every message too (off as it ships). A history stepper walks
   back through every state the chat has been in; a Change Log shows what
   the last pass moved.
-- **The Lorebook Agent.** A tool-calling pass that records NPCs, locations,
+- **[The Lorebook Agent](guide/AdventureTime-guide.md#12-the-lorebook-agent).** A tool-calling pass that records NPCs, locations,
   factions and your own categories into the campaign's world books, with
   Multihog's `[CORE]` sheets, its editable sections, a cleanup pass, a full
   audit of a long chat, pause, undo and redo. The Campaign Records tab shows
   every entry as a card with its portrait, standing and relationship bars.
-- **The narrator's rulebook.** Multihog's stock prompts, sent whole and
+- **[The narrator's rulebook](guide/AdventureTime-guide.md#6-the-narrator-and-the-rulebook).** Multihog's stock prompts, sent whole and
   editable section by section; CYOA choices drawn as buttons under each
   reply; pre-seeded dice, a `RollTheDice` tool, or the queue; pacing and
   the optional components; a game-system wizard that writes a new module's
   tracker half and narrator half from a description, with a live preview.
-- **Persistent maps.** The Map Architect draws a site when the party
+- **[Persistent maps](guide/AdventureTime-guide.md#14-persistent-maps).** The Map Architect draws a site when the party
   arrives (by tool call, or by a text block for a connection that cannot
   call tools), the Map Updater changes it with play, Map Evolution moves it
   while the party is away, and the map is on screen as the party knows it.
   Maps nest, settlements absorb the maps inside them, and the Map Themes
   colour the picture.
-- **World Progression.** Reports on the wider world on the in-world clock,
+- **[World Progression](guide/AdventureTime-guide.md#15-world-progression-and-the-world-skeleton).** Reports on the wider world on the in-world clock,
   from a seeded skeleton of factions, places and conflicts.
-- **Characters.** A character creator, Instant Action, a sheet from the
+- **[Characters](guide/AdventureTime-guide.md#4-first-time-setup).** A character creator, Instant Action, a sheet from the
   active persona or from instructions, a card import, the Player Card, the
   NPC library and the NPC creator, and a tab in Lumiverse's own character
   editor.
-- **Pictures.** Portraits drawn as people appear, a scene picture for the
+- **[Pictures](guide/AdventureTime-guide.md#17-pictures).** Portraits drawn as people appear, a scene picture for the
   place the party is in, Multihog's seven art styles and the prompt editor
   before every draw.
-- **Relationships.** Friendship and affection per NPC, moved by the
+- **[Relationships](guide/AdventureTime-guide.md#13-campaign-records).** Friendship and affection per NPC, moved by the
   tracker or by the narrator's inline awards, with the float feedback.
-- **The look.** Multihog's five themes and the AI Theme Wizard, the
+- **[The look](guide/AdventureTime-guide.md#18-appearance).** Multihog's five themes and the AI Theme Wizard, the
   day/night cycle, backdrops, font sizes, Display Groups.
-- **Cartridges.** The whole configuration exports as a Multihog game
+- **[Cartridges](guide/AdventureTime-guide.md#16-game-systems-and-cartridges).** The whole configuration exports as a Multihog game
   cartridge and imports from one: the same 49 keys in the same format, so a
   cartridge authored for Multihog loads here unchanged.
 
@@ -95,8 +101,9 @@ above is done. Reports are worked through in batches, not in real time.
 
 The **AdventureTime** tab in the drawer (the d20) holds the settings in
 Multihog's seven categories — *General & visuals*, *Connections & models*,
-*Game systems & customisation*, *State tracker & modules*, *Lorebook agent*,
-*Persistent maps*, *World progression* — with a search box over them. Every
+*Game systems & rulebook*, *State Tracker*, *Lorebook Agent*,
+*Persistent maps*, *World Progression* — with a search box over them. A
+setting's help is behind the **?** after its label. Every
 model call can run on a connection of its own; the tracker and the agent
 suit a smaller, faster model than the one writing the story.
 
@@ -104,7 +111,7 @@ Two switches worth knowing from the start. **AdventureTime is on in this
 chat**, the first row of the tab, switches the extension off for the open
 chat alone (nothing goes into the narrator's prompt and nothing runs after
 a reply there; the buttons still work). **Image prompt prefix**, under
-*Portraits and location images*, is put in front of every picture's
+*Portraits & location images*, is put in front of every picture's
 prompt as it is drawn — a LoRA tag such as `<lora:name:1>`, a trigger
 word, a quality tag — for an image model that needs one on every prompt.
 
@@ -122,15 +129,16 @@ word, a quality tag — for an image model that needs one on every prompt.
 World Progression, the scene picture and automatic portraits stay off until
 you switch them on.
 
-**Give those calls a cheap model.** Set the **State tracker** and **Lorebook
-agent** connections under *Connections & models*. Left blank, both run on the
+**Give those calls a cheap model.** Set the **State Tracker** and **Lorebook
+Agent** connections under *Connections & models*. Left blank, both run on the
 narrator's connection — the chat's own when the chat pins one, else the
 connection last seen writing the story, else the one ticked *Set as default
 connection* in Lumiverse — and the other passes fall back to one of those
-two. A light, fast model suits them. The **Lumiverse checklist** under *Core
-& Branching* names the connection a blank row will use.
+two. A light, fast model suits them. The **Lumiverse checklist** under *Setup
+& help* names the connection a blank row will use. The guide's
+[chapter 3](guide/AdventureTime-guide.md#3-connections-and-models) covers connections and models.
 
-**Output length for AdventureTime's calls**, in the same place, is the one
+**Pass output length**, in the same place, is the one
 number its own calls get: a preset's numbers reach a chat reply alone, never
 a background pass. Blank leaves each provider's own default (Anthropic's
 through Lumiverse is 4,096 tokens); set it if a pass's JSON reply ends
@@ -138,8 +146,8 @@ mid-object.
 
 **Function calling** on the narrator's connection lets it roll with the
 `RollTheDice` tool and ask for maps with `CreateAreaMap`. Without it, set
-**RNG mode** to *Pre-seeded only* and the Map Architect opener to *Text
-command*, both under *Narrator configuration*.
+**Dice (RNG)** to *Pre-seeded queue only* and *How the narrator asks for a
+map* to *Text block*, both on the *Narrator* card.
 
 **A summariser is strongly recommended**, as it is for Multihog: one that
 hides older messages, so the narrator sees only the last ten turns or so
@@ -158,9 +166,8 @@ the model's maximum by AdventureTime's share, which the Prompt Breakdown's
 *AdventureTime —* rows show (the rulebook alone is about 6,700 tokens). A cap
 at the maximum leaves no room for those rows, and a low one drops old chat.
 The preset reaches the narrator alone: the background passes get none of
-its text and none of its numbers (see *Output length for AdventureTime's
-calls* above). Your own instructions belong in **Your world rules**, under
-*Game systems & customisation* → *The narrator's rulebook*.
+its text and none of its numbers (see *Pass output length* above). Your own instructions belong in
+**World rules**, under *Game systems & rulebook* → *Narrator rulebook*.
 
 ## Installing
 
@@ -192,7 +199,7 @@ calls* above). Your own instructions belong in **Your world rules**, under
    and *AdventureTime — Lore*, and the d20 tab in the
    drawer holds the settings. The line at the top of that tab reads
    `AdventureTime <version> · Lumiverse <version> · all 13 permissions
-   granted`, or names any permission still missing. Prefer one box? Tick **One window** under *UI Appearance* in the settings tab: the two become one, with Tracker, Lorebook Agent, Campaign Records and Visuals/Map as its tabs, drawn as icons with their names under them on a phone — where the one box is the default until the tick is pressed.
+   granted`, or names any permission still missing. Prefer one box? Tick **One window** under *Appearance* in the settings tab: the two become one, with Tracker, Lorebook Agent, Campaign Records and Visuals/Map as its tabs, drawn as icons with their names under them on a phone — where the one box is the default until the tick is pressed.
 
 **Updating:** press **Update** on AdventureTime in the Extensions panel.
 Lumiverse builds at install time, so nothing changes until it is pressed;
@@ -200,18 +207,25 @@ the version line says whether it took.
 
 ## Your first adventure
 
-On a chat with no character sheet yet, **Starting the Adventure** is open at
-the top of the settings tab, and its **Setup Guide** walks through the rest:
+**[The AdventureTime guide](guide/AdventureTime-guide.md)** explains every
+part in twenty-two short chapters. Start with
+[first-time setup](guide/AdventureTime-guide.md#4-first-time-setup) and
+[how a turn works](guide/AdventureTime-guide.md#5-how-a-turn-works); for a game that is not D&D, see
+[playing without D&D](guide/AdventureTime-guide.md#19-playing-without-dd); on a phone, see
+[on a phone](guide/AdventureTime-guide.md#20-on-a-phone).
 
-1. **A narrator card:** an empty character card, since the rulebook carries
-   the whole prompt. **Create narrator card** makes one. AdventureTime, like
-   Multihog, writes the story like a book rather than as a one-on-one chat.
-2. **The connections**, under *Connections & models*.
-3. **A character:** the **Character Creator**, **Instant Action**, or
-   **Other Ways to Begin** (from your persona, from instructions, or from an
-   imported card).
+On a chat with no character sheet yet, **Starting the adventure** is open at
+the top of the settings tab, and walks through the rest in order:
 
-The **Lumiverse checklist** in *Core & Branching*, the first card of
+1. **Before you start:** three checks. A *narrator card*, an empty character
+   card, since the rulebook carries the whole prompt (**Create narrator
+   card** makes one; AdventureTime, like Multihog, writes the story like a
+   book rather than as a one-on-one chat); a *connection* for the background
+   passes; and, optionally, *function calling*.
+2. **Make your character:** **Instant Action**, the **Character creator**,
+   or **From a persona, description or card**.
+
+The **Lumiverse checklist** in *Setup & help*, the first card of
 *General & visuals*, lists the things to check on the narrator's connection
 and its preset, and names the connection AdventureTime's own calls will run
 on.
@@ -219,7 +233,9 @@ on.
 ## Reporting problems
 
 Open an issue here on GitHub if you can; a reply in the Lumiverse Discord
-thread is fine for quick things. Please include:
+thread is fine for quick things. The guide's
+[troubleshooting chapter](guide/AdventureTime-guide.md#21-troubleshooting) may answer it first.
+Please include:
 
 - **the version line** from the top of the settings tab;
 - **your Lumiverse version and branch** (main or staging);
@@ -227,7 +243,10 @@ thread is fine for quick things. Please include:
   instead**;
 - for a tracker or agent problem, **its last report**: in the Lore widget,
   the *Lorebook Agent* tab → *Terminal / direct prompt* → the *State
-  Tracker* or *Lorebook Agent* tab.
+  Tracker* or *Lorebook Agent* tab;
+- for a location image that does not show as the chat background, **the
+  browser console's `[AdventureTime] location background` line**, which
+  names the Lumiverse page layer AdventureTime used.
 
 To see exactly what a model was sent, switch on **Debug logging** (*General &
 visuals* → *Debug & factory reset*): every call AdventureTime makes goes to
@@ -310,6 +329,10 @@ directly. Open an issue instead, with the change described or attached.
   pinned source.
 - **Lumiverse / Spindle** by [prolix-oc](https://github.com/prolix-oc), the
   platform this runs on.
+- **Lucide** ([lucide.dev](https://lucide.dev)): the line icons in the
+  settings are Lucide's shapes. ISC License, Copyright (c) for portions of
+  Lucide are held by Cole Bemis 2013-2022 as part of Feather (MIT). All other
+  copyright (c) for Lucide are held by Lucide Contributors 2022.
 
 ## License
 

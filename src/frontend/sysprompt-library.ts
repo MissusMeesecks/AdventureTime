@@ -90,7 +90,7 @@ export function mountSyspromptEditor(
 
         const toggle = el('input', { type: 'checkbox' })
         toggle.checked = row.enabled
-        toggle.title = `Send ${row.tag} to the storyteller`
+        toggle.title = 'Send this section to the narrator'
         toggle.addEventListener('change', () => { setEnabled(row.id, toggle.checked) })
         head.append(toggle)
 
@@ -106,7 +106,7 @@ export function mountSyspromptEditor(
 
         if (row.empty) {
             const chip = el('span', { class: 'lh-wr-chip' })
-            chip.textContent = 'nothing written'
+            chip.textContent = 'Empty'
             head.append(chip)
         }
 
@@ -133,7 +133,7 @@ export function mountSyspromptEditor(
                 type: 'button',
                 class: `lh-button lh-button--quiet${armed === row.id ? ' lh-button--danger' : ''}`,
             })
-            del.textContent = armed === row.id ? `Delete ${row.tag} for good` : 'Delete this section'
+            del.textContent = armed === row.id ? `Delete ${row.tag} permanently` : 'Delete section'
             del.addEventListener('click', () => {
                 if (armed === row.id) remove(row.id)
                 else { armed = row.id; render() }
@@ -143,8 +143,7 @@ export function mountSyspromptEditor(
             if (armed === row.id) {
                 const warning = el('span', { class: 'lh-wr-warning' })
                 warning.textContent =
-                    `${row.size.toLocaleString()} characters of your writing. There is no undo — ` +
-                    'a cartridge export is the only copy.'
+                    `This deletes ${row.size.toLocaleString()} characters of your writing and cannot be undone.`
                 actions.append(warning)
             }
 
@@ -159,9 +158,11 @@ export function mountSyspromptEditor(
 
         summary.replaceChildren()
 
-        const lead = el('div', { class: 'lh-wr-lead' })
-        lead.textContent = view.summary
-        summary.append(lead)
+        if (view.summary) {
+            const lead = el('div', { class: 'lh-wr-lead' })
+            lead.textContent = view.summary
+            summary.append(lead)
+        }
 
         const counts = el('div', { class: 'lh-wr-counts' })
         counts.textContent = view.counts ? `${view.counts} · ${view.cost}` : view.cost

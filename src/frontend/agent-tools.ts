@@ -192,7 +192,7 @@ export function createAgentTools(host: AgentToolsHost): AgentTools {
         const use = el('input', { type: 'checkbox', 'data-lh-field': 'agent-cleanup-use-threshold' }) as HTMLInputElement
         use.checked = prefs.useThreshold
         use.title = 'Off, every entry is flagged whatever its size.'
-        useRow.append(use, document.createTextNode(' Use the token threshold'))
+        useRow.append(use, document.createTextNode(' Use token threshold'))
         const thresholdRow = el('label', { class: 'lh-agent-tools-setting' })
         thresholdRow.classList.toggle('lh-agent-tools-setting--dim', !prefs.useThreshold)
         const threshold = el('input', { type: 'number', class: 'lh-input lh-input--short', min: '50', max: '5000', step: '10', 'data-lh-field': 'agent-cleanup-threshold' }) as HTMLInputElement

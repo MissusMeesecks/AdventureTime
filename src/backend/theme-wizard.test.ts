@@ -26,7 +26,7 @@ describe('the AI Theme Wizard’s call (74b)', () => {
         const result = await h.wizard.generate('u1', ' neon noir ', false)
         expect(result).toEqual({ theme: full, iterated: false, missing: [] })
         expect(h.calls).toHaveLength(1)
-        expect(h.calls[0]).toMatchObject({ userId: 'u1', connectionId: 'conn-tracker' })
+        expect(h.calls[0]).toMatchObject({ userId: 'u1', connection_id: 'conn-tracker' })
         const messages = h.calls[0]!.messages as Array<{ role: string; content: string }>
         expect(messages[0]!.role).toBe('system')
         expect(messages[0]!.content).toMatch(/^You are a CSS theme designer/)
@@ -36,7 +36,7 @@ describe('the AI Theme Wizard’s call (74b)', () => {
         // No connection chosen: the host's default, no field sent.
         const bare = harness()
         await bare.wizard.generate('u1', 'x', false)
-        expect('connectionId' in bare.calls[0]!).toBe(false)
+        expect('connection_id' in bare.calls[0]!).toBe(false)
     })
 
     it('iterates on the stored theme, and makes a new one when none is stored', async () => {

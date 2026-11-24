@@ -71,7 +71,7 @@ describe('every op that calls a model has its own deadline', () => {
     const FAST_OPS = [
         'agent.cancel', 'agent.undo', 'agent.redo', 'agent.audit.stop', 'campaign.name', 'chat.enable', 'cartridge.export', 'cartridge.import', 'connections.list',
         'creator.card.get', 'creator.card.persona', 'creator.card.remove', 'creator.card.save', 'creator.cards',
-        'library.list', 'library.sources', 'library.saveEntry', 'library.savePlayerCard', 'library.saveCard', 'library.update', 'library.remove', 'library.import', 'library.export', 'library.photo.set', 'library.photo.remove', 'portraits.auto.status', 'portraits.auto.check', 'portraits.presets.load', 'portraits.presets.save', 'portraits.presets.delete', 'npc.commit', 'scene.get', 'scene.setImage', 'scene.connections', 'lore.books', 'books.list', 'lore.attach', 'lore.adopt', 'relations.get', 'relations.set', 'relations.remove', 'relations.clearLog',
+        'library.list', 'library.sources', 'library.saveEntry', 'library.savePlayerCard', 'library.saveCard', 'library.update', 'library.remove', 'library.import', 'library.export', 'library.photo.set', 'library.photo.remove', 'portraits.auto.status', 'portraits.auto.check', 'portraits.presets.load', 'portraits.presets.save', 'portraits.presets.delete', 'npc.commit', 'scene.get', 'scene.setImage', 'scene.connections', 'lore.books', 'books.list', 'companion.get', 'companion.clear', 'lore.attach', 'lore.adopt', 'relations.get', 'relations.set', 'relations.remove', 'relations.clearLog',
         'cyoa.choices', 'cyoa.choose', 'lore.activated', 'maintenance.cleanOrphans', 'maintenance.chatData', 'maintenance.removeAllChats', 'maintenance.factoryReset', 'maintenance.orphans', 'maintenance.purgePortraits', 'maintenance.resetPrompts', 'map.get', 'map.view', 'map.raw.get', 'map.raw.set', 'map.evolution.interval', 'map.evolution.reset', 'map.sandbox.get', 'map.sandbox.time', 'map.sandbox.asset.add', 'map.sandbox.asset.set', 'map.sandbox.undo', 'map.sandbox.clear', 'terminal.get', 'terminal.clear', 'records.list', 'records.update', 'records.remove', 'records.pin', 'records.removeMap', 'portraits.get', 'portraits.set', 'portraits.upload', 'backdrop.upload',
         'prefs.get', 'prefs.patch', 'reports.history', 'settings.factory', 'settings.get', 'settings.npcWords', 'settings.sections', 'settings.patch', 'settings.reset', 'settings.upgradeStock', 'status.get', 'narrator.create', 'world.overrideNext',
         'tracker.cancel', 'tracker.clearArchive', 'tracker.get', 'tracker.history', 'tracker.restore', 'tracker.setMemo',
@@ -85,6 +85,12 @@ describe('every op that calls a model has its own deadline', () => {
         const slow = Object.keys(OP_TIMEOUT_MS)
         expect(FAST_OPS.filter((op) => slow.includes(op))).toEqual([])
         expect(dispatched).toEqual([...FAST_OPS, ...slow].sort())
+    })
+
+    it('gives a Companion message room for its actions, and a turn’s confirmation a short one (100c)', () => {
+        // Up to six model calls, with a tracker, an agent or a map pass between them.
+        expect(OP_TIMEOUT_MS['companion.send']!).toBeGreaterThanOrEqual(OP_TIMEOUT_MS['agent.run']!)
+        expect(OP_TIMEOUT_MS['companion.confirm']!).toBeLessThan(OP_TIMEOUT_MS['tracker.run']!)
     })
 
     it('gives a whole agent pass longer than a single tracker pass', () => {

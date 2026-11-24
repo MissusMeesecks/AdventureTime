@@ -75,8 +75,6 @@ export interface GameSystemRow {
      */
     disagrees: boolean
     verdict: GameSystemVerdict
-    /** What that verdict means, in words. */
-    note: string
 }
 
 /** One badge, explained once. */
@@ -99,28 +97,23 @@ export interface GameSystemsView {
      * rows could never have shown it.
      */
     legend: GameSystemLegendEntry[]
-    /** `20 systems · 16 with a tracker module · 4 GM-section only` */
+    /** `20 systems · 16 with a tracker module · 4 narrator rule only` */
     counts: string
-    /** The one thing to say about this build, said once. */
+    /** The empty list's line; empty when there are systems (what a system is stands behind the heading's `[?]`, 96). */
     summary: string
     /** Present only when something is actually wrong. */
     warning: string
 }
 
-const text = (value: unknown): string => (typeof value === 'string' ? value : '')
-
-function describe(verdict: GameSystemVerdict, tag: string): string {
-    switch (verdict) {
-        case 'live':
-            return `Its tracker module [${tag}] is switched on, so the tracker maintains it every turn.`
-        case 'off':
-            return `Its tracker module [${tag}] exists but is switched off, so it is never mentioned to the tracker.`
-        case 'gm-only':
-            return 'This system is a GM prompt section only. The rulebook sends it to the narrator when it is switched on under Your world rules; the tracker has nothing to keep for it.'
-        case 'broken':
-            return `It names a tracker module [${tag}] that no longer exists, so nothing links the two halves.`
-    }
+/** The badge on a row, by verdict (96). The meanings are in the heading's `[?]`, once. */
+export const GAME_SYSTEM_BADGES: Record<GameSystemVerdict, string> = {
+    live: 'Tracked',
+    off: 'Off',
+    'gm-only': 'Narrator rule only',
+    broken: 'Broken link',
 }
+
+const text = (value: unknown): string => (typeof value === 'string' ? value : '')
 
 /**
  * Join the systems against the fields and say what each one amounts to.
@@ -168,7 +161,6 @@ export function buildGameSystemsView(
             // comparison would be against.
             disagrees: fieldExists && systemEnabled !== fieldEnabled,
             verdict,
-            note: describe(verdict, tag),
         }
     })
 
@@ -178,17 +170,14 @@ export function buildGameSystemsView(
         ? [
               `${rows.length} system${rows.length === 1 ? '' : 's'}`,
               `${withModule} with a tracker module`,
-              `${gmOnly} GM-section only`,
+              `${gmOnly} narrator rule only`,
           ].join(' · ')
         : ''
 
+    // What a system is stands behind the heading's `[?]` (96); only the empty list says anything here.
     const summary = rows.length
-        ? 'A game system pairs a GM prompt section with a tracker module. ' +
-          'The tracker half is switched in Custom fields and the narrator half under Your world rules — ' +
-          'the GM half travels in your cartridge untouched. ' +
-          'This is a reading of your cartridge, not a control: switch a system on or off ' +
-          'by its tracker module in Custom fields, below.'
-        : 'No game systems in this cartridge. Make one with the Game system wizard below, or press Import a system to read one back from a file; Export sits on each system’s row.'
+        ? ''
+        : 'No game systems yet. Draft one with the wizard below, press Import system to load one from a file, or Paste system text for one shared as text. Export system and Copy as text appear on each system’s row.'
 
     // Only when something is actually wrong. A GM-only system is not wrong.
     const broken = rows.filter((row) => row.verdict === 'broken').length
@@ -201,16 +190,17 @@ export function buildGameSystemsView(
     }
     if (drifted > 0) {
         problems.push(
-            `${drifted} system${drifted === 1 ? "'s" : "s'"} own switch disagrees with its tracker module's. ` +
-                'The module’s switch is the one that reaches the tracker.',
+            drifted === 1
+                ? '1 system is marked differently from its tracker module. The tracker module’s switch decides.'
+                : `${drifted} systems are marked differently from their tracker module. The tracker module’s switch decides.`,
         )
     }
 
     const MEANINGS: Array<[GameSystemVerdict, string, string]> = [
-        ['live', 'tracked', 'Its tracker module is on, so the tracker maintains it every turn.'],
-        ['off', 'off', 'Its tracker module exists but is switched off, so the tracker is never told about it.'],
-        ['gm-only', 'gm section only', 'A GM prompt section with no tracker module. The rulebook sends it to the narrator when it is on under Your world rules.'],
-        ['broken', 'broken link', 'It names a tracker module that no longer exists.'],
+        ['live', GAME_SYSTEM_BADGES.live, 'the tracker module is on, so the tracker updates it on every pass.'],
+        ['off', GAME_SYSTEM_BADGES.off, 'the tracker module is off, so the tracker is not told about it.'],
+        ['gm-only', GAME_SYSTEM_BADGES['gm-only'], 'there is no tracker module.'],
+        ['broken', GAME_SYSTEM_BADGES.broken, 'the system names a tracker module that no longer exists.'],
     ]
     const present = new Set(rows.map((row) => row.verdict))
     const legend: GameSystemLegendEntry[] = MEANINGS.filter(([verdict]) => present.has(verdict)).map(

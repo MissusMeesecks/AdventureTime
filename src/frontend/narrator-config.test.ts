@@ -29,7 +29,7 @@ function mount(initial: SettingsBag = {}) {
 describe('the narrator’s configuration (70)', () => {
     it('draws Multihog’s four groups in its order: pacing, RNG, quests, the optional components', () => {
         const { root } = mount()
-        expect(Array.from(root.querySelectorAll('.lh-nc-title')).map((n) => n.textContent)).toEqual(['Pacing / output length', 'RNG', 'Quests', 'Optional components'])
+        expect(Array.from(root.querySelectorAll('.lh-nc-title')).map((n) => n.textContent)).toEqual(['Pacing & reply length', 'Dice (RNG)', 'Quests', 'Optional components'])
         expect(root.querySelectorAll('[data-lh-field^="nc-pacing-"]')).toHaveLength(4)
         expect(root.querySelectorAll('[data-lh-field^="nc-rng-"]:not([data-lh-field="nc-rng-advanced"])')).toHaveLength(3)
         // The six components in the legacy's order, then the relationship system, which is a setting of its own.
@@ -124,6 +124,79 @@ describe('the narrator’s configuration (70)', () => {
         expect(b.input('nc-pacing-normal').checked).toBe(true)
         a.block.destroy()
         expect(a.root.children).toHaveLength(0)
+    })
+})
+
+describe('the narrator card’s text (96)', () => {
+    const note = (root: HTMLElement, key: string) => root.querySelector(`[data-lh-nc-help="${key}"]`) as HTMLElement
+    const label = (root: HTMLElement, field: string) => root.querySelector(`[data-lh-field="${field}"] .lh-nc-text`)!.textContent
+
+    it('says the decided labels, with no lead paragraph and no help standing in the open', () => {
+        const { root } = mount()
+        expect(root.querySelector('.lh-nc-lead')).toBeNull()
+        expect(root.querySelector('.lh-nc-hint')).toBeNull()
+        expect(root.textContent).not.toContain('nothing has to be applied')
+        expect(['normal', 'shorter_outputs', 'high_agency', 'downtime'].map((v) => label(root, `nc-pacing-${v}`))).toEqual(['Normal', 'Shorter replies', 'High agency', 'Downtime / slice of life'])
+        expect(['hybrid', 'legacy', 'none'].map((v) => label(root, `nc-rng-${v}`))).toEqual(['Pre-seeded queue + tool calls', 'Pre-seeded queue only', 'No dice rolls'])
+        expect(root.querySelector('[data-lh-field="nc-rng-advanced"] > summary')!.textContent).toBe('Advanced dice')
+        expect(root.querySelector('[data-lh-field="nc-rng-advanced"]')!.classList.contains('lh-nc-advanced')).toBe(true)
+        expect(['diceD100Mode', 'rngToolD20', 'rngToolD100', 'rngQueueD20', 'rngQueueD100', 'legacyDiceNaming'].map((k) => label(root, `nc-${k}`)))
+            .toEqual(['d100 mode', 'RollTheDice tool', 'RollTheDiceD100 tool (d100)', 'd20 queue [RNG_QUEUE]', 'd100 queue [RNG_QUEUE_d100]', 'Plain dice tool (no DC first)'])
+        expect(['quests', 'questsDeadlines', 'questsFrustration', 'questsShowArchive'].map((k) => label(root, `nc-${k}`)))
+            .toEqual(['Track quests', 'Deadlines', 'Questgiver frustration (experimental)', 'Show closed quests'])
+        expect(Array.from(root.querySelectorAll('.lh-nc-subtitle')).map((n) => n.textContent)).toEqual(['Optional rules', 'How the narrator asks for a map'])
+        expect(NARRATOR_COMPONENTS.map((c) => c.label)).toEqual(['🎲 Loot rolls', '🌍 Random events', '💤 Rest limits', '⛺ Benched party', '🗺️ Persistent maps', '🧭 CYOA mode'])
+        expect(['tool', 'text'].map((v) => label(root, `nc-opener-${v}`))).toEqual(['Tool call (CreateAreaMap)', 'Text block'])
+        expect(label(root, 'nc-npcRelationshipBars')).toBe('💞 Relationship system')
+    })
+
+    it('keeps every piece of help behind a [?], in the block from the first paint and hidden', () => {
+        const { root } = mount()
+        const notes = Array.from(root.querySelectorAll<HTMLElement>('.lh-help-note'))
+        // Four group headings but Quests' sub-heading, the opener's heading, and every tick row but Track quests.
+        expect(notes.map((n) => n.getAttribute('data-lh-nc-help'))).toEqual([
+            'pacing', 'rng', 'nc-diceD100Mode', 'nc-rngToolD20', 'nc-rngToolD100', 'nc-rngQueueD20', 'nc-rngQueueD100', 'nc-legacyDiceNaming',
+            'quests', 'nc-questsDeadlines', 'nc-questsFrustration', 'nc-questsShowArchive',
+            'components', 'nc-loot', 'nc-random_events', 'nc-resting', 'nc-party_bench', 'nc-dungeon_reality_and_hidden_mapping', 'opener', 'nc-CYOA_mode', 'nc-npcRelationshipBars',
+        ])
+        expect(notes.every((n) => n.hidden)).toBe(true)
+        expect(root.querySelectorAll('.lh-help-tip')).toHaveLength(notes.length)
+        // Neither the button nor the note sits inside a label: a press would be the tick's.
+        expect(root.querySelector('label .lh-help-tip, label .lh-help-note')).toBeNull()
+        expect(note(root, 'pacing').textContent).toBe('Sets how much the narrator writes in each reply and how much it drives the story itself. Normal adds no length instructions.')
+        // An option cannot carry a [?]: its help is a line of the group's, opening with the option's name.
+        expect(note(root, 'rng').textContent!.split('\n')).toEqual([
+            'Sets where the narrator’s dice come from. Pre-seeded: a queue of fresh rolls is sent with every reply. Tool calls: the narrator calls the RollTheDice tool, which needs function calling on the narrator’s connection.',
+            'Pre-seeded queue + tool calls: recommended when CYOA mode is off.',
+            'Pre-seeded queue only: recommended when CYOA mode is on.',
+            'No dice rolls: the narrator makes the numbers up. Not recommended.',
+        ])
+        expect(note(root, 'opener').textContent).toContain('Text block: works without function calling.')
+        expect(note(root, 'nc-questsDeadlines').textContent).toBe('A quest can run out of time. The memo shows the time left. Turning this off also turns Frustration off.')
+        expect(note(root, 'nc-npcRelationshipBars').textContent).toContain('Campaign Records tab')
+        expect(root.textContent).not.toContain('Relationships fold')
+        expect(note(root, 'nc-loot').textContent).toBe(NARRATOR_COMPONENTS[0]!.hint)
+    })
+
+    it('opens a row’s help on a press without ticking the row, and keeps it open across the redraw a switch makes', () => {
+        const { root, flip, input, commits } = mount()
+        const tip = note(root, 'nc-loot').parentElement!.querySelector('.lh-help-tip') as HTMLButtonElement
+        tip.click()
+        expect(note(root, 'nc-loot').hidden).toBe(false)
+        expect(commits).toEqual([])
+        expect(input('nc-loot').checked).toBe(true)
+        flip('nc-resting', false)
+        expect(note(root, 'nc-loot').hidden).toBe(false)
+        expect(note(root, 'nc-loot').parentElement!.querySelector('.lh-help-tip')!.getAttribute('aria-expanded')).toBe('true')
+        expect(note(root, 'nc-resting').hidden).toBe(true)
+    })
+
+    it('marks a helped row’s whole wrap for the settings search, so the help is searched and hidden with its row', () => {
+        const { root } = mount()
+        const wrap = root.querySelector('[data-lh-field="nc-loot"]')!.closest('.lh-search-item')!
+        expect(wrap.classList.contains('lh-helped')).toBe(true)
+        expect(wrap.contains(note(root, 'nc-loot'))).toBe(true)
+        expect(root.querySelector('[data-lh-field="nc-quests"]')!.classList.contains('lh-search-item')).toBe(true)
     })
 })
 

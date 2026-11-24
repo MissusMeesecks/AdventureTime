@@ -95,8 +95,10 @@ export interface MapEvolutionOptions {
     worldReportLookback: number
     /** User turns of recent story every due site is shown (45c). The legacy's 20; 0 for none. */
     storyLookback: number
-    /** The user's own evolution prompt; `''` for the stock one. */
+    /** The cartridge's evolution prompt (97); `''` for the stock one. */
     systemPrompt: string
+    /** The cartridge's history-compression prompt (97); `''` for the stock one. */
+    compressSystemPrompt: string
     /** Compress a site's closed history once it passes this many tokens. */
     compressEnabled: boolean
     compressThreshold: number
@@ -319,7 +321,7 @@ export function createMapEvolution(deps: MapEvolutionDeps): MapEvolution {
     /** The site's closed history compressed into digests when it has grown long: one more model call, two tries. */
     async function compress(chatId: string, userId: string | undefined, site: Site, options: MapEvolutionOptions, threads: ThreadsBySite): Promise<{ threads: ThreadsBySite; digests: number }> {
         if (!options.compressEnabled) return { threads, digests: 0 }
-        const request = buildCompressionRequest(threads, site.siteRoot, options.compressThreshold)
+        const request = buildCompressionRequest(threads, site.siteRoot, options.compressThreshold, options.compressSystemPrompt)
         if (!request) return { threads, digests: 0 }
         deps.log.info(`map: evolution compressing "${site.siteRoot}" history (${request.tokens} tokens ≥ ${request.threshold}, ${request.closed} closed threads)`)
         let lastError = ''

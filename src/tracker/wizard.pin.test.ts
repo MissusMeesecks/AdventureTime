@@ -6,7 +6,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
-import { sliceContextLegacy, sliceLegacy } from '../../scripts/extract-wizard.mjs'
+import { sliceContextLegacy, sliceExportLegacy, sliceLegacy } from '../../scripts/extract-wizard.mjs'
 import { createWizardContext } from './wizard-context.js'
 import { createWizardLegacy } from './wizard-legacy.js'
 import { buildWizardPreviewMemo, extractWizardTemplate, parseWizardResponse, renderingHints, restoreUserMacro, shieldUserMacro } from './wizard.js'
@@ -39,6 +39,8 @@ describe.skipIf(!available)('the wizard against the pinned legacy build', () => 
         // line of the architect prompt (lesson 36).
         expect(committed).toContain(fresh)
         expect(committed).toContain(sliceContextLegacy(checkout!))
+        // The shareable text's export (departure 174).
+        expect(committed).toContain(sliceExportLegacy(checkout!))
     })
 
     it('builds the module examples and lists the options as the checkout’s own context module does (73g)', async () => {

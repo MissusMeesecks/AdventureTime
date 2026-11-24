@@ -16,6 +16,7 @@
 import type { InstantResult } from '../protocol.js'
 import { INSTANT_GENRES, INSTANT_SETUP_MAX, normalizeInstantGenre, rollCreatorName, type CreatorGenre, type InstantGenre } from '../tracker/creator.js'
 import { createCardWordsControl } from './card-words.js'
+import { createHelpTip, withHelp } from './help-tip.js'
 import { describeCardSteps, reasonText } from './player-card-fold.js'
 
 export interface InstantFoldHost {
@@ -71,13 +72,18 @@ export function describeInstantResult(result: InstantResult, when: (iso: string)
     return `Instant Action failed: ${reasonText(result.reason)}.${rolled}${tail}`
 }
 
+/** The option's help, behind the [?] on its name: what was the lead paragraph. */
+export const INSTANT_HELP = 'Pick a genre. A name and a setup line are optional. Everything else is rolled, and the character starts at level 1 unless Random level is on.'
+
+/** The two switches' help, in the words of their twins under Connections & models. */
+export const INSTANT_SWITCH_HELP = {
+    sendStarter: 'When on, Instant Action sends the opening message for you and the narrator replies. When off, you type your first action. Default: on.',
+    randomLevel: 'When on, Instant Action rolls a starting level from 1 to 10. When off, the character starts at level 1. A level named in the setup text overrides both. Default: off.',
+} as const
+
+/* The option card's frame and header are the starting area's (.lh-start-option); the body is the fold's: the genres two by two, Begin full width. */
 export const INSTANT_FOLD_CSS = `
-/* Multihog's Instant Action box (83): bordered, the title and its sub-line centred, the genres two by two, Begin full width. */
-.lh-instant { border: 1px solid var(--lh-accent-dim, var(--lumiverse-border, rgba(127,127,127,0.25))); border-radius: var(--lumiverse-radius, 8px); padding: 8px; background: rgba(0, 0, 0, 0.12); }
-.lh-instant > summary { cursor: pointer; list-style: none; text-align: center; font-size: 0.95em; font-weight: 700; letter-spacing: 0.02em; position: relative; }
-.lh-instant > summary::-webkit-details-marker { display: none; }
 .lh-instant-body { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
-.lh-instant-sub { text-align: center; padding: 0 4px; }
 .lh-instant-genres { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 2px; }
 .lh-instant-genre { padding: 8px 10px; font-weight: 600; }
 .lh-instant-genre.is-selected { outline: 2px solid var(--lh-accent, var(--lumiverse-primary, #d4a940)); outline-offset: -2px; background: var(--lh-accent-bg, rgba(212, 169, 64, 0.18)); }
@@ -86,9 +92,10 @@ export const INSTANT_FOLD_CSS = `
 .lh-instant-begin { width: 100%; padding: 8px 12px; font-weight: 700; }
 .lh-instant-status { text-align: center; }
 .lh-instant-field { display: flex; flex-direction: column; gap: 2px; }
-.lh-instant-field > label { font-size: 0.78em; opacity: 0.75; }
+.lh-instant-label-line { display: flex; align-items: center; gap: 4px; }
+.lh-instant-label { font-size: 0.78em; opacity: 0.75; }
 .lh-instant-field textarea.lh-input { width: 100%; box-sizing: border-box; resize: vertical; font: inherit; font-size: 0.85em; }
-.lh-instant-hint { font-size: 0.75em; opacity: 0.65; }
+.lh-instant-sheet { font-size: 0.8em; }
 .lh-instant-switch { font-size: 0.8em; display: flex; gap: 6px; align-items: center; }
 .lh-instant-status { font-size: 0.8em; opacity: 0.85; }
 .lh-instant-status.lh-world-note--error { opacity: 1; }
@@ -99,17 +106,21 @@ export function createInstantFold(host: InstantFoldHost): InstantFold {
     const { el } = host
     const random = host.random ?? Math.random
 
-    const root = el('details', { class: 'lh-instant' }) as HTMLDetailsElement
-    // Multihog's box since 83: the title centred, its sub-line, the genres in a grid of two.
-    const summary = el('summary', { class: 'lh-instant-title' })
-    summary.textContent = '⚡ Instant Action'
-    // Folded as it ships since 84 (the maintainer's ask), with the drawers' chevron at the title's right edge.
-    const chevron = el('span', { class: 'lh-start-drawer-chevron lh-start-fold-chevron', 'aria-hidden': 'true' })
-    chevron.textContent = '▸'
-    summary.append(chevron)
+    // The recommended one of the starting area's option cards: the icon, the name, the line saying who it is for, the [?], the chevron.
+    const root = el('details', { class: 'lh-instant lh-start-option lh-start-option--recommended', 'data-lh-option': 'instant' }) as HTMLDetailsElement
+    const summary = el('summary')
+    const optionIcon = el('span', { class: 'lh-start-option-icon', 'aria-hidden': 'true' })
+    optionIcon.textContent = '⚡'
+    const optionLabel = el('span', { class: 'lh-start-option-label' })
+    const optionTitle = el('span', { class: 'lh-start-option-title' })
+    optionTitle.textContent = 'Instant Action'
+    const optionSub = el('small', { class: 'lh-start-option-sub' })
+    optionSub.textContent = 'Fastest. Pick a genre and go; everything else is rolled.'
+    optionLabel.append(optionTitle, optionSub)
+    // A press on the [?] opens a closed card with the help and never folds an open one.
+    const optionHelp = createHelpTip(el, 'Instant Action', INSTANT_HELP, () => { root.open = true })
+    summary.append(optionIcon, optionLabel, optionHelp.button, el('span', { class: 'lh-chevron', 'aria-hidden': 'true' }))
     const body = el('div', { class: 'lh-instant-body' })
-    const lead = el('div', { class: 'lh-world-lead lh-instant-sub' })
-    lead.textContent = 'Choose a genre, optionally enter a name or an initial setup, then begin. Leave the name blank to let the model choose it. It uses your Narrator configuration, starts at level 1 with 0 XP unless Random level is on, rolls a class and whatever is left unspecified, writes the sheet into the tracker, and builds a Player Card plus a name-only persona. Untick Send the opening message if you want to type your own first action instead of letting the model open the campaign.'
 
     // ── the genres ───────────────────────────────────────────────────────
     const genres = el('div', { class: 'lh-instant-genres', role: 'group', 'aria-label': 'Instant Action genre' })
@@ -125,44 +136,47 @@ export function createInstantFold(host: InstantFoldHost): InstantFold {
     const name = el('input', { type: 'text', class: 'lh-input', 'data-lh-field': 'instant-name-input', placeholder: 'Optional — enter, roll, or let the model choose', autocomplete: 'off', 'aria-label': 'Instant Action character name' }) as HTMLInputElement
     const rollButton = el('button', { type: 'button', class: 'lh-button lh-button--quiet' }) as HTMLButtonElement
     rollButton.textContent = '🎲 Roll name'
-    rollButton.title = 'A name from the genre’s pool.'
     nameRow.append(name, rollButton)
 
     // ── the setup ────────────────────────────────────────────────────────
     const setupField = el('div', { class: 'lh-instant-field' })
-    const setupLabel = el('label')
+    const setupLabel = el('span', { class: 'lh-instant-label' })
     setupLabel.textContent = 'Initial setup (optional)'
-    const setupHint = el('div', { class: 'lh-instant-hint' })
-    setupHint.textContent = 'Guide the character, setting, premise or tone. Anything left unsaid is still rolled. A level named here outranks the rolled one.'
+    const setupHelp = createHelpTip(el, 'Initial setup (optional)', 'Guide the character, setting, premise or tone. Anything left unsaid is still rolled. A level named here overrides the rolled one.')
+    const setupLine = el('div', { class: 'lh-instant-label-line' })
+    setupLine.append(setupLabel, setupHelp.button)
     const setup = el('textarea', { class: 'lh-input', rows: '2', maxlength: String(INSTANT_SETUP_MAX), 'data-lh-field': 'instant-setup-input', placeholder: 'e.g. A 28-year-old ranger with a crossbow, starting in a storm-battered frontier town', 'aria-label': 'Instant Action initial setup' }) as HTMLTextAreaElement
-    setupField.append(setupLabel, setupHint, setup)
+    setupField.append(setupLine, setup, setupHelp.note)
 
     // ── the switch and the button ────────────────────────────────────────
     const cardRow = el('div', { class: 'lh-instant-row' })
-    const cardLabel = el('span', { class: 'lh-instant-hint' })
-    cardLabel.textContent = 'Player Card length'
+    const cardLabel = el('span', { class: 'lh-instant-label' })
+    cardLabel.textContent = 'Player Card length (words)'
     const cardWords = createCardWordsControl(el, 'instant-card-words', (n) => { host.savePrefs({ creatorCardWords: n }).catch(host.fail) })
     cardRow.append(cardLabel, cardWords.root)
     const options = el('div', { class: 'lh-instant-row' })
-    const sendLabel = el('label', { class: 'lh-instant-switch', title: 'Ticked, the model opens the campaign as soon as the character is ready.' })
+    const sendLabel = el('label', { class: 'lh-instant-switch' })
     const sendStarter = el('input', { type: 'checkbox', 'data-lh-field': 'instant-send-starter-input' }) as HTMLInputElement
     sendStarter.checked = true
     const sendText = el('span')
-    sendText.textContent = 'Send the opening message'
+    sendText.textContent = 'Instant Action sends the opening message'
     sendLabel.append(sendStarter, sendText)
     // Random level (45d, upstream 2026.8.73): the character starts at level 1 unless this is ticked.
-    const randomLabel = el('label', { class: 'lh-instant-switch', title: 'Ticked, the character starts at a rolled level of 1 to 10, as Instant Action did before Multihog 2026.8.73. Unticked, level 1. A level named in the setup outranks either.' })
+    const randomLabel = el('label', { class: 'lh-instant-switch' })
     const randomLevel = el('input', { type: 'checkbox', 'data-lh-field': 'instant-random-level-input' }) as HTMLInputElement
     randomLevel.checked = false
     const randomText = el('span')
-    randomText.textContent = 'Random level (1–10)'
+    randomText.textContent = 'Instant Action: random level (1–10)'
     randomLabel.append(randomLevel, randomText)
     const beginButton = el('button', { type: 'button', class: 'lh-button lh-instant-begin' }) as HTMLButtonElement
     beginButton.textContent = '⚡ Begin Instant Action'
-    options.append(randomLabel, sendLabel)
+    options.append(withHelp(el, randomLabel, 'Instant Action: random level (1–10)', INSTANT_SWITCH_HELP.randomLevel), withHelp(el, sendLabel, 'Instant Action sends the opening message', INSTANT_SWITCH_HELP.sendStarter))
+    // What the button's tooltip alone said before: a chat with a sheet says so in the open, before the confirm does.
+    const sheetNote = el('div', { class: 'lh-world-note lh-instant-sheet', 'data-lh-field': 'instant-sheet-note', hidden: 'hidden' })
+    sheetNote.textContent = 'This chat already has a character sheet. Instant Action replaces it, and asks first.'
 
     const status = el('div', { class: 'lh-instant-status' })
-    body.append(lead, genres, nameRow, setupField, cardRow, options, beginButton, status)
+    body.append(optionHelp.note, genres, nameRow, setupField, cardRow, options, sheetNote, beginButton, status)
     root.append(summary, body)
 
     let chatId: string | null = null
@@ -183,6 +197,7 @@ export function createInstantFold(host: InstantFoldHost): InstantFold {
         beginButton.disabled = running || !selected || !chatId
         // A chat with a sheet says so on the button (73d, departure 57), before the confirm does.
         beginButton.title = !chatId ? 'Open a chat first.' : !selected ? 'Pick a genre first.' : !memoEmpty ? 'This chat already has a character sheet; Instant Action replaces it, and asks first.' : 'Roll the character, write the sheet, and begin.'
+        sheetNote.hidden = !chatId || memoEmpty
         name.disabled = running
         setup.disabled = running
         sendStarter.disabled = running
@@ -224,7 +239,7 @@ export function createInstantFold(host: InstantFoldHost): InstantFold {
     async function begin(): Promise<void> {
         if (running || !selected || !chatId) return
         if (!memoEmpty && host.confirm) {
-            const ok = await host.confirm('Begin Instant Action', 'This chat already has a character sheet. Instant Action writes a new sheet over it, makes a new persona and Player Card, and sends the first message. Multihog allows this on an empty chat only.', 'Replace the sheet')
+            const ok = await host.confirm('Begin Instant Action', 'This chat already has a character sheet. Instant Action writes a new sheet over it, makes a new persona and Player Card, and sends the first message.', 'Replace the sheet')
             if (!ok || running || !selected || !chatId) return
         }
         const genre = selected

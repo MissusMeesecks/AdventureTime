@@ -10,6 +10,7 @@
  * `activeMapThemePresetId`. The canvas image goes through the host's image
  * store as the backdrops do (74d, departure 125).
  */
+import { setCardIcon } from './icons.js'
 import type { PrefsResult } from '../protocol.js'
 import {
     DEFAULT_MAP_THEME,
@@ -17,6 +18,7 @@ import {
     FACTORY_MAP_THEME_PRESETS,
     MAP_THEME_FIELDS,
     applyMapThemeToRoot,
+    mapThemeFieldLabel,
     mapThemePresetName,
     readMapTheme,
     readMapThemePresetId,
@@ -25,6 +27,7 @@ import {
     type MapTheme,
     type MapThemeColorKey,
 } from '../tracker/map-themes.js'
+import { attachCardHelp, createHelpTip, helpAfter } from './help-tip.js'
 import { resolvePortraitSrc } from '../tracker/portraits.js'
 
 type El = (tag: string, attrs?: Record<string, string>) => HTMLElement
@@ -79,9 +82,9 @@ export function createMapThemeCard(host: MapThemeCardHost): MapThemeCard {
     const root = el('details', { class: 'lh-card lh-map-themes lh-search-item', 'data-lh-field': 'map-themes' }) as HTMLDetailsElement
     const summary = el('summary')
     const icon = el('span', { class: 'lh-card-icon', 'aria-hidden': 'true' })
-    icon.textContent = '🎨'
+    setCardIcon(icon, 'Map themes', '🎨')
     const title = el('span', { class: 'lh-card-title' })
-    title.textContent = 'Map Themes'
+    title.textContent = 'Map themes'
     summary.append(icon, title, el('span', { class: 'lh-chevron', 'aria-hidden': 'true' }))
     const body = el('div', { class: 'lh-map-theme-body' })
     root.append(summary, body)
@@ -90,20 +93,23 @@ export function createMapThemeCard(host: MapThemeCardHost): MapThemeCard {
     let saved: Record<string, MapTheme> = {}
     let activeId = DEFAULT_MAP_THEME_PRESET_ID
 
-    const help = el('div', { class: 'lh-section-help' })
-    help.textContent = 'Customize the appearance used by every persistent map. Changes appear immediately and never alter map or campaign data.'
+    // The card's help behind its [?] (96).
+    attachCardHelp(el, root, summary, title, 'Sets the colors of every map on screen. Changes show at once. They never change map or campaign data.')
 
     // The preset row: the select, Load, a name and Save as, Delete.
-    const presetLabel = el('label', { class: 'lh-map-theme-label' })
-    presetLabel.textContent = 'Preset'
+    const presetLabel = el('div', { class: 'lh-map-theme-label' })
+    const presetName = el('span')
+    presetName.textContent = 'Preset'
+    const presetTip = createHelpTip(el, 'Preset', 'Choose a theme and press Load preset to use it. Save preset as keeps the current colors and canvas image under the name you enter. Saved presets are kept with this install, not in a cartridge.')
+    presetLabel.append(presetName, presetTip.button)
     const presetRow = el('div', { class: 'lh-map-theme-preset-row' })
     const select = el('select', { class: 'lh-select lh-map-theme-select', 'aria-label': 'Map theme preset', 'data-lh-field': 'mapThemePreset' }) as HTMLSelectElement
     const loadButton = el('button', { type: 'button', class: 'lh-button', 'data-lh-map-theme': 'load' }) as HTMLButtonElement
-    loadButton.textContent = '📂 Load'
-    const nameInput = el('input', { type: 'text', class: 'lh-input lh-map-theme-name', placeholder: 'My Map Theme', 'aria-label': 'A name for the preset', 'data-lh-field': 'mapThemeName' }) as HTMLInputElement
+    loadButton.textContent = '📂 Load preset'
+    const nameInput = el('input', { type: 'text', class: 'lh-input lh-map-theme-name', placeholder: 'My map theme', 'aria-label': 'Preset name', 'data-lh-field': 'mapThemeName' }) as HTMLInputElement
     const saveButton = el('button', { type: 'button', class: 'lh-button', 'data-lh-map-theme': 'save' }) as HTMLButtonElement
-    saveButton.textContent = '💾 Save as'
-    const deleteButton = el('button', { type: 'button', class: 'lh-button lh-button--quiet', title: 'Delete the selected saved preset', 'aria-label': 'Delete the selected saved preset', 'data-lh-map-theme': 'delete' }) as HTMLButtonElement
+    saveButton.textContent = '💾 Save preset as'
+    const deleteButton = el('button', { type: 'button', class: 'lh-button lh-button--quiet', title: 'Delete saved preset', 'aria-label': 'Delete saved preset', 'data-lh-map-theme': 'delete' }) as HTMLButtonElement
     deleteButton.textContent = '🗑'
     presetRow.append(select, loadButton, nameInput, saveButton, deleteButton)
 
@@ -119,11 +125,13 @@ export function createMapThemeCard(host: MapThemeCardHost): MapThemeCard {
             heading.textContent = group
             colors.append(heading)
         }
-        const row = el('label', { class: 'lh-map-theme-color', title: `Choose the ${field.label.toLowerCase()} color` })
-        const picker = el('input', { type: 'color', 'aria-label': `${field.label} color picker`, 'data-lh-map-color': field.key }) as HTMLInputElement
+        // The shown name: the generated file's, or its display override (96).
+        const label = mapThemeFieldLabel(field)
+        const row = el('label', { class: 'lh-map-theme-color', title: `Choose the ${label.toLowerCase()} color` })
+        const picker = el('input', { type: 'color', 'aria-label': `${label} color picker`, 'data-lh-map-color': field.key }) as HTMLInputElement
         const name = el('span')
-        name.textContent = field.label
-        const hex = el('input', { type: 'text', class: 'lh-input lh-map-theme-hex', maxlength: '7', spellcheck: 'false', 'aria-label': `${field.label} hex color`, 'data-lh-map-hex': field.key }) as HTMLInputElement
+        name.textContent = label
+        const hex = el('input', { type: 'text', class: 'lh-input lh-map-theme-hex', maxlength: '7', spellcheck: 'false', 'aria-label': `${label} hex color`, 'data-lh-map-hex': field.key }) as HTMLInputElement
         row.append(picker, name, hex)
         colors.append(row)
         pickers.set(field.key, picker)
@@ -140,28 +148,30 @@ export function createMapThemeCard(host: MapThemeCardHost): MapThemeCard {
     // The canvas image: the preview, Upload and Clear, an address, the overlay.
     const imageBlock = el('div', { class: 'lh-map-theme-image' })
     const imageTitle = el('div', { class: 'lh-map-theme-image-title' })
-    imageTitle.textContent = 'Canvas background image (optional)'
-    const imageHelp = el('div', { class: 'lh-section-help' })
-    imageHelp.textContent = 'Optional texture or artwork behind the map graph. The Canvas color overlays it to keep nodes and routes readable. Saved custom presets include the image.'
+    const imageName = el('span')
+    imageName.textContent = 'Canvas background image'
+    const imageTip = createHelpTip(el, 'Canvas background image', 'Shows a texture or artwork behind the map. The canvas color is laid over it so rooms and routes stay readable. You can upload a file or paste an http or https image URL. Saved presets include the image.')
+    imageTitle.append(imageName, imageTip.button)
     const imageRow = el('div', { class: 'lh-map-theme-image-row' })
-    const preview = el('div', { class: 'lh-map-theme-preview', title: 'Map background preview' })
+    const preview = el('div', { class: 'lh-map-theme-preview', title: 'Background preview' })
     const imageFields = el('div', { class: 'lh-map-theme-image-fields' })
     const imageButtons = el('div', { class: 'lh-map-theme-buttons' })
     const uploadButton = el('button', { type: 'button', class: 'lh-button', 'data-lh-map-theme': 'upload' }) as HTMLButtonElement
-    uploadButton.textContent = '⬆ Upload'
+    uploadButton.textContent = '⬆ Upload image'
     const clearButton = el('button', { type: 'button', class: 'lh-button', 'data-lh-map-theme': 'clear' }) as HTMLButtonElement
-    clearButton.textContent = 'Clear'
+    clearButton.textContent = 'Clear image'
     imageButtons.append(uploadButton, clearButton)
-    const urlInput = el('input', { type: 'text', class: 'lh-input lh-map-theme-url', placeholder: 'Or paste an image URL…', 'aria-label': 'Map background image URL', 'data-lh-field': 'mapThemeUrl' }) as HTMLInputElement
+    const urlInput = el('input', { type: 'text', class: 'lh-input lh-map-theme-url', placeholder: 'https://example.com/map.png', 'aria-label': 'Background image URL', 'data-lh-field': 'mapThemeUrl' }) as HTMLInputElement
     imageFields.append(imageButtons, urlInput)
     imageRow.append(preview, imageFields)
     const overlayRow = el('div', { class: 'lh-map-theme-overlay' })
     const overlayLabel = el('span')
     overlayLabel.textContent = 'Canvas color overlay'
     const overlayValue = el('span', { class: 'lh-map-theme-overlay-value' })
-    const overlay = el('input', { type: 'range', min: '0', max: '100', step: '1', title: 'Higher values make the Canvas color more opaque over the image', 'aria-label': 'Canvas color overlay', 'data-lh-field': 'mapThemeOverlay' }) as HTMLInputElement
+    const overlay = el('input', { type: 'range', min: '0', max: '100', step: '1', 'aria-label': 'Canvas color overlay', 'data-lh-field': 'mapThemeOverlay' }) as HTMLInputElement
     overlayRow.append(overlayLabel, overlay, overlayValue)
-    imageBlock.append(imageTitle, imageHelp, imageRow, overlayRow)
+    const overlayWrap = helpAfter(el, overlayRow, overlayLabel, 'Canvas color overlay', 'Higher values make the canvas color more opaque over the image. Default: 55%.')
+    imageBlock.append(imageTitle, imageTip.note, imageRow, overlayWrap)
 
     const resetRow = el('div', { class: 'lh-map-theme-reset' })
     const resetButton = el('button', { type: 'button', class: 'lh-button', 'data-lh-map-theme': 'reset' }) as HTMLButtonElement
@@ -169,7 +179,7 @@ export function createMapThemeCard(host: MapThemeCardHost): MapThemeCard {
     resetRow.append(resetButton)
     const note = el('div', { class: 'lh-map-theme-note', role: 'status' })
 
-    body.append(help, presetLabel, presetRow, colors, imageBlock, resetRow, note)
+    body.append(presetLabel, presetTip.note, presetRow, colors, imageBlock, resetRow, note)
 
     const say = (message: string, error = false): void => {
         note.textContent = message
@@ -206,7 +216,7 @@ export function createMapThemeCard(host: MapThemeCardHost): MapThemeCard {
         const custom = el('option', { value: '' }) as HTMLOptionElement
         custom.textContent = 'Custom (unsaved)'
         select.append(custom)
-        const factory = el('optgroup', { label: 'Factory themes' })
+        const factory = el('optgroup', { label: 'Built-in themes' })
         for (const preset of FACTORY_MAP_THEME_PRESETS) {
             const option = el('option', { value: preset.id }) as HTMLOptionElement
             option.textContent = preset.name
@@ -264,18 +274,18 @@ export function createMapThemeCard(host: MapThemeCardHost): MapThemeCard {
     loadButton.addEventListener('click', () => {
         const id = select.value
         const picked = resolveMapThemePreset(id, saved)
-        if (!picked) { say('Choose a saved or factory theme first.', true); return }
+        if (!picked) { say('Choose a theme to load first.', true); return }
         // A preset's image is the legacy's two sources or a stored address (readMapTheme); the resolver's copy drops a stored one, so the saved copy is taken whole.
         const loaded = id.startsWith('user:') ? saved[id.slice(5)]! : picked
         save({ mapTheme: loaded, activeMapThemePresetId: id }, `Loaded ${mapThemePresetName(id, saved) ?? 'map theme'}.`)
     })
     saveButton.addEventListener('click', async () => {
         const name = nameInput.value.trim().slice(0, 80)
-        if (!name) { say('Name the preset first.', true); return }
-        if (PROTO_NAMES.has(name)) { say('Please choose another preset name.', true); return }
+        if (!name) { say('Enter a preset name first.', true); return }
+        if (PROTO_NAMES.has(name)) { say('Choose another preset name.', true); return }
         const existing = Object.keys(saved).find((kept) => kept.toLowerCase() === name.toLowerCase())
         if (existing) {
-            const replace = await host.confirm('Replace Map Theme?', `Replace the saved map theme "${existing}"?`, 'Replace')
+            const replace = await host.confirm('Replace map theme?', `This replaces the saved preset "${existing}".`, 'Replace')
             if (!replace) return
         }
         const { [existing ?? '']: _gone, ...rest } = saved
@@ -288,19 +298,22 @@ export function createMapThemeCard(host: MapThemeCardHost): MapThemeCard {
         const id = select.value
         if (!id.startsWith('user:')) return
         const name = id.slice(5)
-        const approved = await host.confirm('Delete Map Theme?', `Delete the saved map theme "${name}"?`, 'Delete')
+        const approved = await host.confirm('Delete map theme?', `This deletes the saved preset "${name}". It cannot be undone.`, 'Delete')
         if (!approved) return
         const { [name]: _gone, ...rest } = saved
         save({ savedMapThemePresets: rest, activeMapThemePresetId: activeId === id ? '' : activeId }, `Deleted ${name}.`)
     })
-    resetButton.addEventListener('click', () => {
+    // Reset asks first (96): it replaces colours that may never have been saved as a preset.
+    resetButton.addEventListener('click', async () => {
+        const approved = await host.confirm('Reset to Ember', 'This replaces the current colors and canvas image with the Ember theme. Unsaved custom colors are lost.', 'Reset')
+        if (!approved) return
         save({ mapTheme: { ...DEFAULT_MAP_THEME }, activeMapThemePresetId: DEFAULT_MAP_THEME_PRESET_ID }, 'Map theme reset to Ember.')
     })
 
     /** The image by address or cleared: the legacy's rule (http(s) or a file), the preset Custom. */
     const setImage = (source: string, done: string): void => {
         const stored = source.trim()
-        if (stored && !/^https?:\/\//i.test(stored)) { say('Use an http(s) image URL or upload a file.', true); return }
+        if (stored && !/^https?:\/\//i.test(stored)) { say('Enter an http or https image URL, or upload a file.', true); return }
         save({ mapTheme: { ...theme, backgroundImage: stored }, activeMapThemePresetId: '' }, done)
     }
     urlInput.addEventListener('change', () => { setImage(urlInput.value, urlInput.value.trim() ? 'Map background image set.' : 'Map background image cleared.') })
@@ -308,8 +321,8 @@ export function createMapThemeCard(host: MapThemeCardHost): MapThemeCard {
     uploadButton.addEventListener('click', () => {
         host.pickFile()
             .then(async (picked) => {
-                if (!picked) { say('No picture was picked.'); return }
-                say('Storing the picture…')
+                if (!picked) { say('No image was chosen.'); return }
+                say('Uploading the image…')
                 const mime = picked.mimeType || (/\.jpe?g$/i.test(picked.name) ? 'image/jpeg' : /\.webp$/i.test(picked.name) ? 'image/webp' : /\.gif$/i.test(picked.name) ? 'image/gif' : 'image/png')
                 const dataUrl = await host.toDataUrl(picked.bytes, mime)
                 const filename = dataUrl.startsWith('data:image/jpeg') ? 'map-canvas.jpg' : picked.name || 'map-canvas.png'
@@ -333,26 +346,26 @@ export function createMapThemeCard(host: MapThemeCardHost): MapThemeCard {
 }
 
 export const MAP_THEME_CSS = `
-.adventuretime-panel .lh-map-theme-body { display: flex; flex-direction: column; gap: 8px; padding: 8px 10px 10px; font-size: 0.85em; }
-.adventuretime-panel .lh-map-theme-label { font-weight: 600; font-size: 0.9em; }
+.adventuretime-panel .lh-map-theme-body { display: flex; flex-direction: column; gap: 8px; padding: 8px 10px 10px; font-size: 0.8em; }
+.adventuretime-panel .lh-map-theme-label { display: flex; align-items: center; gap: 4px; font-weight: 600; font-size: 0.92em; }
 .adventuretime-panel .lh-map-theme-preset-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .adventuretime-panel .lh-map-theme-select { flex: 1 1 10em; min-width: 8em; }
 .adventuretime-panel .lh-map-theme-name { flex: 1 1 8em; min-width: 7em; }
 .adventuretime-panel .lh-map-theme-colors { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 4px 10px; }
-.adventuretime-panel .lh-map-theme-group { grid-column: 1 / -1; margin-top: 6px; font-size: 0.78em; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.7; }
+.adventuretime-panel .lh-map-theme-group { grid-column: 1 / -1; margin-top: 6px; font-size: 0.8em; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.7; }
 .adventuretime-panel .lh-map-theme-color { display: grid; grid-template-columns: 28px 1fr 5.5em; gap: 6px; align-items: center; cursor: pointer; }
 .adventuretime-panel .lh-map-theme-color input[type="color"] { width: 28px; height: 22px; padding: 0; border: 1px solid var(--lh-accent-dim, var(--lumiverse-border, rgba(127,127,127,0.25))); border-radius: 4px; background: none; cursor: pointer; }
-.adventuretime-panel .lh-map-theme-hex { font-family: var(--lh-font-mono, var(--lumiverse-font-mono, monospace)); font-size: 0.85em; }
+.adventuretime-panel .lh-map-theme-hex { font-family: var(--lh-font-mono, var(--lumiverse-font-mono, monospace)); font-size: 0.8em; }
 .adventuretime-panel .lh-map-theme-image { display: flex; flex-direction: column; gap: 6px; padding-top: 6px; border-top: 1px solid var(--lh-accent-dim, var(--lumiverse-border, rgba(127,127,127,0.25))); }
-.adventuretime-panel .lh-map-theme-image-title { font-weight: 600; font-size: 0.9em; }
+.adventuretime-panel .lh-map-theme-image-title { display: flex; align-items: center; gap: 4px; font-weight: 600; font-size: 0.92em; }
 .adventuretime-panel .lh-map-theme-image-row { display: flex; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
 .adventuretime-panel .lh-map-theme-preview { width: 72px; height: 48px; border-radius: 6px; border: 1px solid var(--lh-accent-dim, var(--lumiverse-border, rgba(255,255,255,0.15))); background: rgba(0,0,0,0.35) center/cover no-repeat; flex-shrink: 0; }
 .adventuretime-panel .lh-map-theme-image-fields { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 140px; }
 .adventuretime-panel .lh-map-theme-buttons { display: flex; gap: 4px; flex-wrap: wrap; }
-.adventuretime-panel .lh-map-theme-overlay { display: flex; align-items: center; gap: 8px; font-size: 0.85em; }
+.adventuretime-panel .lh-map-theme-overlay { display: flex; align-items: center; gap: 8px; font-size: 0.8em; }
 .adventuretime-panel .lh-map-theme-overlay input[type="range"] { flex: 1; cursor: pointer; }
 .adventuretime-panel .lh-map-theme-overlay-value { font-weight: bold; opacity: 0.8; min-width: 3em; text-align: right; }
 .adventuretime-panel .lh-map-theme-reset { display: flex; justify-content: flex-end; }
-.adventuretime-panel .lh-map-theme-note { font-size: 0.9em; opacity: 0.85; min-height: 1.2em; }
+.adventuretime-panel .lh-map-theme-note { font-size: 0.92em; opacity: 0.85; min-height: 1.2em; }
 .adventuretime-panel .lh-map-theme-note--error { color: var(--lumiverse-danger, #d9534f); opacity: 1; }
 `

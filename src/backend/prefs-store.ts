@@ -624,6 +624,30 @@ export interface UiPrefs {
     creatorInitialTime: string
     creatorConnectionId: string
     /**
+     * The Adventure Companion (100a). Its connection, blank for the
+     * narrator's; whether the guide is sent with every message to it (on as
+     * it ships; the install's, so off is off in every chat until it is
+     * ticked again); and where its chat stands: a tab of the Lore widget, or
+     * a card of the settings tab between the starting area and the raw memo.
+     */
+    companionConnectionId: string
+    companionGuide: boolean
+    companionPlace: 'widget' | 'settings'
+    /**
+     * What the Companion is shown of the campaign (100b), the install's as
+     * Multihog keeps its own: the last N messages of the story (5 as it
+     * ships; 0 shares none) or all of them, the character sheet, the lore
+     * the host has active, and the site map as the player knows it. The
+     * three ticks are off as Multihog ships them.
+     */
+    companionLookback: number
+    companionLookbackAll: boolean
+    companionSheet: boolean
+    companionLore: boolean
+    companionMap: boolean
+    /** Ask before the Companion sends a turn as the player (100c, departure 172). On as it ships. */
+    companionConfirmAct: boolean
+    /**
      * The narrator's connection as the interceptor last saw it (89), per
      * user: what a blank connection row runs on after a restart, before a
      * reply is seen again. Written by the backend alone; no row shows it.
@@ -744,6 +768,10 @@ export function readInventoryWorthMode(value: unknown): InventoryWorthMode {
 
 /** The output length's ceiling (89): no model's limit lies above it, and a typo of one more zero is held here. */
 export const MAX_PASS_MAX_TOKENS = 2_000_000
+
+/** The Companion's story window (100b): Multihog's 5, and its cap of 100. */
+export const DEFAULT_COMPANION_LOOKBACK = 5
+export const MAX_COMPANION_LOOKBACK = 100
 
 export function readBounded(value: unknown, fallback: number, min: number, max: number): number {
     if (value === undefined || value === null || value === '') return fallback
@@ -930,6 +958,15 @@ export const DEFAULT_PREFS: UiPrefs = {
     creatorInitialDate: 'Day 1',
     creatorInitialTime: '08:00 AM',
     creatorConnectionId: '',
+    companionConnectionId: '',
+    companionGuide: true,
+    companionPlace: 'widget',
+    companionLookback: DEFAULT_COMPANION_LOOKBACK,
+    companionLookbackAll: false,
+    companionSheet: false,
+    companionLore: false,
+    companionMap: false,
+    companionConfirmAct: true,
     narratorConnectionSeen: '',
     passMaxTokens: 0,
     creatorGenre: 'fantasy',
@@ -1400,6 +1437,15 @@ function readSkeletonPrefs(source: Partial<Record<keyof UiPrefs, unknown>>, into
     if (typeof source.creatorInitialDate === 'string') into.creatorInitialDate = source.creatorInitialDate.trim() || 'Day 1'
     if (typeof source.creatorInitialTime === 'string') into.creatorInitialTime = source.creatorInitialTime.trim() || '08:00 AM'
     if (source.creatorConnectionId !== undefined) into.creatorConnectionId = readConnectionId(source.creatorConnectionId)
+    if (source.companionConnectionId !== undefined) into.companionConnectionId = readConnectionId(source.companionConnectionId)
+    if (typeof source.companionGuide === 'boolean') into.companionGuide = source.companionGuide
+    if (source.companionPlace === 'widget' || source.companionPlace === 'settings') into.companionPlace = source.companionPlace
+    if (source.companionLookback !== undefined) into.companionLookback = readBounded(source.companionLookback, DEFAULT_COMPANION_LOOKBACK, 0, MAX_COMPANION_LOOKBACK)
+    if (typeof source.companionLookbackAll === 'boolean') into.companionLookbackAll = source.companionLookbackAll
+    if (typeof source.companionSheet === 'boolean') into.companionSheet = source.companionSheet
+    if (typeof source.companionLore === 'boolean') into.companionLore = source.companionLore
+    if (typeof source.companionMap === 'boolean') into.companionMap = source.companionMap
+    if (typeof source.companionConfirmAct === 'boolean') into.companionConfirmAct = source.companionConfirmAct
     if (source.narratorConnectionSeen !== undefined) into.narratorConnectionSeen = readConnectionId(source.narratorConnectionSeen)
     // Zero is blank; a number is whole and capped where no model's limit lies (89).
     if (source.passMaxTokens !== undefined) into.passMaxTokens = readBounded(source.passMaxTokens, 0, 0, MAX_PASS_MAX_TOKENS)

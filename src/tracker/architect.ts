@@ -66,6 +66,9 @@ export function createAreaMapToolRegistration(): ToolRegistrationDTO {
         description: tool.description,
         parameters: tool.parameters,
         inline_available: true,
+        // The narrator's tool alone: Lumiverse's Council offered it to its members on one build (the
+        // maintainer's find of 2026-11-16), and a member calling it would draw a map nobody asked for.
+        council_eligible: false,
     }
 }
 

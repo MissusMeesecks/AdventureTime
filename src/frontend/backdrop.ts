@@ -135,12 +135,12 @@ ${scrims}
 .adventuretime-panel .lh-backdrop-preview--night { border-style: dashed; border-color: rgba(136,153,255,0.35); background-color: rgba(8,10,28,0.5); }
 .adventuretime-panel .lh-backdrop-fields { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 140px; }
 .adventuretime-panel .lh-backdrop-buttons { display: flex; gap: 4px; flex-wrap: wrap; }
-.adventuretime-panel .lh-backdrop-url { width: 100%; box-sizing: border-box; font-size: 0.85em; }
-.adventuretime-panel .lh-backdrop-slot { font-size: 0.78em; opacity: 0.7; }
-.adventuretime-panel .lh-backdrop-strength { display: flex; align-items: center; gap: 8px; font-size: 0.85em; }
+.adventuretime-panel .lh-backdrop-url { width: 100%; box-sizing: border-box; font-size: 0.8em; }
+.adventuretime-panel .lh-backdrop-slot { font-size: 0.8em; opacity: 0.7; }
+.adventuretime-panel .lh-backdrop-strength { display: flex; align-items: center; gap: 8px; font-size: 0.8em; }
 .adventuretime-panel .lh-backdrop-strength input[type="range"] { flex: 1; cursor: pointer; }
 .adventuretime-panel .lh-backdrop-strength-value { font-weight: bold; opacity: 0.8; min-width: 3em; text-align: right; }
-.adventuretime-panel .lh-backdrop-note { font-size: 0.85em; opacity: 0.85; min-height: 1.2em; }
+.adventuretime-panel .lh-backdrop-note { font-size: 0.8em; opacity: 0.85; min-height: 1.2em; }
 .adventuretime-panel .lh-backdrop-note--error { color: var(--lumiverse-danger, #d9534f); opacity: 1; }
 `
 }

@@ -40,7 +40,8 @@ export interface RulebookSwitchesChange {
     syspromptModules: Record<string, boolean>
 }
 
-const LABELS: Record<string, string> = {
+/** The stock sections' names on screen, in the order they are sent. The guide lists them all, and its test holds the list to this. */
+export const RULEBOOK_SECTION_LABELS: Record<string, string> = {
     role: 'Role',
     rng_system: 'Dice and rolls',
     combat: 'Combat',
@@ -55,11 +56,11 @@ const LABELS: Record<string, string> = {
     relationship_tracking: 'Relationship tracking',
     level_up_protocol: 'Level-up protocol',
     narrative: 'Narrative pacing',
-    world_progression: 'World progression',
+    world_progression: 'World Progression',
     '[PARTY]_mechanics': 'Party mechanics',
     resting: 'Resting',
     homebrew_and_custom_classes: 'Homebrew and custom classes',
-    state_memo: 'Reading the state memo',
+    state_memo: 'State memo reading',
     CYOA_mode: 'CYOA mode',
     constraints: 'Constraints',
     dungeon_reality_and_hidden_mapping: 'Persistent maps',
@@ -100,7 +101,8 @@ export function mountRulebookSwitches(
         if (row.gate === 'flag') {
             const toggle = el('input', { type: 'checkbox', id: switchId() })
             toggle.checked = row.flag
-            toggle.title = `Send <${row.tag}> to the narrator`
+            // The row's name is the switch's label and its code tag tells the rows apart.
+            toggle.title = 'Send this section to the narrator'
             toggle.addEventListener('change', () => { setFlag(row.tag, toggle.checked) })
             head.append(toggle)
             name.setAttribute('for', toggle.id)
@@ -108,19 +110,17 @@ export function mountRulebookSwitches(
             head.append(el('span', { class: 'lh-rb-nocheck' }))
         }
 
-        name.textContent = row.kind === 'custom' ? row.tag : (LABELS[row.tag] ?? row.tag)
+        name.textContent = row.kind === 'custom' ? row.tag : (RULEBOOK_SECTION_LABELS[row.tag] ?? row.tag)
         head.append(name)
 
-        if (row.gate !== 'flag') {
+        // No engine limit is left, so no row says one (96); an engine-gated row would draw with no badge.
+        if (row.gate !== 'flag' && row.gate !== 'engine') {
             const badge = el('span', { class: `lh-rb-badge lh-rb-badge--${row.gate.split(':')[0]}` })
-            badge.textContent =
-                row.gate === 'library' ? 'yours'
-                : row.gate === 'engine' ? 'engine off'
-                : 'follows NPC relationship bars'
+            badge.textContent = row.gate === 'library' ? 'yours' : 'Follows the relationship system switch'
             head.append(badge)
         } else if (row.kind === 'unlocked') {
             const badge = el('span', { class: 'lh-rb-badge lh-rb-badge--library' })
-            badge.textContent = 'your override'
+            badge.textContent = 'Your override'
             head.append(badge)
         }
 
@@ -144,9 +144,6 @@ export function mountRulebookSwitches(
                     const text = el('span')
                     text.textContent = child.label
                     label.append(text)
-                    const badge = el('span', { class: 'lh-rb-badge lh-rb-badge--engine' })
-                    badge.textContent = 'engine off'
-                    label.append(badge)
                 } else {
                     const box = el('input', { type: 'checkbox' })
                     box.checked = child.on
@@ -168,22 +165,13 @@ export function mountRulebookSwitches(
         const view = buildRulebookView(settings)
         summary.replaceChildren()
 
-        const lead = el('div', { class: 'lh-rb-lead' })
-        lead.textContent =
-            'This is the rulebook the storyteller plays by — Multihog’s own rules for combat, ' +
-            'resting, loot, levelling and the rest, in the order they are sent. Your own sections ' +
-            'sit in their place in the same order.'
-        summary.append(lead)
-
+        // What the list is stands behind the heading's [?] (96); the summary is the count and the cost.
+        const stock = view.rows.filter((r) => r.kind !== 'custom')
         const counts = el('div', { class: 'lh-rb-counts' })
-        counts.textContent = `${view.counts} · About ${view.tokens.toLocaleString()} tokens go to the narrator every turn.`
+        counts.textContent =
+            `${stock.length} stock sections · ${stock.filter((r) => r.sent).length} on · ` +
+            `about ${view.tokens.toLocaleString()} tokens sent with every reply`
         summary.append(counts)
-
-        for (const limit of view.limits) {
-            const line = el('div', { class: 'lh-rb-limit' })
-            line.textContent = limit
-            summary.append(line)
-        }
 
         // A run of the user's sections collapses to one marker at its place.
         const nodes: HTMLElement[] = []
@@ -196,8 +184,8 @@ export function mountRulebookSwitches(
             const sentTokens = run.reduce((n, r) => n + (r.sent ? r.tokens : 0), 0)
             const sentCount = run.filter((r) => r.sent).length
             marker.textContent =
-                `↳ ${run.length} of your sections go here (${shown}) — ` +
-                (sentCount ? `${sentCount} switched on, ~${sentTokens.toLocaleString()} tokens.` : 'none switched on.')
+                `↳ ${run.length} of your sections are sent here (${shown}). ` +
+                (sentCount ? `${sentCount} on, about ${sentTokens.toLocaleString()} tokens.` : 'None on.')
             marker.title = names.join(', ')
             nodes.push(marker)
             run = []

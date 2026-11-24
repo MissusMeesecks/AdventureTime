@@ -30,10 +30,12 @@
 
 import {
     buildGameSystemsView,
+    GAME_SYSTEM_BADGES,
     type GameSystem,
     type GameSystemRow,
     type LinkedField,
 } from '../settings/game-systems.js'
+import { helpAfter } from './help-tip.js'
 
 export interface GameSystemsHost {
     createElement: <K extends keyof HTMLElementTagNameMap>(
@@ -54,6 +56,13 @@ export interface GameSystemsEditorOptions {
     onExport?: (systemId: string) => void
     /** Import a system from a file (72b). No button without it. */
     onImport?: () => void
+    /**
+     * Paste a system as Multihog's text (departure 174). `inline` is where the
+     * paste box stands on a host without a modal. No button without it.
+     */
+    onPaste?: (inline: HTMLElement) => void
+    /** Show one system as Multihog's text, to copy (departure 174). No button without it. */
+    onCopyText?: (systemId: string, inline: HTMLElement) => void
 }
 
 export function mountGameSystemsEditor(
@@ -71,15 +80,30 @@ export function mountGameSystemsEditor(
     const summary = el('div', { class: 'lh-gs-summary' })
     const list = el('div', { class: 'lh-gs-list' })
     root.replaceChildren(summary, list)
-    if (options.onImport) {
+    // Where a text box stands on a host without a modal (departure 174).
+    const inline = el('div', { class: 'lh-gs-inline' })
+    if (options.onImport || options.onPaste) {
         const tools = el('div', { class: 'lh-gs-tools' })
-        const importButton = el('button', { type: 'button', class: 'lh-button lh-button--quiet', 'data-lh-field': 'gs-import' })
-        importButton.textContent = 'Import a system'
-        importButton.title = 'A game system file exported from here: its system, tracker field and GM section are added under new ids.'
-        importButton.addEventListener('click', () => { options.onImport?.() })
-        tools.append(importButton)
-        root.append(tools)
+        if (options.onImport) {
+            const importButton = el('button', { type: 'button', class: 'lh-button lh-button--quiet', 'data-lh-field': 'gs-import' })
+            importButton.textContent = 'Import system'
+            importButton.addEventListener('click', () => { options.onImport?.() })
+            tools.append(importButton)
+        }
+        if (options.onPaste) {
+            const pasteButton = el('button', { type: 'button', class: 'lh-button lh-button--quiet', 'data-lh-field': 'gs-paste' })
+            pasteButton.textContent = 'Paste system text'
+            pasteButton.addEventListener('click', () => { options.onPaste?.(inline) })
+            tools.append(pasteButton)
+        }
+        // Drawn once, outside the list, so its help survives every redraw (96).
+        const last = tools.lastElementChild as HTMLElement
+        root.append(helpAfter(el as never, tools, last, last.textContent ?? '', [
+            options.onImport ? 'Import system loads a game system file exported from AdventureTime. Its system, tracker field and narrator rule are added as new items. Nothing existing is replaced.' : '',
+            options.onPaste ? 'Paste system text reads a system shared as text, from Multihog’s Export or from Copy as text here, and opens it in the wizard’s preview. Nothing is saved until you press Save there.' : '',
+        ].filter(Boolean).join('\n')))
     }
+    root.append(inline)
 
     function renderRow(row: GameSystemRow): HTMLElement {
         const item = el('div', { class: `lh-gs-row lh-gs-row--${row.verdict}` })
@@ -91,15 +115,7 @@ export function mountGameSystemsEditor(
         head.append(name)
 
         const badge = el('span', { class: `lh-gs-badge lh-gs-badge--${row.verdict}` })
-        badge.textContent =
-            row.verdict === 'live'
-                ? 'tracked'
-                : row.verdict === 'off'
-                  ? 'off'
-                  : row.verdict === 'gm-only'
-                    ? 'gm section only'
-                    : 'broken link'
-        badge.title = row.note
+        badge.textContent = GAME_SYSTEM_BADGES[row.verdict]
         head.append(badge)
 
         // Always present, empty on a GM-only row. It is a fixed-width column,
@@ -114,17 +130,21 @@ export function mountGameSystemsEditor(
         // halves. The switch stays in Custom fields, as the module note says.
         if (options.onEdit && row.id) {
             const edit = el('button', { type: 'button', class: 'lh-button lh-button--quiet lh-gs-edit' })
-            edit.textContent = 'Edit'
-            edit.title = 'Open this system in the wizard'
+            edit.textContent = 'Edit in wizard'
             edit.addEventListener('click', () => { options.onEdit?.(row.id) })
             head.append(edit)
         }
         if (options.onExport && row.id) {
             const exportButton = el('button', { type: 'button', class: 'lh-button lh-button--quiet lh-gs-export' })
-            exportButton.textContent = 'Export'
-            exportButton.title = 'This system as a file: the system, its tracker field and its GM section.'
+            exportButton.textContent = 'Export system'
             exportButton.addEventListener('click', () => { options.onExport?.(row.id) })
             head.append(exportButton)
+        }
+        if (options.onCopyText && row.id) {
+            const copyButton = el('button', { type: 'button', class: 'lh-button lh-button--quiet lh-gs-copy-text' })
+            copyButton.textContent = 'Copy as text'
+            copyButton.addEventListener('click', () => { options.onCopyText?.(row.id, inline) })
+            head.append(copyButton)
         }
 
         item.append(head)
@@ -138,10 +158,8 @@ export function mountGameSystemsEditor(
         if (row.disagrees) {
             const drift = el('div', { class: 'lh-gs-drift' })
             drift.textContent = row.systemEnabled
-                ? 'This system is marked on, but its tracker module is off — so the tracker does not maintain it. ' +
-                  'The module decides; switch it in Custom fields to settle them.'
-                : 'This system is marked off, but its tracker module is on — so the tracker does maintain it. ' +
-                  'The module decides; switch it in Custom fields to settle them.'
+                ? 'This system is marked on, but its tracker module is off. The tracker does not update it. Turn the module on in Custom fields.'
+                : 'This system is marked off, but its tracker module is on. The tracker updates it. Turn the module off in Custom fields.'
             item.append(drift)
         }
 
@@ -159,28 +177,18 @@ export function mountGameSystemsEditor(
 
         summary.replaceChildren()
 
-        const lead = el('div', { class: 'lh-gs-lead' })
-        lead.textContent = view.summary
-        summary.append(lead)
+        // Only the empty list has a line of its own; what a system is, and what
+        // each badge means, stand behind the heading's `[?]` (96).
+        if (view.summary) {
+            const lead = el('div', { class: 'lh-gs-lead' })
+            lead.textContent = view.summary
+            summary.append(lead)
+        }
 
         if (view.counts) {
             const counts = el('div', { class: 'lh-gs-counts' })
             counts.textContent = view.counts
             summary.append(counts)
-        }
-
-        if (view.legend.length) {
-            const legend = el('div', { class: 'lh-gs-legend' })
-            for (const entry of view.legend) {
-                const line = el('div', { class: 'lh-gs-legend-line' })
-                const chip = el('span', { class: `lh-gs-badge lh-gs-badge--${entry.verdict}` })
-                chip.textContent = entry.label
-                const meaning = el('span', { class: 'lh-gs-legend-text' })
-                meaning.textContent = entry.meaning
-                line.append(chip, meaning)
-                legend.append(line)
-            }
-            summary.append(legend)
         }
 
         if (view.warning) {

@@ -3,6 +3,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
 import type { CardChoice, ImportResult } from '../protocol.js'
+import { CREATOR_HELP } from './creator-fold.js'
 import { createImportFold, describeImportResult, IMPORT_PAGE, type ImportFold, type ImportFoldHost } from './import-fold.js'
 
 afterEach(() => { document.body.replaceChildren() })
@@ -204,5 +205,60 @@ describe('importing', () => {
         expect(note(fold)).not.toBe('')
         fold.setChat(null)
         expect(note(fold)).toBe('')
+    })
+})
+
+/** Every piece of help is a [?] and a hidden note: nothing explanatory stands in the open or lives in a tooltip alone. */
+function expectNoVisibleHelp(root: HTMLElement, statusClasses: string[], titles: string[]): void {
+    expect(root.querySelectorAll('.lh-world-lead')).toHaveLength(0)
+    const hints = Array.from(root.querySelectorAll('[class*="-hint"], [class*="-sub"]')).filter((n) => !statusClasses.some((c) => n.classList.contains(c)))
+    expect(hints.map((n) => n.className)).toEqual([])
+    // A tooltip may name an icon-only button or say why a button is off; it never carries the help.
+    const titled = Array.from(root.querySelectorAll('[title]')).filter((n) => n.getAttribute('title'))
+    expect(titled.every((n) => n.tagName === 'BUTTON')).toBe(true)
+    expect(titled.map((n) => n.getAttribute('title')).filter((t) => !titles.includes(t!))).toEqual([])
+    const notes = Array.from(root.querySelectorAll<HTMLElement>('.lh-help-note'))
+    expect(notes.length).toBeGreaterThan(0)
+    for (const note of notes) {
+        expect(note.hidden).toBe(true)
+        expect(note.textContent).not.toMatch(/the host|Multihog|\bPhase\b|creator[A-Z]\w+/)
+        const tip = root.querySelector(`button.lh-help-tip[aria-controls="${note.id}"]`)!
+        expect(tip).not.toBeNull()
+        // Neither the [?] nor its note may sit in a label that wraps a tick: a press would be the label's.
+        for (const node of [tip, note]) expect(node.closest('label')?.querySelector('input[type="checkbox"]') ?? null).toBeNull()
+    }
+}
+
+describe('the sub-fold and its copy (98)', () => {
+    it('is a plain sub-fold header, with no lead paragraph', () => {
+        const { fold } = harness()
+        const summary = fold.root.querySelector('summary')!
+        expect(summary.textContent).toBe('From a character card')
+        expect(summary.children).toHaveLength(0)
+        expect(fold.root.className).toBe('lh-import')
+    })
+
+    it('says its twins’ decided labels and help, and keeps every help behind a [?], the two buttons’ meaning on the list’s caption', async () => {
+        const { fold } = harness()
+        fold.setChat('chat-1')
+        await open(fold)
+        const tick = (name: string) => control(fold, name).closest('label')!
+        expect(tick('player-card').textContent).toBe('Write a Player Card')
+        expect(tick('player-card').closest('.lh-helped')!.querySelector('.lh-help-note')!.textContent).toBe('When on, a Player Card is written from the card’s own text. The narrator sees the Player Card on every reply. Default: off. Recommended.')
+        expect(tick('persona').textContent).toBe('Create a matching persona')
+        expect(tick('persona').closest('.lh-helped')!.querySelector('.lh-help-note')!.textContent).toBe(CREATOR_HELP.persona)
+        expect(control(fold, 'words').closest('.lh-import-row')!.querySelector('label')!.textContent).toBe('Player Card length (words)')
+        expect(control(fold, 'words').closest('.lh-import-row')!.querySelector('.lh-help-note')!.textContent).toBe('Only Fit into story uses this length. Add as is keeps the card’s own writing.')
+        const caption = fold.root.querySelector('[data-lh-field="import-caption"]')!
+        expect(caption.querySelector('span')!.textContent).toBe('Your character cards')
+        const help = caption.nextElementSibling!
+        expect(help.className).toBe('lh-help-note')
+        expect(help.textContent).toContain('Fit into story: the character is rewritten to fit the current campaign.')
+        expect(help.textContent).toContain('Add as is: the card’s writing is kept, and only what the setting makes impossible is fixed.')
+        // With a chat open the two buttons carry no tooltip; their meaning is the caption's help.
+        expect(button(fold, FIT).title).toBe('')
+        expect(button(fold, AS_IS).title).toBe('')
+        expectNoVisibleHelp(fold.root, [], [])
+        expect(fold.root.textContent).not.toContain('(Fit into story only)')
     })
 })

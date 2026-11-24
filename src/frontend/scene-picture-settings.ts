@@ -9,6 +9,8 @@
  * Connections category.
  */
 
+import { createTickRow } from './portrait-draw.js'
+
 export interface ScenePictureSettingsHost {
     el(tag: string, attrs?: Record<string, string>): HTMLElement
     savePrefs(patch: Record<string, unknown>): Promise<void>
@@ -36,12 +38,17 @@ export interface ScenePictureSettings {
 
 /** The three triggers (49), in the legacy's words. */
 export const SCENE_PICTURE_TRIGGERS: ReadonlyArray<{ value: NonNullable<ScenePicturePrefs['scenePictureTrigger']>; label: string }> = [
-    { value: 'location_enter', label: 'On arriving at a place with no picture' },
-    { value: 'location_change', label: 'Whenever the place changes (the default)' },
-    { value: 'every_n_outputs', label: 'Every N replies, and whenever the place changes' },
+    { value: 'location_enter', label: 'On arrival at a location with no picture' },
+    { value: 'location_change', label: 'When the location changes' },
+    { value: 'every_n_outputs', label: 'Every N replies and when the location changes' },
 ]
 
 export const MAX_SCENE_PICTURE_EVERY_N = 50
+
+/** The three switches' help, behind each row's [?] (96). */
+export const SCENE_PICTURE_AUTO_HELP = 'When on, the location image is drawn automatically after a reply, when the trigger below is met. If one automatic draw fails, this turns itself off. Turn it on again to retry. Default: off.'
+export const SCENE_PICTURE_NPCS_HELP = 'When on, the location image includes every NPC named in the newest replies. Your character is always in the picture when you have a Player Card. If the location prompt is still an unedited art style, it switches to the matching variant. Default: on.'
+export const SCENE_PICTURE_BACKGROUND_HELP = 'When on, the picture of the party’s current location is shown behind the chat. A picture drawn or set for the current location shows at once. Default: off.'
 
 /**
  * @param fieldPrefix `''` in the Scene fold; the mirror in the settings uses its own, so one document holds both.
@@ -49,15 +56,10 @@ export const MAX_SCENE_PICTURE_EVERY_N = 50
 export function createScenePictureSettings(host: ScenePictureSettingsHost, fieldPrefix = ''): ScenePictureSettings {
     const { el } = host
     const field = (name: string) => `${fieldPrefix}${name}`
-    const autoRow = el('label', { class: 'lh-scene-picture-row' })
-    const autoInput = el('input', { type: 'checkbox', 'data-lh-field': field('scene-picture-auto') }) as HTMLInputElement
-    const autoLabel = el('span')
-    autoLabel.textContent = 'Draw a picture on its own after a reply'
-    autoRow.title = 'The legacy’s Real-Time Visualization Mode: after a reply, the place’s picture is drawn as the trigger below says. One failed draw switches this off again, as the legacy does; tick it again to retry.'
-    autoRow.append(autoInput, autoLabel)
+    const { row: autoRow, input: autoInput } = createTickRow(el, 'lh-scene-picture-row', field('scene-picture-auto'), 'Draw location images automatically', SCENE_PICTURE_AUTO_HELP)
     const triggerRow = el('label', { class: 'lh-scene-picture-row' })
     const triggerLabel = el('span')
-    triggerLabel.textContent = 'When'
+    triggerLabel.textContent = 'Trigger'
     const triggerSelect = el('select', { class: 'lh-input', 'data-lh-field': field('scene-picture-trigger') }) as HTMLSelectElement
     for (const choice of SCENE_PICTURE_TRIGGERS) {
         const option = el('option', { value: choice.value }) as HTMLOptionElement
@@ -74,20 +76,10 @@ export function createScenePictureSettings(host: ScenePictureSettingsHost, field
     const everyAfter = el('span')
     everyAfter.textContent = 'replies'
     everyRow.append(everyLabel, everyInput, everyAfter)
-    const npcsRow = el('label', { class: 'lh-scene-picture-row' })
-    const npcsInput = el('input', { type: 'checkbox', 'data-lh-field': field('scene-picture-npcs') }) as HTMLInputElement
+    const { row: npcsRow, input: npcsInput } = createTickRow(el, 'lh-scene-picture-row', field('scene-picture-npcs'), 'Include present NPCs in the picture', SCENE_PICTURE_NPCS_HELP)
     npcsInput.checked = true
-    const npcsLabel = el('span')
-    npcsLabel.textContent = 'Put the NPCs present into the picture too'
-    npcsRow.title = 'You are always in the picture when you have a Player Card; this adds every NPC the newest replies name. While the location prompt is still a shipped art style’s, it follows this switch to the matching variant; an edited prompt is left alone.'
-    npcsRow.append(npcsInput, npcsLabel)
     // Multihog's Use Location Images as Chat Background (73f).
-    const backgroundRow = el('label', { class: 'lh-scene-picture-row' })
-    const backgroundInput = el('input', { type: 'checkbox', 'data-lh-field': field('scene-picture-background') }) as HTMLInputElement
-    const backgroundLabel = el('span')
-    backgroundLabel.textContent = 'Use the location picture as the chat background'
-    backgroundRow.title = 'Multihog’s Use Location Images as Chat Background: the place’s picture is laid behind the chat as the party arrives, and one drawn or set for the current place goes up at once. The layer it is laid on is the host’s, found on the page; the browser console says which, and a picture that does not show is that choice to report.'
-    backgroundRow.append(backgroundInput, backgroundLabel)
+    const { row: backgroundRow, input: backgroundInput } = createTickRow(el, 'lh-scene-picture-row', field('scene-picture-background'), 'Use location image as chat background', SCENE_PICTURE_BACKGROUND_HELP)
 
     function drawEvery(): void {
         everyRow.hidden = triggerSelect.value !== 'every_n_outputs'

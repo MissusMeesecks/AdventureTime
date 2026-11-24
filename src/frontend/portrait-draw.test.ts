@@ -152,9 +152,9 @@ describe('the lookback and the connections (61)', () => {
         const { calls, field, settle, settings } = harness()
         const skip = field<HTMLInputElement>('portrait-skip-prompt')
         expect(skip.checked).toBe(false)
-        expect(skip.closest('label')!.textContent).toBe('Skip the prompt editor on a pressed draw')
+        expect(skip.closest('label')!.textContent).toBe('Skip the prompt editor')
         // The image prompt prefix's row (94a) stands between it and the lookback.
-        expect(skip.closest('label')!.nextElementSibling).toBe(field('image-prompt-prefix').closest('label'))
+        expect(skip.closest('.lh-portrait-settings-row')!.nextElementSibling).toBe(field('image-prompt-prefix').closest('.lh-portrait-settings-row'))
         skip.checked = true
         skip.dispatchEvent(new Event('change'))
         await settle()
@@ -167,9 +167,12 @@ describe('the lookback and the connections (61)', () => {
         const { calls, field, settle, settings } = harness()
         const prefix = field<HTMLInputElement>('image-prompt-prefix')
         expect(prefix.value).toBe('')
-        expect(prefix.closest('label')!.textContent).toBe('Image prompt prefix')
-        expect(prefix.closest('label')!.previousElementSibling).toBe(field('portrait-skip-prompt').closest('label'))
-        expect(prefix.closest('label')!.nextElementSibling).toBe(field('portrait-lookback').closest('label'))
+        const prefixRow = prefix.closest('.lh-portrait-settings-row') as HTMLElement
+        expect(prefixRow.firstElementChild!.textContent).toBe('Image prompt prefix')
+        expect(prefix.getAttribute('aria-label')).toBe('Image prompt prefix')
+        expect(prefix.placeholder).toBe('<lora:name:1>, masterpiece')
+        expect(prefixRow.previousElementSibling).toBe(field('portrait-skip-prompt').closest('.lh-portrait-settings-row'))
+        expect(prefixRow.nextElementSibling).toBe(field('portrait-lookback').closest('.lh-portrait-settings-row'))
         prefix.value = '  <lora:anima-turbo:1>  '
         prefix.dispatchEvent(new Event('change'))
         await settle()
@@ -178,5 +181,36 @@ describe('the lookback and the connections (61)', () => {
         expect(prefix.value).toBe('masterpiece,')
         settings.applyPrefs({ imagePromptPrefix: '' })
         expect(prefix.value).toBe('')
+    })
+
+    it('puts every row’s help behind a [?] beside its label, in the deck’s words, with no tooltip left (96)', () => {
+        const { settings, field } = harness()
+        const helps: Record<string, string> = {
+            'portrait-auto-player': 'When on, your character’s portrait is drawn when the character first appears in the tracker. Turning this on draws a missing portrait now. Default: off.',
+            'portrait-auto-party': 'When on, each party member with hit points gets a portrait when they join. Turning this on draws the missing portraits now. Default: off.',
+            'portrait-auto-enemies': 'When on, each enemy with hit points in combat gets a portrait when it appears. Turning this on draws the missing portraits now. Default: off.',
+            'portrait-auto-npcs': 'When on, every NPC in the campaign’s NPC lorebook that has no portrait gets one after each pass. The portrait is described from the NPC’s entry. Turning this on draws the missing portraits now. Default: off.',
+            'portrait-skip-prompt': 'When off, pressing a Draw button shows the image prompt first, so you can edit, copy or cancel it. When on, the picture is drawn at once. Automatic draws never show the prompt. Default: off.',
+            'image-prompt-prefix': 'This text is added to the front of every image prompt, for portraits, NPC photos and location images. Use it for a LoRA tag such as <lora:name:1>, a trigger word or a quality tag. The prompt editor shows the prompt without the prefix. Default: blank.',
+            'portrait-lookback': 'When on, the prompt writer also reads your persona, the campaign’s lorebook entries whose keywords match the name, the game state and the last messages. When off, a portrait is described from the tracker memo and the narrator’s character card only, and an NPC from its lorebook entry. Default: off.',
+        }
+        for (const [name, help] of Object.entries(helps)) {
+            const row = field(name).closest('.lh-portrait-settings-row') as HTMLElement
+            const tip = row.querySelector('.lh-help-tip') as HTMLButtonElement
+            const note = row.querySelector('.lh-help-note') as HTMLElement
+            // In the row from the first paint, hidden, and neither the button nor the note inside a label.
+            expect(note.textContent).toBe(help)
+            expect(note.hidden).toBe(true)
+            expect(tip.closest('label')).toBeNull()
+            expect(note.closest('label')).toBeNull()
+            expect(row.title).toBe('')
+            tip.click()
+            expect(note.hidden).toBe(false)
+        }
+        // A press on a tick row's [?] never ticks its box.
+        expect(field<HTMLInputElement>('portrait-skip-prompt').checked).toBe(false)
+        expect(field('portrait-lookback').closest('label')!.textContent).toBe('Use the story in the prompt')
+        expect(field('portrait-lookback-count').closest('label')!.textContent).toBe('Messages to read')
+        expect(settings.root.textContent).not.toMatch(/Multihog|legacy/)
     })
 })

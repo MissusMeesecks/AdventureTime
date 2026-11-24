@@ -10,6 +10,8 @@ import {
     isFactoryPortraitPresetName,
     isShippedLocationPrompt,
     locationPromptForToggle,
+    PORTRAIT_PRESET_DISPLAY,
+    portraitPresetDisplay,
     resolvePortraitPresetBundle,
     savedPresetId,
 } from './portrait-presets.js'
@@ -64,5 +66,21 @@ describe('the art styles (63b)', () => {
         expect(locationPromptForToggle('', true)).toBe(factoryLocationPrompt(true, 'fantasy'))
         expect(locationPromptForToggle('', false, 'user:Mine')).toBe(factoryLocationPrompt(false, 'fantasy'))
         expect(locationPromptForToggle(`${comic}\nMy own line.`, true, 'comic')).toBeNull()
+    })
+
+    it('shows each style under the pane’s words and is held to the generated text they were written against (96)', () => {
+        // Every style has a display entry, and each entry names the generated name and description it replaces:
+        // a pin move that renames or rewords a style fails here, so the display text is re-read with it.
+        expect(Object.keys(PORTRAIT_PRESET_DISPLAY)).toEqual(FACTORY_PORTRAIT_PRESETS.map((p) => p.id))
+        for (const preset of FACTORY_PORTRAIT_PRESETS) {
+            expect(PORTRAIT_PRESET_DISPLAY[preset.id]!.from).toEqual({ name: preset.name, description: preset.description })
+        }
+        expect(FACTORY_PORTRAIT_PRESETS.map((p) => portraitPresetDisplay(p).name)).toEqual(['Fantasy (default)', 'Anime', 'Photorealistic', 'Oil painting', 'Comic book', 'Watercolor', 'Dark fantasy'])
+        expect(portraitPresetDisplay(factoryPortraitPreset('fantasy')).description).toBe('High-quality fantasy art with dramatic lighting. This is the default style.')
+        expect(FACTORY_PORTRAIT_PRESETS.every((p) => !/Multihog/.test(portraitPresetDisplay(p).description))).toBe(true)
+        // Display only: the generated names stay the reserved ones, and an unknown style shows its own text.
+        expect(factoryPortraitPreset('oil_painting').name).toBe('Oil Painting')
+        expect(isFactoryPortraitPresetName('Oil Painting')).toBe(true)
+        expect(portraitPresetDisplay({ id: 'other', name: 'Other', description: 'Its own.' })).toEqual({ name: 'Other', description: 'Its own.' })
     })
 })

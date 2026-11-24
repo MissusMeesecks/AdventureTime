@@ -12,7 +12,7 @@
  */
 
 import { renderEvolutionHistoryHtml, buildMapGraph, graphHasRooms, renderMapEntriesHtml, renderMapGraphSvg, siteDocument } from '../tracker/graph.js'
-import { normalizeMapLabel, type MapSite } from '../tracker/map.js'
+import { formatMapForPlayer, normalizeMapLabel, type MapSite } from '../tracker/map.js'
 import type { MapViewResult } from '../protocol.js'
 import type { MapStore } from './map-store.js'
 import { readMapSites, type MapBookReader } from './map-sync.js'
@@ -29,6 +29,13 @@ export interface MapViewDeps {
 export interface MapView {
     /** The party's site, or the named one. Never throws; a problem is reported in the result. */
     view(chatId: string, userId: string | undefined, siteRoot?: string): Promise<MapViewResult>
+    /**
+     * The party's own site as prose for the Adventure Companion (100b): what
+     * the player has visited and discovered, and nothing unrevealed, whatever
+     * Reveal all says. Blank when the party is outside every mapped site.
+     * Throws when the books cannot be read, so the caller can say so.
+     */
+    playerText(chatId: string, userId: string | undefined): Promise<string>
 }
 
 function describe(error: unknown): string {
@@ -74,6 +81,18 @@ export function createMapView(deps: MapViewDeps): MapView {
                 deps.log.warn(`map: could not draw the map: ${describe(error)}`)
                 return { ...EMPTY, ...base, problem: describe(error) }
             }
+        },
+
+        async playerText(chatId, userId) {
+            const record = await deps.state.load(chatId, userId)
+            const active = normalizeMapLabel(record.activeSiteRoot)
+            if (!active) return ''
+            const { prefix, owned } = await deps.campaign(chatId, userId)
+            const { sites } = await readMapSites(deps.store(userId), prefix, owned)
+            const site = Object.values(sites).find((s) => normalizeMapLabel(s.siteRoot) === active)
+            const document = site ? siteDocument(site) : null
+            // The reveal preference is not read here on purpose: this text leaves the panel for a model.
+            return document ? formatMapForPlayer(document, record.currentLocation) : ''
         },
     }
 }

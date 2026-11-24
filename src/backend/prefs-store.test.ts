@@ -179,7 +179,7 @@ describe('the preference store', () => {
             mapArchitectLookback: 12, mapArchitectSystemPrompt: '', mapArchitectOpener: 'tool',
             mapUpdaterEnabled: true, mapUpdaterRunEvery: 1, mapUpdaterLookback: 4, mapUpdaterSystemPrompt: '', mapRevealAll: false,
             mapEvolutionEnabled: true, mapEvolutionIntervalHours: 8, mapEvolutionOnSiteIntervalHours: 1, mapEvolutionOnSiteIntervalMinutes: 0, mapEvolutionOnSitePreset: 'dynamic', mapEvolutionScope: 'all', mapEvolutionCount: 2, mapEvolutionRandomize: true, mapEvolutionSelectedRoots: '', mapEvolutionWorldReportLookback: 5, mapEvolutionSystemPrompt: '', mapEvolutionCompressEnabled: true, mapEvolutionCompressThreshold: 10000, mapEvolutionNarratorCommitTokens: 2000, mapEvolutionLookback: 20, mapEvolutionConnectionId: '',
-        creatorDraft: null, creatorPresets: [], creatorLevel: 1, creatorGearTier: 'auto', creatorCombatScalingGuide: true, creatorInitialDate: 'Day 1', creatorInitialTime: '08:00 AM', creatorConnectionId: '', narratorConnectionSeen: '', passMaxTokens: 0,
+        creatorDraft: null, creatorPresets: [], creatorLevel: 1, creatorGearTier: 'auto', creatorCombatScalingGuide: true, creatorInitialDate: 'Day 1', creatorInitialTime: '08:00 AM', creatorConnectionId: '', companionConnectionId: '', companionGuide: true, companionPlace: 'widget', companionLookback: 5, companionLookbackAll: false, companionSheet: false, companionLore: false, companionMap: false, companionConfirmAct: true, narratorConnectionSeen: '', passMaxTokens: 0,
             creatorGenre: 'fantasy', creatorSendStarter: true, creatorInstantRandomLevel: false, creatorPlayerCard: false, creatorPersona: true, creatorCardWords: 150, creatorWaysDraft: null,
             npcAddAsIsMode: 'ai_review',
             relationshipMax: 150, relationshipMode: 'state_tracker', relationshipTrackerPrompt: '',
@@ -986,6 +986,46 @@ describe('the day/night cycle (74c)', () => {
         expect(readPrefs({ version: 1, mobileWidget: false }).mobileWidget).toBe(false)
         expect(readPrefsPatch({ mobileWidget: false })).toEqual({ mobileWidget: false })
         expect(readPrefsPatch({})).toEqual({})
+    })
+
+    it('keeps the Companion’s three preferences (100a): the guide attached as it ships, off staying off until it is set again', async () => {
+        const store = new PrefsStore(fakeStorage().storage)
+        expect(await store.load()).toMatchObject({ companionConnectionId: '', companionGuide: true, companionPlace: 'widget' })
+        // Only a real off turns the guide off.
+        await store.patch({ companionGuide: 'no' as never })
+        expect((await store.load()).companionGuide).toBe(true)
+        await store.patch({ companionGuide: false, companionPlace: 'settings', companionConnectionId: ' conn-7 ' })
+        expect(await store.load()).toMatchObject({ companionConnectionId: 'conn-7', companionGuide: false, companionPlace: 'settings' })
+        // Junk changes nothing: the guide stays off, the place stays where it was put.
+        await store.patch({ companionGuide: 'yes' as never, companionPlace: 'window' as never })
+        expect(await store.load()).toMatchObject({ companionGuide: false, companionPlace: 'settings' })
+        // The confirmation before a turn is sent (100c): on as it ships, and only a boolean moves it.
+        expect((await store.load()).companionConfirmAct).toBe(true)
+        await store.patch({ companionConfirmAct: 0 as never })
+        expect((await store.load()).companionConfirmAct).toBe(true)
+        await store.patch({ companionConfirmAct: false })
+        expect((await store.load()).companionConfirmAct).toBe(false)
+        const kept = fakeStorage({ [`@self:${PREFS_PATH}`]: { companionGuide: false, companionPlace: 'settings' } })
+        expect(await new PrefsStore(kept.storage).load()).toMatchObject({ companionGuide: false, companionPlace: 'settings' })
+        expect(readPrefsPatch({ companionGuide: false })).toEqual({ companionGuide: false })
+        await store.patch({ companionGuide: true, companionPlace: 'widget', companionConnectionId: '' })
+        expect(await store.load()).toMatchObject({ companionConnectionId: '', companionGuide: true, companionPlace: 'widget' })
+    })
+
+    it('keeps what the Companion is shown (100b): five messages and nothing else as it ships, the count held between 0 and 100', async () => {
+        const store = new PrefsStore(fakeStorage().storage)
+        expect(await store.load()).toMatchObject({ companionLookback: 5, companionLookbackAll: false, companionSheet: false, companionLore: false, companionMap: false })
+        await store.patch({ companionLookback: 0, companionLookbackAll: true, companionSheet: true, companionLore: true, companionMap: true })
+        expect(await store.load()).toMatchObject({ companionLookback: 0, companionLookbackAll: true, companionSheet: true, companionLore: true, companionMap: true })
+        await store.patch({ companionLookback: 250 })
+        expect((await store.load()).companionLookback).toBe(100)
+        await store.patch({ companionLookback: -3 })
+        expect((await store.load()).companionLookback).toBe(0)
+        // Junk leaves each as it stands.
+        await store.patch({ companionLookbackAll: 'yes' as never, companionSheet: 1 as never, companionLore: 'on' as never, companionMap: null as never })
+        expect(await store.load()).toMatchObject({ companionLookbackAll: true, companionSheet: true, companionLore: true, companionMap: true })
+        await store.patch({ companionSheet: false })
+        expect(await store.load()).toMatchObject({ companionSheet: false, companionLore: true, companionMap: true })
     })
 
     it('keeps the XP bar at the bottom as a boolean, on by default as Multihog ships it (74f)', async () => {

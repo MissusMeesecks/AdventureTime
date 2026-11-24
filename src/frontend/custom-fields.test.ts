@@ -72,7 +72,7 @@ describe('validateTag', () => {
     })
 
     it('rejects a duplicate', () => {
-        expect(validateTag('WAYSTONE', ['WAYSTONE'])).toMatch(/already a field/)
+        expect(validateTag('WAYSTONE', ['WAYSTONE'])).toMatch(/already exists/)
     })
 })
 
@@ -94,8 +94,7 @@ describe('showing the fields', () => {
         // renders from an existing memo and simply never updates.
         mount()
         const summary = root.querySelector('.lh-fields-summary')?.textContent ?? ''
-        expect(summary).toContain('1 of 2 switched on')
-        expect(summary).toMatch(/never told to maintain it/)
+        expect(summary).toBe('1 of 2 on')
     })
 
     it('drops the caveat when everything is on', () => {
@@ -164,7 +163,7 @@ describe('editing a field', () => {
         tag.dispatchEvent(new Event('change'))
 
         expect(onChange).not.toHaveBeenCalled()
-        expect(rows()[0].querySelector('.lh-field-error')?.textContent).toMatch(/capitals, digits/)
+        expect(rows()[0].querySelector('.lh-field-error')?.textContent).toMatch(/capital letters, digits/)
         expect(tag.value).toBe('WAYSTONE')
     })
 
@@ -175,7 +174,7 @@ describe('editing a field', () => {
         tag.dispatchEvent(new Event('change'))
 
         expect(onChange).not.toHaveBeenCalled()
-        expect(rows()[0].querySelector('.lh-field-error')?.textContent).toMatch(/already a field/)
+        expect(rows()[0].querySelector('.lh-field-error')?.textContent).toMatch(/already exists/)
     })
 
     it('lets a field keep its own tag', () => {
@@ -210,7 +209,7 @@ describe('adding and deleting', () => {
         // A field you just made and cannot see updating is exactly the
         // confusion this editor exists to remove.
         const { onChange } = mount()
-        button('Add a field').click()
+        button('Add field').click()
 
         const added = onChange.mock.calls[0]![0]
         expect(added).toHaveLength(3)
@@ -220,7 +219,7 @@ describe('adding and deleting', () => {
 
     it('does not collide with an existing placeholder tag', () => {
         const { onChange } = mount([{ tag: 'NEW_FIELD_1', enabled: true }])
-        button('Add a field').click()
+        button('Add field').click()
         expect(onChange.mock.calls[0]![0][1].tag).toBe('NEW_FIELD_2')
     })
 
@@ -335,8 +334,8 @@ describe('a field that is on but has no instruction', () => {
     it('says so in the summary, beside the reassuring count', () => {
         mount(silent)
 
-        expect(root.textContent).toContain('1 of 1 switched on')
-        expect(root.textContent).toContain('has no instruction')
+        expect(root.textContent).toContain('1 of 1 on')
+        expect(root.textContent).toContain('1 field that is on has no instruction, so it does not update.')
         expect(root.querySelector('.lh-field-warning')).not.toBeNull()
     })
 
@@ -344,7 +343,7 @@ describe('a field that is on but has no instruction', () => {
     it('marks the row it is about', () => {
         mount(silent)
 
-        expect(root.querySelector('.lh-field-silent')?.textContent).toBe('no instruction')
+        expect(root.querySelector('.lh-field-silent')?.textContent).toBe('No instruction')
         expect(rows()[0]!.classList.contains('lh-field--silent')).toBe(true)
     })
 
@@ -362,7 +361,7 @@ describe('a field that is on but has no instruction', () => {
     it('is what "Add a field" produces, and it is marked immediately', () => {
         const { onChange } = mount([])
 
-        button('Add a field').click()
+        button('Add field').click()
 
         const created = onChange.mock.calls[0]![0] as CustomField[]
         expect(created[0]!.enabled).toBe(true)
@@ -397,7 +396,8 @@ describe('export, import and clear all (72b)', () => {
         const changes: CustomField[][] = []
         let picked: string | null = JSON.stringify({ adventuretimeCustomFields: [{ tag: 'SEA', label: 'Sea', icon: '🌊', prompt: 's', enabled: true }] })
         let confirmed = true
-        const withTools: CustomFieldsHost = { ...host, download: (name, text) => { downloads.push([name, text]) }, pickJson: async () => picked, confirm: async () => confirmed }
+        const asks: string[][] = []
+        const withTools: CustomFieldsHost = { ...host, download: (name, text) => { downloads.push([name, text]) }, pickJson: async () => picked, confirm: async (...asked) => { asks.push(asked); return confirmed } }
         mountCustomFieldsEditor(root, withTools, FIELDS, (fields) => { changes.push(fields) })
         const button = (f: string) => root.querySelector(`[data-lh-field="${f}"]`) as HTMLButtonElement
         const note = () => root.querySelector('[data-lh-field="fields-tools-note"]')!.textContent
@@ -427,6 +427,7 @@ describe('export, import and clear all (72b)', () => {
         confirmed = true
         button('fields-clear').click()
         await settle()
+        expect(asks[0]).toEqual(['Remove all fields', 'Remove all 3 custom fields? This cannot be undone. A cartridge you exported earlier still holds them.', 'Remove all'])
         expect(changes).toHaveLength(2)
         expect(changes[1]).toEqual([])
         expect(note()).toBe('Removed 3 fields.')
@@ -438,3 +439,106 @@ describe('export, import and clear all (72b)', () => {
         expect(bare.querySelector('[data-lh-field="fields-clear"]')).not.toBeNull()
     })
 })
+
+// Phase 96, stage 2c: the deck's text, the help behind `[?]`, and a delete that asks.
+describe('the help and the delete (96)', () => {
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 0))
+    const notes = (scope: ParentNode = root) => Array.from(scope.querySelectorAll<HTMLElement>('.lh-help-note'))
+
+    it('asks before a field is deleted: declined deletes nothing, accepted deletes that field', async () => {
+        const asks: string[][] = []
+        let answer = false
+        const asking: CustomFieldsHost = { ...host, confirm: async (...asked) => { asks.push(asked); return answer } }
+        const onChange = vi.fn()
+        mountCustomFieldsEditor(root, asking, FIELDS, onChange)
+        const remove = () => rows()[0]!.querySelector('.lh-field-delete') as HTMLButtonElement
+        expect(remove().textContent).toBe('Delete field')
+
+        remove().click()
+        await settle()
+        expect(asks).toEqual([['Delete field', 'Delete the field "Waystone"? This cannot be undone.', 'Delete']])
+        expect(onChange).not.toHaveBeenCalled()
+        expect(rows()).toHaveLength(2)
+
+        answer = true
+        remove().click()
+        await settle()
+        expect(onChange).toHaveBeenCalledTimes(1)
+        expect(onChange.mock.calls[0]![0]).toEqual([FIELDS[1]])
+        expect(rows()).toHaveLength(1)
+    })
+
+    it('deletes the field whose button was pressed, not the first', async () => {
+        const onChange = vi.fn()
+        mountCustomFieldsEditor(root, { ...host, confirm: async () => true }, FIELDS, onChange)
+        ;(rows()[1]!.querySelector('.lh-field-delete') as HTMLButtonElement).click()
+        await settle()
+        expect(onChange.mock.calls[0]![0]).toEqual(FIELDS.filter((_, i) => i !== 1))
+    })
+
+    it('names an unnamed field by its tag in the question', async () => {
+        const asks: string[][] = []
+        mountCustomFieldsEditor(root, { ...host, confirm: async (...asked) => { asks.push(asked); return false } }, [{ tag: 'EMBERS', enabled: false }], () => undefined)
+        ;(root.querySelector('.lh-field-delete') as HTMLButtonElement).click()
+        await settle()
+        expect(asks[0]![1]).toBe('Delete the field "EMBERS"? This cannot be undone.')
+    })
+
+    it('puts each tool’s help behind a [?] after its button, with the remove-all warning in the open', () => {
+        mountCustomFieldsEditor(root, { ...host, download: () => undefined, pickJson: async () => null }, FIELDS, () => undefined)
+        const tools = root.querySelector('.lh-fields-tools')!
+        const labels = Array.from(tools.querySelectorAll('button:not(.lh-help-tip)')).map((b) => b.textContent)
+        expect(labels).toEqual(['Export fields', 'Import fields', 'Remove all fields'])
+        expect(Array.from(tools.querySelectorAll('[title]'))).toEqual([])
+        expect(tools.querySelectorAll('.lh-help-tip')).toHaveLength(3)
+        expect(tools.querySelector('.lh-fields-tools-warning')!.textContent).toBe('Removes every custom field.')
+        const help = notes(root.querySelector('.lh-fields-tools-help')!)
+        expect(help.map((n) => n.textContent)).toEqual([
+            'Saves every custom field as one JSON file. Use it as a backup, or import it into another install.',
+            'Adds the fields from a custom fields file. A field whose tag already exists here is replaced.',
+            'The memo blocks the fields made stay until a tracker pass drops them. A game system linked to a removed field loses its tracker module.',
+        ])
+        expect(help.every((n) => n.hidden)).toBe(true)
+    })
+
+    it('gives Tag, Name, Icon and Instruction a [?] each, outside any <label>, and keeps the example with the instruction’s help', () => {
+        mount()
+        const body = rows()[0]!.querySelector('.lh-field-body')!
+        const help = notes(body)
+        expect(help.map((n) => n.firstChild?.textContent)).toEqual([
+            'The block name the model writes, without brackets.',
+            'Shown on the card. Leave blank to use the tag.',
+            'An emoji for the card header.',
+            'What the tracker is told about this block on every pass. Describe the values and how they change, and end with the exact block format you want back. If it is empty, the tracker is not told about the block.',
+        ])
+        expect(help.every((n) => n.hidden && !n.closest('label'))).toBe(true)
+        expect(Array.from(body.querySelectorAll('.lh-help-tip')).every((b) => !b.closest('label'))).toBe(true)
+        expect(help[3]!.querySelector('.lh-field-example')!.textContent).toContain('[QUIVER]')
+        // No help stands in the open, and each caption still labels its box.
+        expect(body.querySelector('small.lh-help')).toBeNull()
+        const caption = body.querySelector('label') as HTMLLabelElement
+        expect(caption.textContent).toBe('Tag')
+        expect(body.querySelector(`#${caption.getAttribute('for')}`)).toBe(inputs(0)[0])
+    })
+
+    it('explains the No instruction chip behind a [?] that opens its row', () => {
+        mount([{ tag: 'QUIVER', prompt: '', enabled: true }])
+        const row = rows()[0] as HTMLDetailsElement
+        const chip = row.querySelector('.lh-field-silent') as HTMLElement
+        expect(chip.title).toBe('')
+        const tip = chip.nextElementSibling as HTMLButtonElement
+        expect(tip.classList.contains('lh-help-tip')).toBe(true)
+        const note = row.querySelector('.lh-field-head + .lh-help-note') as HTMLElement
+        expect(note.textContent).toBe('This field is on, but it has no instruction. The tracker is not told about it, so it does not update.')
+        expect(note.hidden).toBe(true)
+        tip.click()
+        expect(note.hidden).toBe(false)
+        expect(row.open).toBe(true)
+    })
+
+    it('names the switch for what it does', () => {
+        mount()
+        expect(toggles()[0]!.title).toBe('Update this block on every pass')
+    })
+})
+

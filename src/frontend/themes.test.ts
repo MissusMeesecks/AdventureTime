@@ -13,7 +13,9 @@ describe('the visual themes (74a)', () => {
         expect(options.find((o) => o.id === 'hacker')?.label).toBe('Hacker')
         expect(options.find((o) => o.id === 'pacific')?.label).toBe('Pacific Cove')
         // Custom is the wizard's (74b).
-        expect(options[options.length - 1]).toEqual({ id: 'custom', label: '✨ Custom (AI Wizard)', available: true })
+        expect(options[options.length - 1]).toEqual({ id: 'custom', label: '✨ Custom (AI wizard)', available: true })
+        // The pane's own case over the generated label, which a pin move may rename: this fails if it does (96).
+        expect(LEGACY_THEME_OPTIONS[LEGACY_THEME_OPTIONS.length - 1]).toEqual({ value: 'custom', label: '✨ Custom (AI Wizard)' })
     })
 
     it('reads a stored theme, and the host’s colours for anything else', () => {

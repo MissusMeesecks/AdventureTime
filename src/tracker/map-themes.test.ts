@@ -5,7 +5,9 @@ import {
     DEFAULT_MAP_THEME_PRESET_ID,
     FACTORY_MAP_THEME_PRESETS,
     MAP_THEME_FIELDS,
+    MAP_THEME_FIELD_DISPLAY_NAMES,
     applyMapThemeToRoot,
+    mapThemeFieldLabel,
     mapThemePresetName,
     normalizeMapTheme,
     readMapTheme,
@@ -81,5 +83,24 @@ describe('the Map Themes (74g)', () => {
         expect(vars['--rt-map-accent-soft']).toBe('rgba(18, 52, 86, 0.28)')
         expect(vars['--rt-map-background-image']).toBe('url("https://host/map texture.jpg")')
         expect(vars['--rt-map-background-overlay']).toBe('rgba(12, 12, 12, 0.25)')
+    })
+
+    it('renames five colour fields for display, each keyed by a name the generated file still carries (96)', () => {
+        const generated = MAP_THEME_FIELDS.map((field) => field.label)
+        expect(Object.keys(MAP_THEME_FIELD_DISPLAY_NAMES)).toEqual(['Textbox background', 'Visited text', 'Closed / locked', 'Blocked / destroyed', 'Other'])
+        // A pin move that renames one of these leaves its override dead: this fails then.
+        for (const original of Object.keys(MAP_THEME_FIELD_DISPLAY_NAMES)) expect(generated.filter((label) => label === original), original).toEqual([original])
+        expect(Object.values(MAP_THEME_FIELD_DISPLAY_NAMES)).toEqual(['Hover card background', 'Visited area text', 'Closed or locked route', 'Blocked or destroyed route', 'Other asset'])
+        const byKey = Object.fromEntries(MAP_THEME_FIELDS.map((field) => [field.key, mapThemeFieldLabel(field)]))
+        expect(byKey.textbox).toBe('Hover card background')
+        expect(byKey.textMuted).toBe('Visited area text')
+        expect(byKey.routeLocked).toBe('Closed or locked route')
+        expect(byKey.routeBlocked).toBe('Blocked or destroyed route')
+        expect(byKey.other).toBe('Other asset')
+        expect(byKey.background).toBe('Canvas')
+        // A name off the prototype is no override.
+        expect(mapThemeFieldLabel({ label: 'constructor' })).toBe('constructor')
+        // The generated file keeps the legacy's words.
+        expect(generated).toContain('Textbox background')
     })
 })

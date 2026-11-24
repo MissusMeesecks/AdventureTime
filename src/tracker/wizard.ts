@@ -22,7 +22,7 @@
  */
 
 import { getMarkerLibraryKeys, MARKER_TYPE_MAP } from './markers.js'
-import { createWizardLegacy } from './wizard-legacy.js'
+import { createWizardExportLegacy, createWizardLegacy } from './wizard-legacy.js'
 
 export type EffectOwner = 'tracker' | 'gm'
 
@@ -177,6 +177,37 @@ export const restoreUserMacro: (text: string, names?: string[]) => string = lega
 /** One model reply into a draft. Throws when neither half is there. */
 export function parseWizardResponse(raw: string, names: string[] = []): WizardDraft {
     return legacy.parseWizardResponse(raw, names) as WizardDraft
+}
+
+/**
+ * A game system pasted as Multihog's shareable text (the maintainer's ask of
+ * 2026-11-24, departure 174): the `<meta …/>` line and the `<gm_section>` and
+ * `<tracker_module>` blocks its **Export** writes, read by the legacy's own
+ * parser, as its **Import** reads them. No names are passed: the text was
+ * exported from a store that already holds `{{user}}`, not a model's reply.
+ * Multihog's export writes a `"` in a name, an icon or a label as `&quot;`
+ * and its import never turns it back (a legacy bug); here it is turned back.
+ * Throws, in the panel's words, when neither block is there.
+ */
+export function parseSharedSystemText(text: string): WizardDraft {
+    let draft: WizardDraft
+    try {
+        draft = legacy.parseWizardResponse(text, []) as WizardDraft
+    } catch {
+        throw new Error('The text holds no <gm_section> or <tracker_module> block. Paste the whole text from Multihog’s Export.')
+    }
+    const unquote = (value: string): string => value.replace(/&quot;/g, '"')
+    return { ...draft, name: unquote(draft.name), icon: unquote(draft.icon), trackerLabel: unquote(draft.trackerLabel), trackerIcon: unquote(draft.trackerIcon) }
+}
+
+/**
+ * One saved system as Multihog's shareable text, by the legacy's own
+ * `exportGameSystemToText` over the three lists: what Multihog's **Export**
+ * shows, so it pastes into Multihog's **Import** and into ours.
+ */
+export function exportSharedSystemText(system: Record<string, unknown>, target: WizardSaveTarget): string {
+    const exporter = createWizardExportLegacy(() => target, legacy.normalizeDrivers)
+    return exporter.exportGameSystemToText({ ...system, name: String(system.name ?? '') }) as string
 }
 
 /** A revision or regeneration reply: the halves it carries. */

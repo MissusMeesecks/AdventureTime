@@ -17,6 +17,8 @@
 
 import type { CardChoice, ImportResult } from '../protocol.js'
 import { IMPORT_WORD_OPTIONS, normalizeCardWords } from '../tracker/creator.js'
+import { CREATOR_HELP } from './creator-fold.js'
+import { createHelpTip, withHelp } from './help-tip.js'
 import { describeCardSteps, reasonText } from './player-card-fold.js'
 
 export interface ImportFoldHost {
@@ -64,6 +66,9 @@ export const IMPORT_FOLD_CSS = `
 .lh-import-body { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
 .lh-import-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; font-size: 0.85em; }
 .lh-import-row label { opacity: 0.75; white-space: nowrap; }
+.lh-import-caption { display: flex; align-items: center; gap: 4px; font-size: 0.8em; }
+.lh-import-caption > span { opacity: 0.75; }
+.lh-import-custom[hidden] { display: none; }
 .lh-import-custom { width: 5em; }
 .lh-import-list { display: flex; flex-direction: column; gap: 4px; max-height: 260px; overflow-y: auto; }
 .lh-import-card { display: flex; align-items: center; gap: 8px; padding: 5px 7px; border: 1px solid var(--lh-accent-dim, var(--lumiverse-border, rgba(255,255,255,0.12))); border-radius: 5px; }
@@ -87,37 +92,37 @@ export function createImportFold(host: ImportFoldHost): ImportFold {
 
     const root = el('details', { class: 'lh-import' }) as HTMLDetailsElement
     const summary = el('summary')
-    summary.textContent = 'Import a character card'
+    summary.textContent = 'From a character card'
     const body = el('div', { class: 'lh-import-body' })
-    const lead = el('div', { class: 'lh-world-lead' })
-    lead.textContent = 'One of your character cards becomes the player. Add as is keeps the card’s writing and fixes only what the setting makes impossible; Fit into story rewrites it to belong in the campaign. The sheet is written first, then the persona and the Player Card as the switches say, with the creator’s level, genre and gear tier.'
 
     const wordsRow = el('div', { class: 'lh-import-row' })
     const wordsLabel = el('label')
-    wordsLabel.textContent = 'Player Card length'
+    wordsLabel.textContent = 'Player Card length (words)'
     const words = el('select', { class: 'lh-input', 'data-lh-field': 'import-words-input' }) as HTMLSelectElement
     for (const o of IMPORT_WORD_OPTIONS) words.append(option(el, String(o.value), o.label))
     words.append(option(el, 'custom', 'Custom…'))
     const custom = el('input', { type: 'number', class: 'lh-input lh-import-custom', min: '50', max: '5000', step: '25', value: '150', 'data-lh-field': 'import-words-custom-input', 'aria-label': 'Custom Player Card length' }) as HTMLInputElement
     custom.hidden = true
-    const wordsNote = el('span')
-    wordsNote.textContent = '(Fit into story only)'
-    wordsRow.append(wordsLabel, words, custom, wordsNote)
+    const wordsHelp = createHelpTip(el, 'Player Card length (words)', 'Only Fit into story uses this length. Add as is keeps the card’s own writing.')
+    wordsRow.append(wordsLabel, wordsHelp.button, words, custom, wordsHelp.note)
     words.addEventListener('change', () => { custom.hidden = words.value !== 'custom'; if (!custom.hidden) custom.focus() })
 
     const switches = el('div', { class: 'lh-ways-switches' })
     const cardLabel = el('label', { class: 'lh-world-switch' })
     const playerCard = el('input', { type: 'checkbox', 'data-lh-field': 'import-player-card-input' }) as HTMLInputElement
     const cardText = el('span')
-    cardText.textContent = 'Write a Player Card from the card (recommended)'
+    cardText.textContent = 'Write a Player Card'
     cardLabel.append(playerCard, cardText)
     const personaLabel = el('label', { class: 'lh-world-switch' })
     const persona = el('input', { type: 'checkbox', 'data-lh-field': 'import-persona-input' }) as HTMLInputElement
     persona.checked = true
     const personaText = el('span')
-    personaText.textContent = 'Create a persona with the character’s name (recommended)'
+    personaText.textContent = 'Create a matching persona'
     personaLabel.append(persona, personaText)
-    switches.append(cardLabel, personaLabel)
+    switches.append(
+        withHelp(el, cardLabel, 'Write a Player Card', 'When on, a Player Card is written from the card’s own text. The narrator sees the Player Card on every reply. Default: off. Recommended.'),
+        withHelp(el, personaLabel, 'Create a matching persona', CREATOR_HELP.persona),
+    )
     playerCard.addEventListener('change', () => { host.savePrefs({ creatorPlayerCard: playerCard.checked }).catch(host.fail) })
     persona.addEventListener('change', () => { host.savePrefs({ creatorPersona: persona.checked }).catch(host.fail) })
 
@@ -129,7 +134,13 @@ export function createImportFold(host: ImportFoldHost): ImportFold {
     const list = el('div', { class: 'lh-import-list', 'data-lh-field': 'import-list' })
     const live = el('div', { class: 'lh-world-running', hidden: 'hidden' })
     const note = el('div', { class: 'lh-world-note lh-import-note' })
-    body.append(lead, wordsRow, switches, searchRow, list, live, note)
+    // What was the lead paragraph and the two buttons' tooltips: the list's own caption and its [?].
+    const caption = el('div', { class: 'lh-import-caption', 'data-lh-field': 'import-caption' })
+    const captionText = el('span')
+    captionText.textContent = 'Your character cards'
+    const captionHelp = createHelpTip(el, 'Your character cards', 'One of your character cards becomes the player.\nFit into story: the character is rewritten to fit the current campaign.\nAdd as is: the card’s writing is kept, and only what the setting makes impossible is fixed.\nThe sheet is written first, then the persona and the Player Card if their switches are on. The Character creator’s starting level, genre and starting gear apply.')
+    caption.append(captionText, captionHelp.button)
+    body.append(wordsRow, switches, caption, captionHelp.note, searchRow, list, live, note)
     root.append(summary, body)
 
     let chatId: string | null = null
@@ -188,10 +199,8 @@ export function createImportFold(host: ImportFoldHost): ImportFold {
         const buttons = el('div', { class: 'lh-import-buttons' })
         const fit = el('button', { type: 'button', class: 'lh-button', 'aria-label': `Fit “${card.name}” into the story` }) as HTMLButtonElement
         fit.textContent = '🤖 Fit into story'
-        fit.title = 'Full adaptation: the character is rewritten to fit the current campaign setting.'
         const asIs = el('button', { type: 'button', class: 'lh-button lh-button--quiet', 'aria-label': `Add “${card.name}” as is` }) as HTMLButtonElement
         asIs.textContent = '📋 Add as is'
-        asIs.title = 'Minimal review: only logical world or era impossibilities are fixed. The original writing is kept.'
         const busy = !!running || !chatId
         fit.disabled = busy
         asIs.disabled = busy

@@ -85,6 +85,22 @@ describe('rendering', () => {
         expect(root.querySelector<HTMLTextAreaElement>('textarea')!.value).toBe('<script>alert(1)</script>')
     })
 
+    it('puts a field’s help behind a [?] after its label, the text under the row and hidden (96)', () => {
+        const { root } = mount()
+        const row = Array.from(root.querySelectorAll<HTMLElement>('.lh-row')).find((r) => r.querySelector('.lh-label-text')?.textContent === 'Modules')!
+        const label = row.querySelector('.lh-label')!
+        expect(Array.from(label.children).map((c) => c.className)).toEqual(['lh-label-text', 'lh-help-tip'])
+        const note = row.lastElementChild as HTMLElement
+        expect(note.className).toBe('lh-help-note')
+        expect([note.textContent, note.hidden]).toEqual(['No editor yet.', true])
+        expect(label.querySelector('.lh-help-tip')!.getAttribute('aria-label')).toBe('Help: Modules')
+        ;(label.querySelector('.lh-help-tip') as HTMLButtonElement).click()
+        expect(note.hidden).toBe(false)
+        // No always-visible help line is left, and a row without help has no button.
+        expect(root.querySelector('.lh-help')).toBeNull()
+        expect(root.querySelectorAll('.lh-help-tip').length).toBeLessThan(root.querySelectorAll('.lh-row').length)
+    })
+
     it('offers a reset control only when the panel supplies one', () => {
         const { root } = mount()
         expect(root.querySelector('.lh-reset')).toBeNull()
@@ -242,8 +258,11 @@ describe('the section host (63)', () => {
         const section = root.querySelector('.lh-section') as HTMLDetailsElement
         expect(section.classList.contains('lh-card')).toBe(true)
         const summary = section.querySelector('summary')!
-        expect(Array.from(summary.children).map((c) => c.className)).toEqual(['lh-card-icon', 'lh-section-title lh-card-title', 'lh-reset', 'lh-chevron'])
-        expect(summary.querySelector('.lh-card-icon')!.textContent).toBe('🧪')
+        // No action in a header (96, finding 4): the reset is at the card's foot, its last child.
+        expect(Array.from(summary.children).map((c) => c.className)).toEqual(['lh-card-icon lh-icon', 'lh-section-title lh-card-title', 'lh-chevron'])
+        expect(section.lastElementChild!.className).toBe('lh-card-foot')
+        expect(section.lastElementChild!.querySelector('.lh-reset')!.textContent).toBe('Reset to factory')
+        expect(summary.querySelector('.lh-card-icon svg')).not.toBeNull()
         expect(section.open).toBe(false)
     })
 

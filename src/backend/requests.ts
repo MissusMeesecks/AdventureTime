@@ -15,6 +15,9 @@ import {
 } from '../cartridges.js'
 import { CARTRIDGE_PAYLOAD_GROUPS } from '../state/payload-groups.js'
 import { extractChoices } from '../tracker/cyoa.js'
+import { isCyoaActive, type RulebookSettings } from '../tracker/rulebook.js'
+import type { CompanionActions } from './companion.js'
+import { summarizeAgentAction, summarizeMapAction, summarizeTrackerAction } from './companion-actions.js'
 import { findByMessage } from '../tracker/history-view.js'
 import { isFactoryPortraitPresetId, isFactoryPortraitPresetName, locationPromptForToggle, resolvePortraitPresetBundle, savedPresetId, type SavedPortraitPreset } from '../tracker/portrait-presets.js'
 import type { SettingsBag } from '../settings/schema.js'
@@ -52,6 +55,7 @@ import type {
     CampaignRecordsResult,
     WorldConsolidateResult,
     NarratorCardResult,
+    NarratorStatusDTO,
     RecordEntryResult,
     RecordRemoveMapResult,
     CreatorResult,
@@ -91,6 +95,7 @@ import type {
     BooksListResult,
     ThemeGenerateResult,
     CardAiEditResult,
+    CompanionState,
 } from '../protocol.js'
 import type { SettingsStore } from './settings-store.js'
 import type { MemoStore, MemoRecord } from './memo-store.js'
@@ -168,11 +173,11 @@ export interface RequestDeps {
         state: MapStore
         enabled(userId: string | undefined): Promise<boolean>
         /** The architect's switch and settings (34a). */
-        architect(userId: string | undefined): Promise<{ toolRegistered: boolean; opener: 'tool' | 'text'; lookback: number; systemPrompt: string }>
+        architect(userId: string | undefined): Promise<{ toolRegistered: boolean; opener: 'tool' | 'text'; lookback: number }>
         /** The updater (34b): a pass now, its settings, and whether one is running. */
         updater: {
             run(request: { chatId: string; userId: string | undefined; instruction?: string; lookback?: number; siteRoot?: string }): Promise<MapUpdaterResult>
-            options(userId: string | undefined): Promise<{ enabled: boolean; runEvery: number; lookback: number; systemPrompt: string }>
+            options(userId: string | undefined): Promise<{ enabled: boolean; runEvery: number; lookback: number }>
             running(chatId: string): boolean
         }
         /** The map on screen (34d): the party's site, or a named one, drawn. */
@@ -199,12 +204,21 @@ export interface RequestDeps {
     /** The AI Theme Wizard (74b): one model call on the tracker's connection; absent when the build cannot generate. */
     theme?: { generate(userId: string | undefined, description: string, iterate: boolean): Promise<ThemeGenerateResult> }
     /** Edit with AI (78c): one call on the agent's connection with Multihog's editor prompt. */
+    /** The Adventure Companion (100a): its conversation per chat. */
+    companion?: {
+        get(chatId: string, userId: string | undefined): Promise<CompanionState>
+        send(chatId: string, userId: string | undefined, text: string, actions?: CompanionActions): Promise<CompanionState>
+        confirm(chatId: string, userId: string | undefined, send: boolean, actions?: CompanionActions): Promise<CompanionState>
+        clear(chatId: string, userId: string | undefined): Promise<CompanionState>
+    }
     cardEdit?: { edit(userId: string | undefined, kind: 'npc' | 'pc', content: string, instructions: string): Promise<CardAiEditResult> }
     /** The host's character cards (72b): listed by name and made, for *Create narrator card*; absent when the grant is missing. */
     characters?: {
         list(userId: string | undefined): Promise<Array<{ id: string; name: string }>>
         create(name: string, userId: string | undefined): Promise<{ id: string; name: string }>
     }
+    /** The card the chat is from (98): its id, null for a chat with none, undefined when the record cannot be read. */
+    chatCard?(chatId: string, userId: string | undefined): Promise<string | null | undefined>
     /** The chat's messages, for the choices under each reply (Phase 31). */
     chat?: { getMessages(chatId: string): Promise<Array<{ id: string; role: string; content: string }>> }
     /**
@@ -411,7 +425,7 @@ async function portraitsPresetsLoad(deps: RequestDeps, userId: string | undefine
 async function portraitsPresetsSave(deps: RequestDeps, userId: string | undefined, params: Record<string, unknown> | undefined): Promise<SettingsResult> {
     const name = typeof params?.name === 'string' ? params.name.trim() : ''
     if (!name) throw new Error('portraits.presets.save requires a name')
-    if (isFactoryPortraitPresetName(name)) throw new Error(`"${name}" is a factory art style’s name. Choose a different name for your saved setup.`)
+    if (isFactoryPortraitPresetName(name)) throw new Error(`"${name}" is a built-in art style’s name. Choose a different name for your saved setup.`)
     const settings = await deps.store.load(userId)
     const saved = { ...((settings.savedPortraitPromptPresets ?? {}) as Record<string, SavedPortraitPreset>) }
     if (saved[name] && params?.overwrite !== true) throw new Error(`A setup named "${name}" already exists`)
@@ -1243,10 +1257,33 @@ async function restoreTrackerMemo(
  * empty grant list, because "nothing is granted" and "cannot tell" need
  * different words on screen.
  */
-async function getStatus(deps: RequestDeps, userId: string | undefined): Promise<StatusResult> {
+async function getStatus(deps: RequestDeps, userId: string | undefined, params?: Record<string, unknown>): Promise<StatusResult> {
     const base: StatusResult = deps.status ? await deps.status(userId) : { version: '', granted: [], missing: [], checked: false }
     const stockUpgrade = deps.stockUpgrade?.last(userId)
-    return stockUpgrade ? { ...base, stockUpgrade } : base
+    const narrator = await narratorStatus(deps, userId, typeof params?.chatId === 'string' && params.chatId.trim() ? params.chatId.trim() : null)
+    return { ...base, ...(stockUpgrade ? { stockUpgrade } : {}), ...(narrator ? { narrator } : {}) }
+}
+
+/**
+ * The narrator card and the open chat (98): whether a card under the *Narrator card name* exists, and whether
+ * the open chat is from it. Reads only: the cards' list (the `characters` grant) and the chat's own record (the
+ * `chats` grant, as 51-bis reads it). Fails soft — a list that cannot be read is no answer, and a chat that
+ * cannot be read is `unknown`, so the checklist says what it could see and nothing more.
+ */
+export async function narratorStatus(deps: RequestDeps, userId: string | undefined, chatId: string | null): Promise<NarratorStatusDTO | undefined> {
+    if (!deps.characters) return undefined
+    let cards: Array<{ id: string; name: string }>
+    try { cards = await deps.characters.list(userId) } catch { return undefined }
+    const prefs = deps.prefs ? await deps.prefs.load(userId).catch(() => null) : null
+    const name = (typeof prefs?.narratorCardName === 'string' ? prefs.narratorCardName.trim() : '') || 'Game Master'
+    const card = cards.find((c) => c.name.trim().toLowerCase() === name.toLowerCase())
+    if (!chatId) return { name, exists: !!card, chat: 'none', chatCardName: '' }
+    if (!deps.chatCard) return { name, exists: !!card, chat: 'unknown', chatCardName: '' }
+    let cardId: string | null | undefined
+    try { cardId = await deps.chatCard(chatId, userId) } catch { cardId = undefined }
+    if (cardId === undefined) return { name, exists: !!card, chat: 'unknown', chatCardName: '' }
+    if (card && cardId === card.id) return { name, exists: true, chat: 'narrator', chatCardName: card.name }
+    return { name, exists: !!card, chat: 'other', chatCardName: cards.find((c) => c.id === cardId)?.name ?? '' }
 }
 
 // ── Debug & factory reset (72a) ───────────────────────────────────────────
@@ -1316,6 +1353,68 @@ async function themeGenerate(deps: RequestDeps, userId: string | undefined, para
     if (!deps.theme) throw new Error('This build cannot run the AI Theme Wizard.')
     const p = (params ?? {}) as { description?: unknown; iterate?: unknown }
     return deps.theme.generate(userId, typeof p.description === 'string' ? p.description : '', p.iterate === true)
+}
+
+const COMPANION_UNAVAILABLE = 'This build has no Adventure Companion.'
+
+/** The Adventure Companion (100a): the conversation of a chat, a message sent to it, the conversation cleared. */
+async function companionGet(deps: RequestDeps, userId: string | undefined, params: Record<string, unknown> | undefined): Promise<CompanionState> {
+    const chatId = requireChatId(params, 'companion.get')
+    if (!deps.companion) throw new Error(COMPANION_UNAVAILABLE)
+    return deps.companion.get(chatId, userId)
+}
+
+async function companionSend(deps: RequestDeps, userId: string | undefined, params: Record<string, unknown> | undefined): Promise<CompanionState> {
+    const chatId = requireChatId(params, 'companion.send')
+    if (!deps.companion) throw new Error(COMPANION_UNAVAILABLE)
+    return deps.companion.send(chatId, userId, typeof params?.text === 'string' ? params.text : '', companionActions(deps))
+}
+
+/** A proposed player turn answered (100c): sent as the player, or dropped. */
+async function companionConfirm(deps: RequestDeps, userId: string | undefined, params: Record<string, unknown> | undefined): Promise<CompanionState> {
+    const chatId = requireChatId(params, 'companion.confirm')
+    if (!deps.companion) throw new Error(COMPANION_UNAVAILABLE)
+    return deps.companion.confirm(chatId, userId, params?.send === true, companionActions(deps))
+}
+
+/**
+ * The Companion's four actions (100c), each through the handler the panel's
+ * own control reaches: the tracker's and the agent's send bars, the Map
+ * Updater's instruction box, and a choice button's send. So an action does
+ * what pressing the control with the same words would, events and reports
+ * included.
+ */
+function companionActions(deps: RequestDeps): CompanionActions {
+    return {
+        async tracker(chatId, userId, instruction) {
+            const since = new Date().toISOString()
+            const result = await instructTracker(deps, userId, { chatId, instruction })
+            return summarizeTrackerAction(result.lastPass, since)
+        },
+        async agent(chatId, userId, instruction) {
+            return summarizeAgentAction(await instructAgent(deps, userId, { chatId, instruction }))
+        },
+        async map(chatId, userId, instruction) {
+            return summarizeMapAction(await mapUpdate(deps, userId, { chatId, instruction }))
+        },
+        async turn(chatId, userId) {
+            const cyoa = isCyoaActive((await deps.store.load(userId)) as RulebookSettings)
+            if (!cyoa || !deps.chat) return { cyoa, choices: [] }
+            const messages = await deps.chat.getMessages(chatId)
+            // The choices on offer are the last message's alone: a reply the player has answered offers none.
+            const last = messages[messages.length - 1]
+            return { cyoa, choices: last && last.role === 'assistant' ? extractChoices(last.content) : [] }
+        },
+        async act(chatId, userId, text) {
+            await choose(deps, userId, { chatId, text })
+        },
+    }
+}
+
+async function companionClear(deps: RequestDeps, userId: string | undefined, params: Record<string, unknown> | undefined): Promise<CompanionState> {
+    const chatId = requireChatId(params, 'companion.clear')
+    if (!deps.companion) throw new Error(COMPANION_UNAVAILABLE)
+    return deps.companion.clear(chatId, userId)
 }
 
 /** Edit with AI (78c): the kind, the text as it stands and the instructions; the revised text back, nothing written. */
@@ -1445,7 +1544,7 @@ async function worldPurge(deps: RequestDeps, userId: string | undefined, params:
 async function mapStatus(deps: RequestDeps, userId: string | undefined, params: Record<string, unknown> | undefined): Promise<MapStatusResult> {
     const chatId = requireChatId(params, 'map.get')
     if (!deps.map) {
-        return { enabled: false, currentLocation: '', sites: [], activeSiteRoot: '', mentionedSiteRoots: [], canonChars: 0, syncedAt: '', architect: { toolRegistered: false, opener: 'tool', lookback: 12, systemPrompt: '' }, updater: { enabled: false, runEvery: 1, lookback: 4, systemPrompt: '', running: false }, evolution: { ...EVOLUTION_UNAVAILABLE }, unavailable: 'This build cannot read maps.' }
+        return { enabled: false, currentLocation: '', sites: [], activeSiteRoot: '', mentionedSiteRoots: [], canonChars: 0, syncedAt: '', architect: { toolRegistered: false, opener: 'tool', lookback: 12 }, updater: { enabled: false, runEvery: 1, lookback: 4, running: false }, evolution: { ...EVOLUTION_UNAVAILABLE }, unavailable: 'This build cannot read maps.' }
     }
     const record = await deps.map.sync.refresh(chatId, userId)
     return {
@@ -1466,7 +1565,7 @@ async function mapStatus(deps: RequestDeps, userId: string | undefined, params: 
     }
 }
 
-const EVOLUTION_UNAVAILABLE: MapEvolutionStatus = { enabled: false, intervalHours: 12, onSiteIntervalHours: 1, onSiteIntervalMinutes: 0, onSitePreset: 'dynamic', scope: 'all', count: 1, randomize: true, selectedRoots: '', worldReportLookback: 5, storyLookback: 20, connectionId: '', systemPrompt: '', compressEnabled: true, compressThreshold: 10000, narratorCommitTokens: 2000, running: false, currentTime: '', lastFired: '', nextDue: '', sites: [] }
+const EVOLUTION_UNAVAILABLE: MapEvolutionStatus = { enabled: false, intervalHours: 12, onSiteIntervalHours: 1, onSiteIntervalMinutes: 0, onSitePreset: 'dynamic', scope: 'all', count: 1, randomize: true, selectedRoots: '', worldReportLookback: 5, storyLookback: 20, connectionId: '', compressEnabled: true, compressThreshold: 10000, narratorCommitTokens: 2000, running: false, currentTime: '', lastFired: '', nextDue: '', sites: [] }
 
 /** A site's own hours between Evolution passes (71d): a number sets them, 0 for never, null or '' clears them. */
 async function mapEvolutionInterval(deps: RequestDeps, userId: string | undefined, params: Record<string, unknown> | undefined): Promise<MapEvolutionIntervalResult> {
@@ -2459,6 +2558,14 @@ export async function handleRequest(
             return booksList(deps, userId)
         case 'theme.generate':
             return themeGenerate(deps, userId, request.params)
+        case 'companion.get':
+            return companionGet(deps, userId, request.params)
+        case 'companion.send':
+            return companionSend(deps, userId, request.params)
+        case 'companion.clear':
+            return companionClear(deps, userId, request.params)
+        case 'companion.confirm':
+            return companionConfirm(deps, userId, request.params)
         case 'records.aiEdit':
             return recordsAiEdit(deps, userId, request.params)
         case 'lore.attach':
@@ -2476,7 +2583,7 @@ export async function handleRequest(
         case 'map.evolve':
             return mapEvolve(deps, userId, request.params)
         case 'status.get':
-            return getStatus(deps, userId)
+            return getStatus(deps, userId, request.params)
         case 'maintenance.resetPrompts':
             return { settings: await maintenanceOf(deps).resetPrompts(userId) }
         case 'maintenance.factoryReset':

@@ -45,10 +45,21 @@ describe('settings schema', () => {
         expect(schemaKeys([narrator])).toEqual(['narrativePacing', 'rngEnabled', 'diceFunctionTool', 'diceD100Mode', 'rngToolD20', 'rngToolD100', 'rngQueueD20', 'rngQueueD100'])
         expect(rulebook.group).toBe('stateTracker')
         expect(schemaKeys([rulebook])).toEqual(['syspromptModules', 'syspromptSectionOrder', 'customSyspromptLibrary'])
+        // The saved order keeps its key and has no row (96): no control in the pane changes it.
+        expect(rulebook.fields.filter((f) => f.hidden).map((f) => f.key)).toEqual(['syspromptSectionOrder'])
+        expect(rulebook.title).toBe('Narrator rulebook')
+        expect(rulebook.fields.filter((f) => !f.hidden).map((f) => f.label)).toEqual(['Stock sections', 'World rules'])
         // The State Tracker card keeps the tracker's own, and nothing of the narrator's.
         const tracker = SETTINGS_SCHEMA.find((s) => s.id === 'stateTracker')!
         expect(schemaKeys([tracker])).toEqual(['systemPromptTemplate', 'use24hTime', 'useDdMmYyFormat', 'modules', 'blockOrder', 'stockPrompts'])
         expect(tracker.group).toBeUndefined()
+        // 96: the order and the stock texts keep their keys and have no row; the modules list draws both.
+        expect(tracker.fields.filter((f) => f.hidden).map((f) => f.key)).toEqual(['blockOrder', 'stockPrompts'])
+        expect(fieldForKey('stockPrompts')!.validate).toBeTypeOf('function')
+        expect(tracker.fields.filter((f) => !f.hidden).map((f) => f.label)).toEqual(['Tracker system prompt', 'Use 24-hour time', 'Use DD/MM/YYYY dates', 'Tracker modules'])
+        for (const field of tracker.fields.filter((f) => !f.hidden)) expect(field.help, field.key).toBeTruthy()
+        expect(tracker.warning).toBe('Reset to factory also resets the Narrator card and the Narrator rulebook.')
+        expect(tracker.description).not.toContain('Reset to factory')
     })
 
     it('lists the seven agent texts the pass reads and none of Basic Mode’s four (72c)', () => {
@@ -70,6 +81,33 @@ describe('settings schema', () => {
 
     it('returns nothing for a key no field owns', () => {
         expect(fieldForKey('somethingElse')).toBeUndefined()
+    })
+})
+
+describe('the Agent prompts card (96)', () => {
+    it('says the deck’s text: the card and three boxes renamed, the help in the deck’s words, Multihog named in the two differences alone', () => {
+        const card = SETTINGS_SCHEMA.find((s) => s.id === 'lorebookAgent')!
+        expect(card.title).toBe('Agent prompts')
+        expect(card.description).toBe('The prompt texts the Lorebook Agent is sent on each pass.')
+        const prompts = card.fields.filter((f) => f.key.startsWith('router') && f.key.endsWith('Template'))
+        expect(Object.fromEntries(prompts.map((f) => [f.key, f.label]))).toEqual({
+            routerSystemPromptTemplate: 'Agent system prompt',
+            routerAgentSharedContextTemplate: 'Shared context template',
+            routerCombatProfileGuidanceAgentTemplate: 'Combat profile guidance',
+            routerAutoPassRestrictionTemplate: 'Automatic-pass restriction',
+            routerManualPassRestrictionTemplate: 'Manual-pass restriction',
+            routerExistingNpcNudgeTemplate: 'Existing-NPC nudge',
+            routerRelSectionAgentTemplate: 'Relationship section',
+        })
+        for (const f of prompts) {
+            expect(f.help, f.key).toBeTruthy()
+            expect(f.help, f.key).not.toContain('the host')
+            expect(f.help!.replace(/\n\nDifferent from Multihog: [^\n]*$/, ''), f.key).not.toContain('Multihog')
+        }
+        expect(prompts.filter((f) => f.help!.includes('Multihog')).map((f) => f.key)).toEqual(['routerSystemPromptTemplate', 'routerAgentSharedContextTemplate'])
+        expect(fieldForKey('routerSystemPromptTemplate')!.help).toContain('\n\nDifferent from Multihog: the three activation sections (basic_instructions, context_maximization, bravery) are not sent.')
+        expect(fieldForKey('routerAgentSharedContextTemplate')!.help).toMatch(/\n\nDifferent from Multihog: the MEMORY LIMIT section is not sent\.$/)
+        expect(fieldForKey('routerAutoPassRestrictionTemplate')!.help).toBe('Sent on an automatic pass after a reply. On that pass the agent may edit an NPC’s Combat Profile and no other [CORE] field. Edits to other fields are refused.')
     })
 })
 

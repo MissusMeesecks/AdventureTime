@@ -29,7 +29,8 @@ export interface SectionsEditorHost {
     save(kind: SectionsKind, sections: CoreSection[]): Promise<{ rebuilt: string[]; kept: string[] }>
     /** A `settings.patch` of the kind's presets key. */
     savePresets(kind: SectionsKind, presets: Record<string, CoreSection[]>): Promise<void>
-    confirm(message: string): Promise<boolean>
+    /** The dialog titled with its action, its button the verb (96, audit finding 25). */
+    confirm(title: string, message: string, confirmLabel: string): Promise<boolean>
 }
 
 export interface SectionsEditor {
@@ -37,25 +38,23 @@ export interface SectionsEditor {
     setSettings(settings: SettingsBag, from: 'commit' | 'reset' | 'load'): void
 }
 
-export const SECTIONS_KEYS: Record<SectionsKind, { sections: string; presets: string; defaults: ReadonlyArray<CoreSection>; title: string; lead: string }> = {
+export const SECTIONS_KEYS: Record<SectionsKind, { sections: string; presets: string; defaults: ReadonlyArray<CoreSection>; title: string }> = {
     npc: {
         sections: 'npcCoreSections',
         presets: 'npcSectionPresets',
         defaults: DEFAULT_NPC_SECTIONS,
         title: '🧩 NPC sections',
-        lead: 'The [CORE] identity sections for all NPCs: the names, colours, emojis and the prompt instructions that tell the agent what to track, in this order. Save rebuilds the agent’s NPC, LOC and FAC instructions where they still read as stock; one you have edited is kept.',
     },
     pc: {
         sections: 'pcCoreSections',
         presets: 'pcSectionPresets',
         defaults: DEFAULT_PC_SECTIONS,
         title: '👤 PC sections',
-        lead: 'The persona sections for Player Characters, used when a character is generated or a card is imported.',
     },
 }
 
 export const SECTIONS_EDITOR_CSS = `
-.lh-sections { display: flex; flex-direction: column; gap: 6px; font-size: 0.85em; }
+.lh-sections { display: flex; flex-direction: column; gap: 6px; font-size: 0.8em; }
 .lh-sections-presets { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.08); }
 .lh-sections-presets select { flex: 1 1 8em; min-width: 8em; }
 .lh-sections-presets input { flex: 1 1 8em; min-width: 7em; }
@@ -67,7 +66,7 @@ export const SECTIONS_EDITOR_CSS = `
 .lh-sec-color { width: 28px; height: 28px; padding: 0; border: none; border-radius: 4px; cursor: pointer; background: none; }
 .lh-sec-name { flex: 1; font-weight: 600; min-width: 6em; }
 .lh-sec-desc { width: 100%; box-sizing: border-box; font-size: 0.92em; }
-.lh-sec-hidden { font-size: 0.75em; opacity: 0.6; font-style: italic; }
+.lh-sec-hidden { font-size: 0.72em; opacity: 0.6; }
 .lh-sec-remove { color: #e57373; }
 .lh-sections-add { border: 1px dashed rgba(255,255,255,0.25) !important; background: transparent !important; }
 .lh-sections-foot { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
@@ -125,45 +124,51 @@ export function mountSectionsEditor(mount: HTMLElement, deps: SectionsEditorDeps
     let presets = readSectionPresets(initial[keys.presets], keys.defaults)
 
     const root = el('div', { class: 'lh-sections', 'data-lh-field': `sections-editor-${kind}` })
-    const lead = el('div', { class: 'lh-section-help' })
-    lead.textContent = keys.lead
+    // No lead here (96): the editor's help, its buttons' lines with it, is the `[?]` on the row's heading, from the schema.
 
     // The preset bar: the legacy's select, Save, Save As…, Reset and Delete.
     const bar = el('div', { class: 'lh-sections-presets' })
     const presetLabel = el('strong')
     presetLabel.textContent = 'Preset'
-    const select = el('select', { class: 'lh-input', 'data-lh-field': 'sections-preset', 'aria-label': 'A saved preset' }) as HTMLSelectElement
-    const overwrite = el('button', { type: 'button', class: 'lh-button', 'aria-label': 'Save over the preset' }) as HTMLButtonElement
-    overwrite.textContent = 'Save'
-    const nameInput = el('input', { type: 'text', class: 'lh-input', placeholder: 'A name for this preset', 'data-lh-field': 'sections-preset-name', 'aria-label': 'A name for the preset to save' }) as HTMLInputElement
-    const saveAs = el('button', { type: 'button', class: 'lh-button', 'aria-label': 'Save as a preset' }) as HTMLButtonElement
-    saveAs.textContent = 'Save as…'
-    saveAs.title = 'Keeps the sections as they stand in the list under this name, in the cartridge.'
-    const reset = el('button', { type: 'button', class: 'lh-button', 'aria-label': 'Reset the sections to stock' }) as HTMLButtonElement
-    reset.textContent = 'Reset'
-    reset.title = 'Puts Multihog’s stock sections in the list; Save the sections applies them.'
-    const remove = el('button', { type: 'button', class: 'lh-button lh-sec-remove', 'aria-label': 'Delete the preset' }) as HTMLButtonElement
-    remove.textContent = 'Delete'
+    const select = el('select', { class: 'lh-input', 'data-lh-field': 'sections-preset', 'aria-label': 'Saved preset' }) as HTMLSelectElement
+    const overwrite = el('button', { type: 'button', class: 'lh-button', 'aria-label': 'Overwrite preset' }) as HTMLButtonElement
+    overwrite.textContent = 'Overwrite preset'
+    const nameInput = el('input', { type: 'text', class: 'lh-input', placeholder: 'Preset name', 'data-lh-field': 'sections-preset-name', 'aria-label': 'Preset name' }) as HTMLInputElement
+    const saveAs = el('button', { type: 'button', class: 'lh-button', 'aria-label': 'Save as new preset' }) as HTMLButtonElement
+    saveAs.textContent = 'Save as new preset'
+    const reset = el('button', { type: 'button', class: 'lh-button', 'aria-label': 'Reset to stock sections' }) as HTMLButtonElement
+    reset.textContent = 'Reset to stock'
+    const remove = el('button', { type: 'button', class: 'lh-button lh-sec-remove', 'aria-label': 'Delete preset' }) as HTMLButtonElement
+    remove.textContent = 'Delete preset'
     bar.append(presetLabel, select, overwrite, nameInput, saveAs, reset, remove)
 
     const list = el('div', { 'data-lh-field': 'sections-list' })
-    const add = el('button', { type: 'button', class: 'lh-button lh-sections-add', 'aria-label': 'Add a custom section' }) as HTMLButtonElement
-    add.textContent = '+ Add custom section'
+    const add = el('button', { type: 'button', class: 'lh-button lh-sections-add', 'aria-label': 'Add custom section' }) as HTMLButtonElement
+    add.textContent = 'Add custom section'
     const foot = el('div', { class: 'lh-sections-foot' })
-    const save = el('button', { type: 'button', class: 'lh-button', 'aria-label': 'Save the sections' }) as HTMLButtonElement
-    save.textContent = 'Save the sections'
-    const revert = el('button', { type: 'button', class: 'lh-button', 'aria-label': 'Revert the sections' }) as HTMLButtonElement
-    revert.textContent = 'Revert'
-    revert.title = 'Puts the list back to what the cartridge holds.'
+    const save = el('button', { type: 'button', class: 'lh-button', 'aria-label': 'Save sections' }) as HTMLButtonElement
+    save.textContent = 'Save sections'
+    const revert = el('button', { type: 'button', class: 'lh-button', 'aria-label': 'Revert changes' }) as HTMLButtonElement
+    revert.textContent = 'Revert changes'
     const dirtyBadge = el('span', { class: 'lh-sections-dirty', 'data-lh-field': 'sections-dirty' })
     foot.append(save, revert, dirtyBadge)
     const note = el('div', { class: 'lh-sections-note', 'data-lh-field': 'sections-note' })
-    root.append(lead, bar, list, add, foot, note)
+    root.append(bar, list, add, foot, note)
     mount.replaceChildren(root)
 
     const same = (a: CoreSection[], b: CoreSection[]) => JSON.stringify(a) === JSON.stringify(b)
     const isDirty = () => !same(working, stored)
     const matchingPreset = () => Object.keys(presets).find((name) => same(presets[name]!, working)) ?? ''
+    // The preset loaded last is remembered by name (96, the try of 2e): told by equality alone, the first
+    // edit took the name off the select, so Overwrite went grey and picking the preset again reloaded it.
+    const memoryKey = `adventuretime.sectionsPreset.${kind}`
+    const recall = (): string => { try { return globalThis.localStorage?.getItem(memoryKey) ?? '' } catch { return '' } }
+    const remember = (name: string): void => { try { if (name) globalThis.localStorage?.setItem(memoryKey, name); else globalThis.localStorage?.removeItem(memoryKey) } catch { /* a browser without storage forgets on reload */ } }
+    const initialLoaded = (): string => { const kept = recall(); return kept && presets[kept] ? kept : matchingPreset() }
+    let loaded = initialLoaded()
+    /** The preset the stored list came from, which Revert changes goes back to. */
+    let storedLoaded = loaded
+    const setLoaded = (name: string): void => { loaded = name; remember(name) }
 
     function say(text: string, error = false): void {
         note.textContent = text
@@ -172,26 +177,29 @@ export function mountSectionsEditor(mount: HTMLElement, deps: SectionsEditorDeps
 
     /** The bar and the foot follow the draft; the list is redrawn only when its rows change (lesson 30: a redraw loses the cursor). */
     function drawState(): void {
-        const active = matchingPreset()
+        if (loaded && !presets[loaded]) setLoaded('')
+        const active = loaded
+        const edited = !!active && !same(presets[active]!, working)
         select.replaceChildren()
         const placeholder = el('option', { value: '' }) as HTMLOptionElement
-        placeholder.textContent = '— a saved preset —'
+        placeholder.textContent = 'Choose a preset'
         placeholder.disabled = true
         placeholder.selected = !active
         select.append(placeholder)
         for (const name of Object.keys(presets)) {
             const option = el('option', { value: name }) as HTMLOptionElement
-            option.textContent = name
+            option.textContent = name === active && edited ? `${name} (edited)` : name
             option.selected = name === active
             select.append(option)
         }
+        // Set on the select once every option is in it: an option marked before it is appended is not always honoured.
+        select.value = active
         overwrite.disabled = !active
-        overwrite.title = active ? `Writes the list as it stands over the preset “${active}”.` : 'Pick a preset first, or Save as… to make one.'
         remove.disabled = !active
         const dirty = isDirty()
         save.disabled = !dirty
         revert.disabled = !dirty
-        dirtyBadge.textContent = dirty ? 'edited, not saved' : ''
+        dirtyBadge.textContent = dirty ? 'Unsaved changes' : ''
     }
 
     function drawList(): void {
@@ -218,10 +226,10 @@ export function mountSectionsEditor(mount: HTMLElement, deps: SectionsEditorDeps
             const name = el('input', { type: 'text', class: 'lh-input lh-sec-name', placeholder: 'Section name', 'aria-label': 'Section name' }) as HTMLInputElement
             name.value = section.name
             name.addEventListener('input', () => { section.name = name.value; drawState() })
-            const del = el('button', { type: 'button', class: 'lh-button lh-sec-remove', title: 'Remove', 'aria-label': `Remove ${section.name || 'the section'}` }) as HTMLButtonElement
+            const del = el('button', { type: 'button', class: 'lh-button lh-sec-remove', title: 'Remove section', 'aria-label': `Remove ${section.name || 'the section'}` }) as HTMLButtonElement
             del.textContent = '✕'
             del.addEventListener('click', () => {
-                host.confirm('Remove this section?').then((yes) => {
+                host.confirm('Remove section', 'Remove this section? It is gone from the cartridge once you save.', 'Remove').then((yes) => {
                     if (!yes) return
                     working.splice(index, 1)
                     drawList()
@@ -230,12 +238,12 @@ export function mountSectionsEditor(mount: HTMLElement, deps: SectionsEditorDeps
             })
             head.append(arrows, icon, color, name)
             if (section.hiddenUntilSet) {
-                const hidden = el('span', { class: 'lh-sec-hidden', title: 'Written only once a value exists for it; the Combat Profile is this.' })
-                hidden.textContent = 'hidden until set'
+                const hidden = el('span', { class: 'lh-sec-hidden' })
+                hidden.textContent = 'Hidden until set'
                 head.append(hidden)
             }
             head.append(del)
-            const desc = el('input', { type: 'text', class: 'lh-input lh-sec-desc', placeholder: 'Prompt instruction for this section…', 'aria-label': 'Prompt instruction' }) as HTMLInputElement
+            const desc = el('input', { type: 'text', class: 'lh-input lh-sec-desc', placeholder: 'What this section holds', 'aria-label': 'Section instruction' }) as HTMLInputElement
             desc.value = section.description
             desc.addEventListener('input', () => { section.description = desc.value; drawState() })
             row.append(head, desc)
@@ -244,44 +252,49 @@ export function mountSectionsEditor(mount: HTMLElement, deps: SectionsEditorDeps
     }
 
     add.addEventListener('click', () => {
-        working.push({ id: `custom_${Date.now()}`, name: 'New Section', description: 'Description of what goes here.', icon: '📌', color: '#aaaaaa' })
+        working.push({ id: `custom_${Date.now()}`, name: 'New section', description: 'Describe what this section holds.', icon: '📌', color: '#aaaaaa' })
         drawList()
         drawState()
     })
 
     revert.addEventListener('click', () => {
         working = clone(stored)
+        setLoaded(storedLoaded && presets[storedLoaded] ? storedLoaded : matchingPreset())
         drawList()
         drawState()
         say('')
     })
 
     reset.addEventListener('click', () => {
-        host.confirm('Reset the sections in the list to Multihog’s stock? Your edits in the list are replaced; Save the sections applies them, or Save as… keeps them as a preset.').then((yes) => {
+        host.confirm('Reset to stock sections', 'Reset the list to the stock sections? Your edits in the list are replaced.', 'Reset').then((yes) => {
             if (!yes) return
             working = clone(keys.defaults as CoreSection[])
+            // Stock is no preset's edit: the select goes back to no preset, even when a saved one happens to
+            // equal stock (the try of 2f: a preset saved from the stock list kept its name here).
+            setLoaded('')
             drawList()
             drawState()
-            say('The stock sections are in the list; Save the sections applies them.')
+            say('The stock sections are in the list. Press Save sections to apply them.')
         }).catch(() => undefined)
     })
 
     save.addEventListener('click', () => {
         for (const section of working) {
-            if (!section.name.trim()) { say('All sections must have a name.', true); return }
+            if (!section.name.trim()) { say('Every section needs a name.', true); return }
             if (!section.id) section.id = slug(section.name)
         }
         save.disabled = true
         say('Saving…')
         host.save(kind, clone(working)).then((result) => {
             stored = clone(working)
+            storedLoaded = loaded
             drawState()
             const count = `${working.length} section${working.length === 1 ? '' : 's'} saved.`
             if (kind !== 'npc') { say(count); return }
             const parts: string[] = []
-            if (result.rebuilt.length) parts.push(`the agent’s ${result.rebuilt.join(', ')} instruction${result.rebuilt.length > 1 ? 's' : ''} rebuilt around them`)
-            if (result.kept.length) parts.push(`the ${result.kept.join(', ')} instruction${result.kept.length > 1 ? 's are' : ' is'} edited and kept as ${result.kept.length > 1 ? 'they are' : 'it is'}`)
-            say(parts.length ? `${count} ${parts.join('; ')}.` : `${count} The agent’s instructions already read them.`)
+            if (result.rebuilt.length) parts.push(`The agent’s ${result.rebuilt.join(', ')} ${result.rebuilt.length > 1 ? 'instructions were' : 'instruction was'} rebuilt.`)
+            if (result.kept.length) parts.push(`The ${result.kept.join(', ')} ${result.kept.length > 1 ? 'instructions are edited and were' : 'instruction is edited and was'} kept.`)
+            say(parts.length ? `${count} ${parts.join(' ')}` : `${count} The agent’s instructions already match.`)
         }).catch((error: unknown) => {
             drawState()
             say(`The sections could not be saved: ${error instanceof Error ? error.message : String(error)}`, true)
@@ -294,20 +307,22 @@ export function mountSectionsEditor(mount: HTMLElement, deps: SectionsEditorDeps
         if (!chosen || !preset) return
         const load = () => {
             working = clone(preset)
+            setLoaded(chosen)
             drawList()
             drawState()
-            say(`Loaded the preset “${chosen}”; Save the sections applies it.`)
+            say(`Preset “${chosen}” is in the list. Press Save sections to apply it.`)
         }
         if (!isDirty()) { load(); return }
-        host.confirm(`Load the preset “${chosen}”? Unsaved changes to the current sections will be lost.`).then((yes) => {
+        host.confirm('Load preset', `Load the preset “${chosen}”? Unsaved changes in the list are lost.`, 'Load').then((yes) => {
             if (yes) load()
             else drawState()
         }).catch(() => undefined)
     })
 
-    function writePresets(next: Record<string, CoreSection[]>, done: string): void {
+    function writePresets(next: Record<string, CoreSection[]>, done: string, nowLoaded: string): void {
         host.savePresets(kind, next).then(() => {
             presets = next
+            setLoaded(nowLoaded)
             drawState()
             say(done)
         }).catch((error: unknown) => {
@@ -316,31 +331,35 @@ export function mountSectionsEditor(mount: HTMLElement, deps: SectionsEditorDeps
     }
 
     overwrite.addEventListener('click', () => {
-        const active = matchingPreset()
-        if (!active) { say('Pick a preset first, or Save as… to make one.'); return }
-        writePresets({ ...presets, [active]: clone(working) }, `Preset saved: ${active}.`)
+        const active = loaded
+        if (!active || !presets[active]) return
+        for (const section of working) {
+            if (!section.name.trim()) { say('Every section needs a name.', true); return }
+            if (!section.id) section.id = slug(section.name)
+        }
+        writePresets({ ...presets, [active]: clone(working) }, `Preset saved: ${active}.`, active)
     })
 
     saveAs.addEventListener('click', () => {
         const name = nameInput.value.trim()
         if (!name) { say('Type a name for the preset.', true); return }
         for (const section of working) {
-            if (!section.name.trim()) { say('All sections must have a name.', true); return }
+            if (!section.name.trim()) { say('Every section needs a name.', true); return }
             if (!section.id) section.id = slug(section.name)
         }
-        const write = () => { writePresets({ ...presets, [name]: clone(working) }, `Saved the preset: ${name}.`); nameInput.value = '' }
+        const write = () => { writePresets({ ...presets, [name]: clone(working) }, `Preset saved: ${name}.`, name); nameInput.value = '' }
         if (!presets[name]) { write(); return }
-        host.confirm(`A preset named “${name}” exists. Replace it?`).then((yes) => { if (yes) write() }).catch(() => undefined)
+        host.confirm('Replace preset', `A preset named “${name}” exists. Replace it?`, 'Replace').then((yes) => { if (yes) write() }).catch(() => undefined)
     })
 
     remove.addEventListener('click', () => {
-        const active = matchingPreset()
-        if (!active) return
-        host.confirm(`Delete the preset “${active}”?`).then((yes) => {
+        const active = loaded
+        if (!active || !presets[active]) return
+        host.confirm('Delete preset', `Delete the preset “${active}”?`, 'Delete').then((yes) => {
             if (!yes) return
             const next = { ...presets }
             delete next[active]
-            writePresets(next, `Deleted the preset: ${active}.`)
+            writePresets(next, `Preset deleted: ${active}.`, '')
         }).catch(() => undefined)
     })
 
@@ -356,6 +375,8 @@ export function mountSectionsEditor(mount: HTMLElement, deps: SectionsEditorDeps
             // A load or a reset is the user's own act and replaces the draft; a commit from elsewhere leaves a draft standing.
             if (from !== 'commit' || !draft) {
                 working = clone(stored)
+                if (from !== 'commit') setLoaded(from === 'reset' ? '' : matchingPreset())
+                storedLoaded = loaded
                 drawList()
             }
             drawState()

@@ -1086,3 +1086,72 @@ describe('the one window (92)', () => {
         expect(refused.mounts[0].slots.rest).toBe(refused.tabs[1].tab.root)
     })
 })
+
+describe('the per-chat switch hides the boxes (the maintainer’s ask of 2026-11-20)', () => {
+    it('hides the boxes that show while the chat is off and brings every box back on the desktop, one closed before included, a box opened by hand meanwhile staying open', async () => {
+        const { host, widgets, mounts } = makeHost('widgets')
+        createLayout(host)
+        await settle()
+        const [tracker, scene] = widgets
+        const controls = mounts[0].slots.widgets!
+        // The Lore widget closed by its × before the chat is switched off.
+        ;(scene.widget.root.querySelector('.lh-widget-hide') as HTMLButtonElement).click()
+        expect([tracker.visible, scene.visible]).toEqual([true, false])
+        controls.suppress!(true)
+        expect([tracker.visible, scene.visible]).toEqual([false, false])
+        // Said twice, it hides nothing more and forgets nothing.
+        controls.suppress!(true)
+        controls.suppress!(false)
+        // On again: both boxes, the one closed by its × before too (the maintainer's ask: a closed box is otherwise forgotten).
+        expect([tracker.visible, scene.visible]).toEqual([true, true])
+        // On again, said twice: nothing reopens.
+        tracker.visible = false
+        controls.suppress!(false)
+        expect(tracker.visible).toBe(false)
+        // Opened by hand while the chat is off, a box stays open when it is on again.
+        controls.suppress!(true)
+        controls.toggle('scene')
+        expect(scene.visible).toBe(true)
+        controls.suppress!(false)
+        expect([tracker.visible, scene.visible]).toEqual([true, true])
+    })
+
+    it('takes the disc down with the one window on a phone and puts it back, the window staying as it was', async () => {
+        const { host, widgets, mounts } = makeHost('one', { mobile: true })
+        createLayout(host)
+        await settle()
+        const [one, disc] = widgets
+        const controls = mounts[0].slots.widgets!
+        expect([one.visible, disc.visible]).toEqual([false, true])
+        controls.suppress!(true)
+        expect([one.visible, disc.visible]).toEqual([false, false])
+        // The window opened by hand and closed again: the disc stays down while the chat is off.
+        controls.toggle('one')
+        expect(one.visible).toBe(true)
+        ;(one.widget.root.querySelector('.lh-widget-hide') as HTMLButtonElement).click()
+        expect([one.visible, disc.visible]).toEqual([false, false])
+        // On again: a phone opens no box over the chat that the switch did not hide; the disc is the way in.
+        controls.suppress!(false)
+        expect([one.visible, disc.visible]).toEqual([false, true])
+        // One the switch did hide comes back full-screen, and the disc goes down with it.
+        controls.toggle('one')
+        controls.suppress!(true)
+        expect([one.visible, disc.visible]).toEqual([false, false])
+        controls.suppress!(false)
+        expect([one.visible, disc.visible]).toEqual([true, false])
+    })
+
+    it('forgets the hiding on a reset, whose fresh boxes wait for the panel to say again', async () => {
+        const { host, widgets, mounts } = makeHost('one')
+        createLayout(host)
+        await settle()
+        mounts[0].slots.widgets!.suppress!(true)
+        expect(widgets[0].visible).toBe(false)
+        mounts[0].slots.widgets!.reset()
+        expect(widgets[1].visible).toBe(true)
+        mounts[1].slots.widgets!.suppress!(true)
+        expect(widgets[1].visible).toBe(false)
+        mounts[1].slots.widgets!.suppress!(false)
+        expect(widgets[1].visible).toBe(true)
+    })
+})

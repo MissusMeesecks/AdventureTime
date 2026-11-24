@@ -204,7 +204,8 @@ export function buildTrackerModulesView(settings: TrackerModuleSettings, factory
                 key,
                 label: labelFor(key),
                 tag: `[${key.toUpperCase()}]`,
-                summary: openingSentence(prompts[key]),
+                // For display only (96, TRK-102): the text's own placeholder would otherwise show raw on the row.
+                summary: openingSentence(prompts[key]).replace(/\{\{\s*user\s*\}\}/gi, 'the player'),
                 prompt,
                 edited: typeof factory[key] === 'string' && prompt.trim() !== factory[key].trim(),
                 enabled,
@@ -217,14 +218,12 @@ export function buildTrackerModulesView(settings: TrackerModuleSettings, factory
 
     const maintained = rows.filter((row) => row.verdict === 'on').length
     const counts = rows.length
-        ? `${rows.length} module${rows.length === 1 ? '' : 's'} · ${maintained} maintained`
+        ? `${rows.length} module${rows.length === 1 ? '' : 's'} · ${maintained} on`
         : ''
 
+    // The list's own help is behind the [?] on its heading (96, the schema's `modules` row); only the empty state is said here.
     const summary = rows.length
-        ? 'These are the tracker’s stock blocks. A module that is switched on is described to the ' +
-          'tracker every turn, so its block keeps up with the story. One that is off is never ' +
-          'mentioned — its block still shows whatever it already holds, and still travels in your ' +
-          'cartridge, but it stops updating.'
+        ? ''
         : 'No tracker modules in this cartridge.'
 
     const notes: string[] = []
@@ -234,8 +233,8 @@ export function buildTrackerModulesView(settings: TrackerModuleSettings, factory
         }
         if (row.verdict === 'no-prompt') {
             notes.push(
-                `${row.label} is switched on but has no instructions in this cartridge, so the tracker ` +
-                    'is never told about it and its block will not update.',
+                `${row.label} is on but has no text, so the tracker is never told about it and its ` +
+                    'block does not update.',
             )
         }
     }

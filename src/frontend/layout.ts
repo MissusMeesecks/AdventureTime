@@ -66,6 +66,7 @@
 
 import type { PanelLayout, WidgetPositions, WidgetSizes } from '../backend/prefs-store.js'
 import { MIN_WIDGET_SIZE } from '../protocol.js'
+import { TAB_GUIDE_MARKDOWN, TAB_GUIDE_TITLE } from './tab-guide.js'
 
 export interface LayoutTabOptions {
     id: string
@@ -74,6 +75,8 @@ export interface LayoutTabOptions {
     description: string
     keywords: string[]
     iconSvg: string
+    /** The tab's guide, opened by Lumiverse's own guide button (96, D3). */
+    guide?: { markdown: string; title?: string }
 }
 
 export interface LayoutTab {
@@ -158,6 +161,16 @@ export interface LayoutWidgetControls {
     one?: boolean
     /** The mobile widget (92f): make the disc over the chat, or take it down, as the tick moves. Only a phone has one to make. */
     mobileWidget?(on: boolean): void
+    /**
+     * The per-chat switch's hand on the boxes (the maintainer's ask of
+     * 2026-11-20): `true` hides every box that shows, and the disc, while the
+     * open chat is switched off; `false` brings back every box on the
+     * desktop, one closed by its × before included, so a box closed and
+     * forgotten is found again — and on a phone only the box the switch hid,
+     * since a phone's boxes open full-screen over the chat. A box opened by
+     * hand meanwhile stays open.
+     */
+    suppress?(off: boolean): void
 }
 
 export type WidgetMinimized = Record<string, boolean>
@@ -227,6 +240,7 @@ export const MAIN_TAB: LayoutTabOptions = {
     description: 'Multihog D&D Framework — tracker, lorebook agent, and game cartridges',
     keywords: ['multihog', 'adventure_time', 'dnd', 'rpg', 'tracker', 'cartridge', 'lorebook'],
     iconSvg: MAIN_ICON_SVG,
+    guide: { markdown: TAB_GUIDE_MARKDOWN, title: TAB_GUIDE_TITLE },
 }
 
 export const SETTINGS_TAB: LayoutTabOptions = {
@@ -236,6 +250,7 @@ export const SETTINGS_TAB: LayoutTabOptions = {
     description: 'AdventureTime — the character creator, the lorebook agent, the world, and the settings',
     keywords: ['multihog', 'adventure_time', 'settings', 'cartridge', 'creator', 'agent', 'world'],
     iconSvg: SETTINGS_ICON_SVG,
+    guide: { markdown: TAB_GUIDE_MARKDOWN, title: TAB_GUIDE_TITLE },
 }
 
 /** The widgets' sizes and the places they start, before anyone drags them. */
@@ -576,6 +591,9 @@ export function createLayout(host: LayoutHost): Layout {
     let bubble: LayoutWidget | null = null
     let bubbleWanted = true
     let destroyed = false
+    /** The open chat switched off (the per-chat switch): the boxes it hid, to bring back when it is on again. */
+    let suppressed = false
+    let hiddenBySwitch: WidgetName[] = []
 
     function unmount(): void {
         panel?.destroy()
@@ -588,6 +606,30 @@ export function createLayout(host: LayoutHost): Layout {
         widgets = {}
         bubble?.destroy()
         bubble = null
+        // New boxes start as a mount draws them; the panel says again whether the open chat is off.
+        suppressed = false
+        hiddenBySwitch = []
+    }
+
+    /**
+     * Hide every box that shows and the disc while the open chat is off. On
+     * again, the desktop gets every box back, closed ones too (the
+     * maintainer's ask: a box closed before the chat went off is otherwise
+     * forgotten); a phone gets back only what the switch hid, its disc being
+     * the way to the rest.
+     */
+    function suppress(off: boolean, reveal: (which: WidgetName) => void, phone: boolean): void {
+        if (destroyed || off === suppressed) return
+        suppressed = off
+        if (off) {
+            hiddenBySwitch = (Object.keys(widgets) as WidgetName[]).filter((which) => widgets[which]?.isVisible() === true)
+            for (const which of hiddenBySwitch) widgets[which]?.setVisible(false)
+        } else {
+            const back = phone ? hiddenBySwitch : (Object.keys(widgets) as WidgetName[])
+            hiddenBySwitch = []
+            for (const which of back) reveal(which)
+        }
+        syncBubble()
     }
 
     /**
@@ -640,7 +682,7 @@ export function createLayout(host: LayoutHost): Layout {
     function syncBubble(): void {
         if (!bubble) return
         const anyShown = Object.values(widgets).some((widget) => widget?.isVisible())
-        bubble.setVisible(!anyShown)
+        bubble.setVisible(!anyShown && !suppressed)
     }
     /** The tick's hand on the disc (92f): wanted and on a phone, made; unwanted, taken down. */
     function setBubble(on: boolean, phone: boolean, open: () => void): void {
@@ -756,6 +798,7 @@ export function createLayout(host: LayoutHost): Layout {
                 },
                 reset: () => { reset() },
                 mobileWidget: (on) => { setBubble(on, phone, () => { reveal('tracker') }) },
+                suppress: (off) => { suppress(off, reveal, phone) },
             },
         })
         // The mobile widget (92f): on a phone, the disc over the chat opens the Tracker widget.
@@ -885,6 +928,7 @@ export function createLayout(host: LayoutHost): Layout {
                 },
                 reset: () => { reset() },
                 mobileWidget: (on) => { setBubble(on, phone, reveal) },
+                suppress: (off) => { suppress(off, () => { reveal() }, phone) },
             },
         })
         // The mobile widget (92f): on a phone, the disc over the chat opens the window.

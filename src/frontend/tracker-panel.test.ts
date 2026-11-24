@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { Bridge, RequestTimeoutError } from './bridge.js'
 import { MAX_PORTRAIT_BYTES, describeStep, mountTrackerPanel as mountPanel, type TrackerPanelHost } from './tracker-panel.js'
+import { NARRATOR_CARD_EVENT } from './start-area.js'
 
 // Every panel a test mounts is destroyed after it (lesson 50): 258 mounts
 // that each kept their bridge subscription and timers alive held every
@@ -742,13 +743,13 @@ describe('the raw memo editor', () => {
         await settle()
 
         expect((root.querySelector('.lh-tracker-raw textarea') as HTMLTextAreaElement).value).toBe(MEMO)
-        // The raw memo is the starting area's drawer since 84: ✦, the title over its small line, the chevron, the body wrapped.
+        // The raw memo wears the starting area's option-card style (98-bis): the title over its small line, the shared chevron, the body wrapped.
         const raw = root.querySelector('.lh-tracker-raw') as HTMLDetailsElement
-        expect(raw.classList.contains('lh-start-drawer')).toBe(true)
-        expect(raw.querySelector('summary .lh-start-drawer-title')!.textContent).toBe('Raw tracker memo')
-        expect(raw.querySelector('summary .lh-start-drawer-sub')!.textContent).toContain('The live memo as text')
-        expect(raw.querySelector('summary .lh-start-drawer-chevron')!.textContent).toBe('▸')
-        expect(raw.querySelector('textarea')!.parentElement!.classList.contains('lh-start-drawer-body')).toBe(true)
+        expect(raw.classList.contains('lh-start-option')).toBe(true)
+        expect(raw.querySelector('summary .lh-start-option-title')!.textContent).toBe('Raw tracker memo')
+        expect(raw.querySelector('summary .lh-start-option-sub')!.textContent).toContain('The live memo as text')
+        expect(raw.querySelector('summary .lh-chevron')).not.toBeNull()
+        expect(raw.querySelector('textarea')!.parentElement!.classList.contains('lh-start-option-body')).toBe(true)
         expect(raw.open).toBe(false)
     })
 
@@ -796,39 +797,43 @@ describe('the raw memo editor', () => {
 describe('the starting area (69)', () => {
     const group = () => root.querySelector('.lh-start') as HTMLDetailsElement
 
-    it('heads the four ways in, in Multihog\'s order, open for a chat with no memo', async () => {
+    it('heads the checks, the three ways in, the Narrator block and Learn more (98), open for a chat with no memo', async () => {
         const { bridge } = makeBridge({ 'chat-1': '' })
         mountTrackerPanel(root, bridge, makeHost())
         await settle()
-        expect(group().querySelector('summary')!.textContent).toBe('Starting the Adventure')
-        // Multihog's onboarding since 83: the hero, the box, the drawer of the other ways, the narrator's drawer, then the three texts and the connection.
-        expect(Array.from(group().querySelector('.lh-start-body')!.children).map((n) => n.className.split(' ')[0])).toEqual(['lh-creator', 'lh-instant', 'lh-start-drawer', 'lh-narrator', 'lh-start-divider', 'lh-start-note', 'lh-start-how', 'lh-start-divider', 'lh-start-tip', 'lh-start-divider', 'lh-start-guide', 'lh-start-conn'])
-        expect(Array.from(group().querySelector('[data-lh-field="start-other"] > .lh-start-drawer-body')!.children).map((n) => n.className.split(' ')[0])).toEqual(['lh-ways', 'lh-import'])
+        expect(group().querySelector('summary')!.textContent).toBe('Starting the adventure')
+        // Setup order since 98: the checks, the heading with its help, Instant Action first, the creator, the third option, the Narrator block, Learn more.
+        expect(Array.from(group().querySelector('.lh-start-body')!.children).map((n) => n.className.split(' ')[0])).toEqual(['lh-start-before', 'lh-start-step', 'lh-help-note', 'lh-instant', 'lh-creator', 'lh-start-option', 'lh-narrator', 'lh-start-learn'])
+        expect(Array.from(group().querySelector('[data-lh-field="start-other"] > .lh-start-option-body')!.children).map((n) => n.className.split(' ')[0])).toEqual(['lh-ways', 'lh-import'])
         expect(group().open).toBe(true)
     })
 
-    it('is Multihog’s onboarding since 83: the hero, the box, the drawers, the three texts, and the narrator card’s row through the bridge', async () => {
+    it('draws the three ways in as option cards, one open at a time, with the narrator card’s row through the bridge (98)', async () => {
         const { bridge, requests, emit } = makeBridge({ 'chat-1': '' })
         mountTrackerPanel(root, bridge, makeHost())
         await settle()
         const q = (field: string) => group().querySelector(`[data-lh-field="${field}"]`) as HTMLElement
-        expect(group().querySelector('.lh-creator > summary .lh-start-hero-btn')!.textContent).toBe('🎲 Character Creator▸')
-        expect(group().querySelector('.lh-creator > summary .lh-start-hero-sub')!.textContent).toContain('Build your character step by step')
-        expect(group().querySelector('.lh-instant > summary')!.textContent).toBe('⚡ Instant Action▸')
+        expect(group().querySelector('.lh-creator > summary .lh-start-option-title')!.textContent).toBe('Character creator')
+        expect(group().querySelector('.lh-creator > summary .lh-start-option-sub')!.textContent).toBe('Full control: class, level, gear and saved presets.')
+        expect(group().querySelector('.lh-instant > summary .lh-start-option-title')!.textContent).toBe('Instant Action')
         expect(group().querySelectorAll('.lh-instant .lh-instant-genres button')).toHaveLength(4)
-        expect(q('start-other').querySelector('.lh-start-drawer-title')!.textContent).toBe('Other Ways to Begin')
-        expect(q('start-other').querySelector('.lh-start-drawer-sub')!.textContent).toBe('Fine-tune your start, create a Player Card, or import a character')
+        expect(q('start-other').querySelector('.lh-start-option-title')!.textContent).toBe('From a persona, description or card')
         expect((q('start-other') as HTMLDetailsElement).open).toBe(false)
-        expect(group().querySelector('.lh-ways > summary')!.textContent).toBe('From the persona or the instructions')
-        expect(group().querySelector('.lh-narrator > summary .lh-start-drawer-title')!.textContent).toBe('Narrator configuration')
-        expect(Array.from(group().querySelectorAll('.lh-start-divider > span')).map((n) => n.textContent)).toEqual(['How It Works', 'Need Help', 'Setup Guide'])
-        expect(q('start-note').textContent).toContain('sends its rulebook with every reply')
-        expect(Array.from(q('start-how').querySelectorAll('b')).map((n) => n.textContent)).toEqual(['Auto-Tracking:', 'Prompt Injection:', 'Lorebook Agent 🤖:', 'World Progression 🌍:', 'Map Evolution 🗺️:'])
-        expect((q('start-help').querySelector('a') as HTMLAnchorElement).href).toBe('https://www.youtube.com/watch?v=82Lt9pRYFS0')
-        expect((q('start-companion') as HTMLButtonElement).disabled).toBe(true)
-        expect(q('start-guide').querySelectorAll('ol > li')).toHaveLength(4)
-        expect(q('start-guide').textContent).toContain('Combat API Override')
-        expect(q('start-connection').textContent).toContain('Character Creation Connection')
+        expect(group().querySelector('.lh-ways > summary')!.textContent).toBe('From a persona or a description')
+        expect(group().querySelector('.lh-narrator > summary .lh-start-option-title')!.textContent).toBe('Narrator')
+        // The real folds wear the option's classes, Instant Action the recommended one's, and opening one closes the others.
+        const instant = group().querySelector('.lh-instant') as HTMLDetailsElement
+        const creator = group().querySelector('.lh-creator') as HTMLDetailsElement
+        expect(instant.classList.contains('lh-start-option--recommended')).toBe(true)
+        expect(creator.classList.contains('lh-start-option') && !creator.classList.contains('lh-start-option--recommended')).toBe(true)
+        instant.open = true
+        instant.dispatchEvent(new Event('toggle'))
+        creator.open = true
+        creator.dispatchEvent(new Event('toggle'))
+        expect([instant.open, creator.open]).toEqual([false, true])
+        creator.open = false
+        expect(q('start-companion')).toBeNull()
+        expect(q('start-connection')).toBeNull()
         // The narrator card's row: the name saved as a preference, the card made through 72b's op.
         const name = q('start-narrator-name') as HTMLInputElement
         expect(name.value).toBe('Game Master')
@@ -839,11 +844,31 @@ describe('the starting area (69)', () => {
         ;(q('start-narrator-create') as HTMLButtonElement).click()
         await settle()
         expect(requests.find((r) => r.op === 'narrator.create')?.params).toEqual({ name: 'Aurelius' })
-        expect(q('start-narrator-note').textContent).toContain('Made the card “Aurelius”')
+        expect(q('start-narrator-note').textContent).toContain('Created the card “Aurelius”')
         // The name follows the event every save sends, as the Core & Branching row's does (one preference, two rows).
         emit({ name: 'prefs.changed', data: { prefs: { narratorCardName: 'Chronicler' } } })
         await settle()
         expect(name.value).toBe('Chronicler')
+    })
+
+    it('shows the settings panel’s status in the checks, and asks for a fresh read as the chat changes and when a card is made (98)', async () => {
+        const { bridge } = makeBridge({ 'chat-1': '' })
+        const asked: Array<string | null | undefined> = []
+        const heard = (event: Event) => { asked.push((event as CustomEvent<{ chatId?: string | null }>).detail?.chatId) }
+        document.addEventListener(NARRATOR_CARD_EVENT, heard)
+        const panel = mountTrackerPanel(root, bridge, makeHost())
+        await settle()
+        // The chat's first draw asks, naming the tracker's own chat; the panel itself makes no status request.
+        expect(asked).toEqual(['chat-1'])
+        const before = group().querySelector('[data-lh-field="start-before"]') as HTMLDetailsElement
+        expect(before.open).toBe(true)
+        panel.applyStatus({ version: '1.0.0', granted: [], missing: [], checked: true, passes: { id: 'conn-1', name: 'Hearth', provider: 'openrouter', model: 'lantern-2', why: 'seen', listed: 1, maxTokens: 0 }, narrator: { name: 'Game Master', exists: true, chat: 'narrator', chatCardName: 'Game Master' } } as never)
+        expect(before.open).toBe(false)
+        expect((group().querySelector('[data-lh-field="start-ready"]') as HTMLElement).hidden).toBe(false)
+        ;(group().querySelector('[data-lh-field="start-narrator-create"]') as HTMLButtonElement).click()
+        await settle()
+        expect(asked).toEqual(['chat-1', 'chat-1'])
+        document.removeEventListener(NARRATOR_CARD_EVENT, heard)
     })
 
     it('is folded for a chat with an adventure under way, and the hand\'s toggle stands while the chat does', async () => {
@@ -880,10 +905,12 @@ describe('the starting area (69)', () => {
         const panel = mountTrackerPanel(root, bridge, makeHost(), { narrativePacing: 'downtime', syspromptModules: { loot: false } } as never)
         await settle()
         const fold = group().querySelector('.lh-narrator') as HTMLDetailsElement
-        // The narrator's drawer follows the drawer of the other ways (83); the texts come after it.
-        expect(fold.previousElementSibling!.classList.contains('lh-start-drawer')).toBe(true)
-        expect(fold.querySelector('summary')!.textContent).toContain('Narrator configuration')
-        expect(fold.querySelector('summary')!.textContent).toContain('Set pacing, RNG, quests, and optional systems')
+        // The Narrator block follows the three ways in (98), in the option's style, and says it is optional.
+        expect(fold.previousElementSibling!.getAttribute('data-lh-field')).toBe('start-other')
+        expect(fold.nextElementSibling!.classList.contains('lh-start-learn')).toBe(true)
+        expect(fold.classList.contains('lh-start-option')).toBe(true)
+        expect(fold.querySelector('.lh-start-option-title')!.textContent).toBe('Narrator')
+        expect(fold.querySelector('.lh-start-option-sub')!.textContent).toBe('Optional. Pacing, dice, quests and other parts of play. The defaults work.')
         expect(fold.open).toBe(false)
         const input = (field: string) => fold.querySelector(`[data-lh-field="${field}"] input`) as HTMLInputElement
         expect(input('nc-pacing-downtime').checked).toBe(true)
@@ -2772,11 +2799,11 @@ describe('the world skeleton (33b)', () => {
         expect(fold().nextElementSibling!.classList.contains('lh-tracker-raw')).toBe(true)
         // Multihog's card since 82: the icon, the title and the chevron of the dials cards around it.
         expect(fold().getAttribute('data-lh-card')).toBe('skeleton')
-        expect(fold().querySelector('summary .lh-card-title')!.textContent).toBe('World Skeleton & Atmosphere')
-        expect(fold().querySelector('summary .lh-card-icon')!.textContent).toBe('💀')
+        expect(fold().querySelector('summary .lh-card-title')!.textContent).toBe('World Skeleton & atmosphere')
+        expect(fold().querySelector('summary .lh-card-icon svg')).not.toBeNull()
         expect(fold().querySelector('summary .lh-chevron')).not.toBeNull()
         expect(fold().querySelector('.lh-skeleton-body')!.classList.contains('lh-search-item')).toBe(true)
-        expect(statusLine()).toBe('No skeleton yet. It will be filed in Vell_Skeleton.')
+        expect(statusLine()).toBe('No skeleton yet. It will be stored in the lorebook Vell_Skeleton.')
         expect((field('world-skeleton-source') as unknown as HTMLTextAreaElement).value).toBe('A drowned coast.')
         expect(field('world-skeleton-factions').value).toBe('4')
         expect(field('world-skeleton-locations').value).toBe('4')
@@ -2784,11 +2811,11 @@ describe('the world skeleton (33b)', () => {
         expect(field('world-skeleton-lorebooks').checked).toBe(true)
         expect(filterRow().hidden).toBe(false)
         // The shelf (33c): every book but World Progression's own, the named ones ticked.
-        expect(Array.from(root.querySelectorAll('.lh-skeleton-book')).map((b) => b.textContent)).toEqual(['Vell_LOC · this campaign’s', 'Canon', 'Gods'])
+        expect(Array.from(root.querySelectorAll('.lh-skeleton-book')).map((b) => b.textContent)).toEqual(['Vell_LOC (this campaign)', 'Canon', 'Gods'])
         expect(bookBox('Vell_LOC').checked).toBe(false)
         expect(bookBox('Canon').checked).toBe(true)
         expect(bookBox('Gods').checked).toBe(true)
-        expect(filterRow().textContent).toContain('2 ticked.')
+        expect(filterRow().textContent).toContain('2 selected.')
         expect(field('world-skeleton-source-lookback').value).toBe('30')
         expect(field('world-skeleton-only').checked).toBe(false)
         expect(field('world-skeleton-existing').checked).toBe(true)
@@ -2803,19 +2830,19 @@ describe('the world skeleton (33b)', () => {
         mountTrackerPanel(root, bridge, makeHost())
         await settle()
         expect(filterRow().hidden).toBe(true)
-        expect(field('world-skeleton-only').closest('label')!.hidden).toBe(true)
+        expect(field('world-skeleton-only').closest<HTMLElement>('.lh-helped')!.hidden).toBe(true)
         field('world-skeleton-lorebooks').checked = true
         field('world-skeleton-lorebooks').dispatchEvent(new Event('change'))
         await settle()
         expect(filterRow().hidden).toBe(false)
-        expect(field('world-skeleton-only').closest('label')!.hidden).toBe(false)
+        expect(field('world-skeleton-only').closest<HTMLElement>('.lh-helped')!.hidden).toBe(false)
         field('world-skeleton-factions').value = '6'
         field('world-skeleton-factions').dispatchEvent(new Event('change'))
         field('world-skeleton-locations').value = '2'
         field('world-skeleton-locations').dispatchEvent(new Event('change'))
         field('world-skeleton-conflicts').value = '0'
         field('world-skeleton-conflicts').dispatchEvent(new Event('change'))
-        expect(filterRow().textContent).toContain('None ticked: this campaign’s own books are read.')
+        expect(filterRow().textContent).toContain('None selected. The campaign’s own lorebooks are read.')
         bookBox('Canon').checked = true
         bookBox('Canon').dispatchEvent(new Event('change'))
         await settle()
@@ -2858,10 +2885,10 @@ describe('the world skeleton (33b)', () => {
         await settle()
         const source = field('world-skeleton-source') as unknown as HTMLTextAreaElement
         source.value = 'A drowned coast.'
-        button('Generate the skeleton').click()
+        button('Generate skeleton').click()
         expect(live().hidden).toBe(false)
-        expect(live().textContent).toContain('The skeleton is being written now')
-        expect(button('Generate the skeleton').disabled).toBe(true)
+        expect(live().textContent).toContain('Writing the skeleton')
+        expect(button('Generate skeleton').disabled).toBe(true)
         expect(button('Write a report now').disabled).toBe(true)
         await settle()
         expect(live().hidden).toBe(true)
@@ -2870,7 +2897,7 @@ describe('the world skeleton (33b)', () => {
         expect(statusLine()).toBe('Vell_Skeleton holds 4 factions, 4 locations and 3 conflicts.')
         expect(fold().querySelector('[data-lh-field="world-skeleton-count"]')!.textContent).toBe('· 11')
         expect(source.value).toBe('A drowned coast.')
-        expect(button('Generate the skeleton').disabled).toBe(false)
+        expect(button('Generate skeleton').disabled).toBe(false)
     })
 
     it('adds to the skeleton without asking, and says why a generation failed, in red', async () => {
@@ -2879,15 +2906,15 @@ describe('the world skeleton (33b)', () => {
         setWorldSkeleton({ status: 'written', at: new Date().toISOString(), mode: 'append', count: 2, factions: 0, locations: 2, conflicts: 0 })
         mountTrackerPanel(root, bridge, makeHost())
         await settle()
-        button('Add to the skeleton').click()
-        expect(live().textContent).toContain('being extended now')
+        button('Add to skeleton').click()
+        expect(live().textContent).toContain('Adding to the skeleton')
         await settle()
         expect(worldPatches()).toEqual([{ op: 'skeleton', chatId: 'chat-1', source: '', mode: 'append' }])
         expect(note()).toContain('Added 2 premises: 0 factions, 2 locations, 0 conflicts.')
         setWorldSkeleton({ status: 'failed', at: new Date().toISOString(), mode: 'append', reason: 'The model returned nothing.' })
-        button('Add to the skeleton').click()
+        button('Add to skeleton').click()
         await settle()
-        expect(note()).toContain('The skeleton failed: The model returned nothing.')
+        expect(note()).toContain('The skeleton could not be written: The model returned nothing.')
         expect(fold().querySelector('.lh-world-note--error')).not.toBeNull()
     })
 
@@ -2897,10 +2924,10 @@ describe('the world skeleton (33b)', () => {
         const asked: Array<Record<string, unknown>> = []
         mountTrackerPanel(root, bridge, hostWithConfirm(false, asked))
         await settle()
-        button('Generate the skeleton').click()
+        button('Generate skeleton').click()
         await settle()
         expect(asked).toHaveLength(1)
-        expect(asked[0]).toMatchObject({ variant: 'danger', confirmLabel: 'Replace', message: expect.stringContaining('5 premises in Vell_Skeleton will be deleted') })
+        expect(asked[0]).toMatchObject({ variant: 'danger', title: 'Replace the skeleton', confirmLabel: 'Replace', message: 'This deletes the 5 premises in Vell_Skeleton and writes new ones. This cannot be undone.' })
         expect(worldPatches()).toEqual([])
         expect(live().hidden).toBe(true)
     })
@@ -2914,20 +2941,20 @@ describe('the world skeleton (33b)', () => {
         vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
         try {
             const tick = () => vi.advanceTimersByTimeAsync(1)
-            const generate = button('Generate the skeleton')
+            const generate = button('Generate skeleton')
             generate.click()
             await tick()
             expect(generate.textContent).toBe('Press again to replace')
-            expect(toast()).toContain('Press the button again')
+            expect(toast()).toContain('Press the button again within a few seconds to confirm.')
             expect(worldPatches()).toEqual([])
             await vi.advanceTimersByTimeAsync(9000)
-            expect(generate.textContent).toBe('Generate the skeleton')
+            expect(generate.textContent).toBe('Generate skeleton')
             generate.click()
             await tick()
             expect(worldPatches()).toEqual([])
             generate.click()
             await tick()
-            expect(generate.textContent).toBe('Generate the skeleton')
+            expect(generate.textContent).toBe('Generate skeleton')
             expect(worldPatches()).toEqual([{ op: 'skeleton', chatId: 'chat-1', source: '', mode: 'replace' }])
         } finally {
             vi.useRealTimers()
@@ -2958,21 +2985,21 @@ describe('the world skeleton (33b)', () => {
         mountTrackerPanel(root, bridge, hostWithConfirm(false, asked))
         await settle()
         const source = field('world-skeleton-source') as unknown as HTMLTextAreaElement
-        button('Write it from this chat').click()
+        button('Write from this chat').click()
         expect(live().hidden).toBe(false)
-        expect(live().textContent).toContain('The source is being written from this chat now')
-        expect(button('Generate the skeleton').disabled).toBe(true)
+        expect(live().textContent).toContain('Writing the description from this chat')
+        expect(button('Generate skeleton').disabled).toBe(true)
         await settle()
         expect(asked).toEqual([])
         expect(worldPatches()).toEqual([{ op: 'source', chatId: 'chat-1' }])
         expect(source.value).toBe('A coast written from the chat.')
-        expect(toast()).toContain('written from this chat')
+        expect(toast()).toBe('The description is written. Read it, then generate the skeleton.')
         expect(live().hidden).toBe(true)
         // With text in the box it asks, and declined, nothing is sent.
-        button('Write it from this chat').click()
+        button('Write from this chat').click()
         await settle()
         expect(asked).toHaveLength(1)
-        expect(asked[0]).toMatchObject({ confirmLabel: 'Replace', message: expect.stringContaining('replaced by what the model writes') })
+        expect(asked[0]).toMatchObject({ title: 'Replace the description', confirmLabel: 'Replace', message: 'This replaces the text in the description box.' })
         expect(worldPatches()).toHaveLength(1)
         expect(source.value).toBe('A coast written from the chat.')
         // Agreed to, the text is replaced even though the box was not empty.
@@ -2983,15 +3010,15 @@ describe('the world skeleton (33b)', () => {
         await settle()
         const box = field('world-skeleton-source') as unknown as HTMLTextAreaElement
         expect(box.value).toBe('Typed by hand.')
-        button('Write it from this chat').click()
+        button('Write from this chat').click()
         await settle()
         expect(box.value).toBe('A coast written from the chat.')
         // A failure says why and keeps the text.
         box.value = ''
         agreeing.setWorldSource({ status: 'failed', at: new Date().toISOString(), reason: 'The model returned nothing.' })
-        button('Write it from this chat').click()
+        button('Write from this chat').click()
         await settle()
-        expect(toast()).toContain('The source could not be written: The model returned nothing.')
+        expect(toast()).toContain('The description could not be written: The model returned nothing.')
         expect(live().hidden).toBe(true)
     })
 
@@ -3014,6 +3041,54 @@ describe('the world skeleton (33b)', () => {
         expect(source.value).toBe('')
         // The shelf is read again for the new chat: its own books are different ones.
         expect(shelfReads()).toBe(2)
+    })
+
+    it('keeps every help text behind a [?], with labels on the two boxes and one visible warning (96)', async () => {
+        const { bridge, setWorldStatus } = makeBridge({ 'chat-1': MEMO })
+        setWorldStatus(STATUS)
+        mountTrackerPanel(root, bridge, makeHost())
+        await settle()
+        const tip = (label: string) => fold().querySelector(`.lh-help-tip[aria-label="Help: ${label}"]`) as HTMLButtonElement
+        const noteOf = (label: string) => fold().querySelector(`#${tip(label).getAttribute('aria-controls')}`) as HTMLElement
+        // The card's own: after the title in the header, its note the first thing under the header.
+        expect(tip('World Skeleton & atmosphere').previousElementSibling!.classList.contains('lh-card-title')).toBe(true)
+        expect(fold().querySelector('summary')!.nextElementSibling).toBe(noteOf('World Skeleton & atmosphere'))
+        expect(noteOf('World Skeleton & atmosphere').textContent).toBe('The World Skeleton is a hidden set of starting premises for the world: factions, locations and conflicts. Its locations can be subjects of World Progression reports until the Lorebook Agent records real lore for the same place. The narrator never sees the skeleton directly.')
+        const texts: Record<string, string> = {
+            'World description': 'Describe the world in your own words: atmosphere, cultures, history, powers, places, tensions, technology. A sentence or a page is enough. You can also press “Write from this chat”.',
+            'Write from this chat': 'A model reads the recent messages and writes one paragraph about the world. It names no person and no event. It replaces the text in the description box.',
+            'Messages read': 'How many recent messages the model reads when you press “Write from this chat”. Range: 1 to 200. Default: 30.',
+            'Factions, locations and conflicts': 'How many factions, locations and conflicts the model writes. Range: 0 to 20 each. Defaults: 4 factions, 4 locations and 3 conflicts. Ignored when “Only what the lorebooks state” is on.',
+            'Read lorebooks as canon': 'When on, the model reads lorebooks as established fact to build on. If you select none below, the campaign’s own lorebooks are read. Default: off.',
+            'Only what the lorebooks state': 'When on, the model invents nothing. It writes only the factions, locations and conflicts the lorebooks name, and ignores the three counts. Default: off.',
+            'Show existing premises when adding': 'When on, “Add to skeleton” shows the model the premises already in the skeleton. It then builds on them and does not repeat them. Default: on.',
+            'Custom skeleton prompt': 'Replaces the built-in skeleton prompt. {factionCount}, {locationCount} and {conflictCount} are replaced by the three counts. Leave blank to use the built-in prompt.',
+            'Generate skeleton': 'Writes a new skeleton from the description above.',
+            'Add to skeleton': 'Writes more premises and adds them to the existing skeleton.',
+        }
+        for (const [label, text] of Object.entries(texts)) {
+            expect(noteOf(label).textContent, label).toBe(text)
+            expect(noteOf(label).hidden, label).toBe(true)
+            // Never inside a label: a press would be the label's.
+            expect(tip(label).closest('label'), label).toBeNull()
+            expect(noteOf(label).closest('label'), label).toBeNull()
+        }
+        expect(fold().querySelectorAll('.lh-help-note')).toHaveLength(11)
+        tip('Generate skeleton').click()
+        expect(noteOf('Generate skeleton').hidden).toBe(false)
+        // The two boxes are named in the open; their placeholders are short and carry no instruction.
+        expect(Array.from(fold().querySelectorAll('.lh-skeleton-label')).map((l) => l.textContent)).toEqual(['World description', 'Custom skeleton prompt'])
+        expect(field('world-skeleton-source').getAttribute('placeholder')).toBe('Describe the world')
+        expect(field('world-skeleton-prompt').getAttribute('placeholder')).toBe('Custom skeleton prompt')
+        expect(Array.from(fold().querySelectorAll('.lh-world-switch:not(.lh-skeleton-book) > span')).map((s) => s.textContent)).toEqual(['Read lorebooks as canon', 'Only what the lorebooks state', 'Show existing premises when adding'])
+        expect(fold().querySelector('.lh-skeleton-filter .lh-agent-campaign-label')!.textContent).toBe('Lorebooks to read')
+        // No lead paragraph, no help as a tooltip; the one warning stands beside Generate.
+        expect(fold().querySelector('.lh-world-lead')).toBeNull()
+        expect(fold().querySelectorAll('[title]')).toHaveLength(0)
+        expect(fold().querySelector('.lh-skeleton-warning')!.textContent).toBe('“Generate skeleton” replaces the existing skeleton.')
+        expect(fold().querySelector('.lh-skeleton-warning')!.parentElement!.classList.contains('lh-world-buttons')).toBe(false)
+        expect(fold().textContent).not.toContain('Day 0')
+        expect(fold().textContent).not.toMatch(/Multihog|the host|the fold/)
     })
 })
 
@@ -4221,7 +4296,7 @@ describe('the scene widget (47c)', () => {
         expect(root.querySelector('.lh-maps')).toBeNull()
         expect(root.querySelector('.lh-tracker-cards')).not.toBeNull()
         const strip = scene.querySelector('.lh-widget-tabs') as HTMLElement
-        expect(Array.from(strip.querySelectorAll('button')).map((b) => b.textContent)).toEqual(['Lorebook Agent', 'Campaign Records', 'Visuals/Map'])
+        expect(Array.from(strip.querySelectorAll('button')).map((b) => b.textContent)).toEqual(['Lorebook Agent', 'Campaign Records', 'Visuals/Map', 'Companion'])
         const agent = scene.querySelector('.lh-agent') as HTMLDetailsElement
         const records = scene.querySelector('.lh-campaign-records') as HTMLDetailsElement
         const visuals = scene.querySelector('.lh-maps') as HTMLDetailsElement
@@ -4239,6 +4314,63 @@ describe('the scene widget (47c)', () => {
         expect(rest.querySelector('.lh-agent')).toBeNull()
         expect(agent.querySelector('[data-lh-field="agent-campaign"] [data-lh-field="campaign"]')).not.toBeNull()
         expect(agent.querySelector('[data-lh-field="agent-campaign"] [data-lh-field="books"]')).not.toBeNull()
+    })
+
+    it('gives the Companion a fourth tab (100a), and moves its chat to the settings tab and back when the preference says so', async () => {
+        const rest = document.createElement('div')
+        const scene = document.createElement('div')
+        const { bridge, emit } = makeBridge({ 'chat-1': MEMO })
+        mountTrackerPanel(root, bridge, makeHost(), {}, { rest, scene })
+        await settle()
+
+        const strip = scene.querySelector('.lh-widget-tabs') as HTMLElement
+        const tab = strip.querySelector('[data-lh-tab="companion"]') as HTMLButtonElement
+        const pane = scene.querySelector('.lh-companion') as HTMLDetailsElement
+        const visuals = scene.querySelector('.lh-maps') as HTMLDetailsElement
+        expect(tab.getAttribute('data-lh-short')).toBe('Companion')
+        expect(pane.hidden).toBe(true)
+        expect(rest.querySelector('.lh-companion')).toBeNull()
+        // Shown by its tab, as any pane.
+        tab.click()
+        expect(pane.hidden).toBe(false)
+        expect(pane.open).toBe(true)
+        expect(visuals.hidden).toBe(true)
+
+        // To the settings tab: directly before the raw memo, its tab gone from the strip, Visuals/Map shown in its place.
+        emit({ name: 'prefs.changed', data: { prefs: { companionPlace: 'settings' } } })
+        expect(scene.querySelector('.lh-companion')).toBeNull()
+        expect(rest.querySelector('[data-lh-field="raw-memo"]')!.previousElementSibling).toBe(pane)
+        expect(pane.hidden).toBe(false)
+        expect(pane.classList.contains('lh-start-option')).toBe(true)
+        expect(pane.classList.contains('lh-widget-pane')).toBe(false)
+        expect(tab.hidden).toBe(true)
+        expect(visuals.hidden).toBe(false)
+        expect(strip.querySelector('[data-lh-tab="visuals"]')!.classList.contains('lh-widget-tab--active')).toBe(true)
+        // Another tab pressed leaves the chat in the settings tab standing.
+        ;(strip.querySelector('[data-lh-tab="agent"]') as HTMLButtonElement).click()
+        expect(pane.hidden).toBe(false)
+        expect(rest.contains(pane)).toBe(true)
+
+        // And back: a hidden pane of the box again, behind its tab.
+        emit({ name: 'prefs.changed', data: { prefs: { companionPlace: 'widget' } } })
+        expect(rest.querySelector('.lh-companion')).toBeNull()
+        expect(scene.contains(pane)).toBe(true)
+        expect(pane.hidden).toBe(true)
+        expect(pane.classList.contains('lh-widget-pane')).toBe(true)
+        expect(pane.classList.contains('lh-start-option')).toBe(false)
+        expect(tab.hidden).toBe(false)
+        tab.click()
+        expect(pane.hidden).toBe(false)
+        expect((scene.querySelector('.lh-agent') as HTMLDetailsElement).hidden).toBe(true)
+    })
+
+    it('asks for the Companion’s conversation of the open chat', async () => {
+        const rest = document.createElement('div')
+        const scene = document.createElement('div')
+        const { bridge, requests } = makeBridge({ 'chat-1': MEMO })
+        mountTrackerPanel(root, bridge, makeHost(), {}, { rest, scene })
+        await settle()
+        expect(requests.filter((r) => r.op === 'companion.get').map((r) => r.params)).toEqual([{ chatId: 'chat-1' }])
     })
 
     it('switches the box to the tab pressed, holding that pane open and opening the browser in it', async () => {
@@ -4755,7 +4887,7 @@ describe('choosing which model runs each job', () => {
         await settle()
 
         const labels = Array.from(picker('agent-model').options).map((o) => o.textContent)
-        expect(labels[0]).toContain('The narrator’s connection')
+        expect(labels[0]).toBe('Use the narrator connection')
         expect(labels).toContain('Fast little one — haiku')
         expect(labels).toContain('The storyteller — opus')
     })
@@ -4827,7 +4959,9 @@ describe('the character creator fold (Phase 35)', () => {
         // The creator heads the starting area (69), Instant Action after it, the area after the archive actions.
         expect(fold().parentElement!.classList.contains('lh-start-body')).toBe(true)
         expect(fold().closest('.lh-start')).not.toBeNull()
-        expect(fold().nextElementSibling!.classList.contains('lh-instant')).toBe(true)
+        // Second of the three ways in since 98: Instant Action leads, the third option follows.
+        expect(fold().previousElementSibling!.classList.contains('lh-instant')).toBe(true)
+        expect(fold().nextElementSibling!.getAttribute('data-lh-field')).toBe('start-other')
         expect(fold().closest('.lh-start')!.previousElementSibling!.classList.contains('lh-tracker-archive-actions')).toBe(true)
         // Folded as it ships since 84; the starting area around it is open (69).
         expect(fold().open).toBe(false)
@@ -4837,7 +4971,7 @@ describe('the character creator fold (Phase 35)', () => {
         expect(Array.from((fold().querySelector('[data-lh-field="creator-preset"]') as HTMLSelectElement).options).map((o) => o.textContent)).toEqual(['\u2014 Select a preset \u2014', 'Hacker'])
         // The connection list reaches the fold.
         const connection = fold().querySelector('[data-lh-field="creator-connection"] select') as HTMLSelectElement
-        expect(connection.options[0]!.textContent).toBe('The tracker\u2019s connection')
+        expect(connection.options[0]!.textContent).toBe('Use the State Tracker connection')
         // Generate sends the draft for this chat, and the note says what came back.
         button('Generate the character').click()
         await settle()
@@ -4876,7 +5010,7 @@ describe('the Instant Action fold (Phase 35a)', () => {
         await settle()
         expect(fold()).not.toBeNull()
         // Inside the starting area since 69, after the creator.
-        expect(fold().previousElementSibling!.classList.contains('lh-creator')).toBe(true)
+        expect(fold().nextElementSibling!.classList.contains('lh-creator')).toBe(true)
         expect(fold().open).toBe(false)
         expect(statusLine()).toBe('Select a genre to begin')
         const send = fold().querySelector('[data-lh-field="instant-send-starter-input"]') as HTMLInputElement
@@ -4922,7 +5056,7 @@ describe('the other ways to begin (Phase 35c)', () => {
         await settle()
         expect(fold()).not.toBeNull()
         // First in the Other Ways to Begin drawer (83), the card import after it.
-        expect(fold().parentElement!.classList.contains('lh-start-drawer-body')).toBe(true)
+        expect(fold().parentElement!.classList.contains('lh-start-option-body')).toBe(true)
         expect(fold().previousElementSibling).toBeNull()
         expect(fold().nextElementSibling!.classList.contains('lh-import')).toBe(true)
         expect(fold().open).toBe(false)
@@ -4959,9 +5093,9 @@ describe('the Player Card fold (Phase 35b)', () => {
         // Under the starting area (69), which ends with the narrator's configuration (70) after the import.
         expect(fold().previousElementSibling!.classList.contains('lh-start')).toBe(true)
         const startBody = fold().previousElementSibling!.querySelector('.lh-start-body')!
-        expect(startBody.lastElementChild!.classList.contains('lh-start-conn')).toBe(true)
-        expect(startBody.querySelector('.lh-narrator')!.previousElementSibling!.classList.contains('lh-start-drawer')).toBe(true)
-        expect(startBody.querySelector('.lh-start-drawer-body')!.lastElementChild!.classList.contains('lh-import')).toBe(true)
+        expect(startBody.lastElementChild!.classList.contains('lh-start-learn')).toBe(true)
+        expect(startBody.querySelector('.lh-narrator')!.previousElementSibling!.getAttribute('data-lh-field')).toBe('start-other')
+        expect(startBody.querySelector('.lh-start-option-body')!.lastElementChild!.classList.contains('lh-import')).toBe(true)
         expect(fold().open).toBe(false)
         expect(cardOps()).toEqual([['get', { chatId: 'chat-1' }]])
         expect(statusLine()).toContain('Robin Vale’s card: 2 sections')
@@ -5279,6 +5413,12 @@ describe('the maps fold (Phase 34)', () => {
         expect(sub().querySelector('.lh-agent-drawer-title')!.textContent).toBe('🗺️ Map Evolution')
         expect(sub().querySelector('[data-lh-field="evolution-badge"]')!.textContent).toBe('ON')
         expect(line()).toBe('Map Evolution: on, every 6 in-world hours for a site the party is away from, every 1 hour 30 minutes for the site the party is in. The clock reads 09:00 AM, Day 5; a site last evolved at 09:00 AM, Day 4; the next pass is due at 09:00 PM, Day 4.')
+        // The drawer's dials say the settings table's words (96): a twin is one text, not a second copy.
+        expect(sub().querySelector('[data-lh-field="map-evolution-enabled"]')!.textContent).toBe('Evolve sites over in-world time')
+        expect(sub().querySelector('[data-lh-field="map-evolution-interval"] label')!.textContent).toBe('Hours between passes, away')
+        expect(sub().querySelector('[data-lh-field="map-evolution-interval"] .lh-agent-campaign-hint')!.textContent).toBe('In-world hours between passes for a site the party is not in. Default: 8.')
+        expect(Array.from((sub().querySelector('[data-lh-field="map-evolution-scope"] select') as HTMLSelectElement).options).map((o) => o.textContent)).toEqual(['All', 'Party’s site', 'Some', 'Named'])
+        expect(Array.from(sub().querySelectorAll('.lh-agent-campaign-hint')).some((n) => /Multihog/.test(n.textContent ?? ''))).toBe(false)
         expect(field('map-evolution-enabled').checked).toBe(true)
         expect(field('map-evolution-interval').value).toBe('6')
         expect(field('map-evolution-on-site-minutes').value).toBe('30')
@@ -5559,7 +5699,7 @@ describe('import a character card (Phase 39)', () => {
         expect(fold().previousElementSibling!.classList.contains('lh-ways')).toBe(true)
         // In the starting area (69), before the narrator's configuration (70); the Player Card and the library follow the area.
         expect(fold().nextElementSibling).toBeNull()
-        expect(fold().closest('.lh-start-drawer')!.nextElementSibling!.classList.contains('lh-narrator')).toBe(true)
+        expect(fold().closest('[data-lh-field="start-other"]')!.nextElementSibling!.classList.contains('lh-narrator')).toBe(true)
         expect(fold().closest('.lh-start')!.nextElementSibling!.classList.contains('lh-player-card')).toBe(true)
         expect(fold().closest('.lh-start')!.nextElementSibling!.nextElementSibling!.classList.contains('lh-library')).toBe(true)
         expect(fold().open).toBe(false)
@@ -6361,6 +6501,8 @@ describe('the campaign’s lorebooks (55)', () => {
         // The switch saves the preference.
         const auto = fold().querySelector('[data-lh-field="books-auto"]') as HTMLInputElement
         expect(auto.checked).toBe(true)
+        // One name with the settings' dial (96, 2e).
+        expect(auto.parentElement!.textContent).toBe('Attach new lorebooks automatically')
         auto.checked = false
         auto.dispatchEvent(new Event('change'))
         await settle()

@@ -11,6 +11,7 @@
  */
 
 import type { ConnectionChoice, SceneConnectionsResult } from '../protocol.js'
+import { createHelpTip } from './help-tip.js'
 
 type El = (tag: string, attrs?: Record<string, string>) => HTMLElement
 
@@ -36,8 +37,9 @@ export interface ConnectionRowDef {
     key: string
     field: string
     label: string
-    /** What a blank choice means, in the fold's own words. */
+    /** What a blank choice means: the row's fallback, named. */
     blank: string
+    /** The row's help, behind the `[?]` after its label (96). */
     hint: string
     kind: 'text' | 'image'
 }
@@ -48,65 +50,81 @@ export interface ConnectionRowDef {
  * Lumiverse's default-ticked one, the first listed — never *whatever writes
  * the story* as such, which Lumiverse's quiet path does not offer.
  */
-export const NARRATOR_BLANK = 'The narrator’s connection (the chat’s own, else the one seen writing the story, else Lumiverse’s default)'
+export const NARRATOR_BLANK = 'Use the narrator connection'
+
+/** What a blank map or portrait-prompt row means. */
+const AGENT_BLANK = 'Use the Lorebook Agent connection'
 
 /** The output length's preference (89), blank as it ships. */
 export const MAX_TOKENS_FIELD = 'connection-max-tokens'
 
 /** The rows, in the order the passes run: the story's, then the pictures'. */
 export const CONNECTION_ROWS: readonly ConnectionRowDef[] = [
-    { key: 'trackerConnectionId', field: 'connection-tracker', label: 'State tracker', blank: NARRATOR_BLANK, hint: 'The model that reads the story and writes the memo. Also under Tracker settings, instruction and the last report.', kind: 'text' },
-    { key: 'agentConnectionId', field: 'connection-agent', label: 'Lorebook agent', blank: NARRATOR_BLANK, hint: 'The model that records the lore, and the one the world, the maps and the pictures’ prompts fall back to. Also in the Lorebook agent fold.', kind: 'text' },
-    { key: 'creatorConnectionId', field: 'connection-creator', label: 'Character creator', blank: 'The tracker’s connection', hint: 'The sheet, Instant Action and the other ways to begin. Also in the Character creator fold.', kind: 'text' },
-    { key: 'mapArchitectConnectionId', field: 'connection-architect', label: 'Map Architect', blank: 'The agent’s connection', hint: 'The two calls that draw a site’s map — the topology, then the contents — and the brief a map asked for from the panel fills first. A model that writes long, exact JSON suits it.', kind: 'text' },
-    { key: 'mapUpdaterConnectionId', field: 'connection-updater', label: 'Map Updater', blank: 'The agent’s connection', hint: 'The pass after every reply inside a mapped site: one JSON transaction against the map. A fast model suits it.', kind: 'text' },
-    { key: 'mapEvolutionConnectionId', field: 'connection-evolution', label: 'Map Evolution', blank: 'The agent’s connection', hint: 'A fast model suits it: a pass can take several sites in one turn. Also under Evolution in the Maps fold.', kind: 'text' },
-    { key: 'portraitPromptConnectionId', field: 'connection-portrait-prompt', label: 'Portrait prompts', blank: 'The agent’s connection', hint: 'The text model that writes a portrait’s image prompt, the library’s photo included. Also under Drawing the portraits.', kind: 'text' },
-    { key: 'scenePictureConnectionId', field: 'connection-scene-image', label: 'Scene picture', blank: 'The host’s default image connection', hint: 'The image connection the place’s picture is drawn on. Also under Drawing the picture in the Scene fold.', kind: 'image' },
-    { key: 'portraitConnectionId', field: 'connection-portrait-image', label: 'Portraits', blank: 'The scene picture’s connection', hint: 'The image connection a portrait and the library’s photo are drawn on. Also under Drawing the portraits.', kind: 'image' },
+    { key: 'trackerConnectionId', field: 'connection-tracker', label: 'State Tracker', blank: NARRATOR_BLANK, hint: 'The model that reads the story and writes the tracker memo.', kind: 'text' },
+    { key: 'agentConnectionId', field: 'connection-agent', label: 'Lorebook Agent', blank: NARRATOR_BLANK, hint: 'The model that records lore in the campaign’s lorebooks. The Map Architect, Map Updater, Map Evolution and portrait prompts use it when their own rows are blank. World Progression always uses it.', kind: 'text' },
+    { key: 'creatorConnectionId', field: 'connection-creator', label: 'Character creator', blank: 'Use the State Tracker connection', hint: 'The model that writes a character sheet. The Character creator, Instant Action and the other ways to begin all use it.', kind: 'text' },
+    { key: 'companionConnectionId', field: 'connection-companion', label: 'Adventure Companion', blank: NARRATOR_BLANK, hint: 'The model that answers in the Companion’s chat. The whole guide is sent with every message while “Attach the guide” is on, so a small, cheap model suits it.', kind: 'text' },
+    { key: 'mapArchitectConnectionId', field: 'connection-architect', label: 'Map Architect', blank: AGENT_BLANK, hint: 'Draws a site’s map in two calls: first the layout, then the contents. It also writes the brief when you ask for a map from the panel. Choose a model that writes long, exact JSON.', kind: 'text' },
+    { key: 'mapUpdaterConnectionId', field: 'connection-updater', label: 'Map Updater', blank: AGENT_BLANK, hint: 'Runs after replies while the party is inside a mapped site. Each pass writes the changes to the map as JSON. A fast model suits it.', kind: 'text' },
+    { key: 'mapEvolutionConnectionId', field: 'connection-evolution', label: 'Map Evolution', blank: AGENT_BLANK, hint: 'Changes mapped sites while the party is away. One pass can cover several sites, so a fast model suits it.', kind: 'text' },
+    { key: 'portraitPromptConnectionId', field: 'connection-portrait-prompt', label: 'Portrait prompts', blank: AGENT_BLANK, hint: 'The text model that writes the image prompt for a portrait or an NPC library photo.', kind: 'text' },
+    { key: 'scenePictureConnectionId', field: 'connection-scene-image', label: 'Scene picture', blank: 'Use Lumiverse’s default image connection', hint: 'The image connection that draws the picture of the party’s location.', kind: 'image' },
+    { key: 'portraitConnectionId', field: 'connection-portrait-image', label: 'Portraits', blank: 'Use the location image connection', hint: 'The image connection that draws portraits and NPC library photos.', kind: 'image' },
 ]
+
+/** How many text connections **Apply to all** sets, in the words its help uses; the test holds the word to the rows. */
+const NUMBER_WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten']
+const TEXT_ROW_COUNT = CONNECTION_ROWS.filter((row) => row.kind === 'text').length
+const TEXT_ROW_WORD = NUMBER_WORDS[TEXT_ROW_COUNT] ?? String(TEXT_ROW_COUNT)
+
+/** Ids for the rows' controls, unique across every category drawn on the page. */
+let sequence = 0
 
 export function createConnectionsCategory(host: ConnectionsCategoryHost): ConnectionsCategory {
     const { el } = host
     const root = el('div', { class: 'lh-connections' })
-    const lead = el('div', { class: 'lh-section-help lh-search-item' })
-    lead.textContent = 'Each connection is also beside what it drives; a change here shows there, and the other way round. Blank is the fallback the row names.'
-    root.append(lead)
-
     const chosen: Record<string, string> = {}
     let texts: ConnectionChoice[] = []
     let textsUnavailable = ''
     let images: SceneConnectionsResult | null = null
     let asked = false
-    const selects = new Map<string, { select: HTMLSelectElement; hint: HTMLElement; def: ConnectionRowDef }>()
+    const selects = new Map<string, { select: HTMLSelectElement; status: HTMLElement; def: ConnectionRowDef }>()
+    let ids = 0
+
+    /** A row's label line (96): the label, then its `[?]`; the label names the control by `for`, since the row is no `<label>`. */
+    function labelLine(text: string, control: HTMLElement, help: string): { line: HTMLElement; note: HTMLElement } {
+        control.id = `lh-conn-control-${++sequence}-${++ids}`
+        const name = el('label', { class: 'lh-conn-label', for: control.id })
+        name.textContent = text
+        const tip = createHelpTip(el, text, help)
+        const line = el('span', { class: 'lh-conn-label-line' })
+        line.append(name, tip.button)
+        return { line, note: tip.note }
+    }
 
     for (const def of CONNECTION_ROWS) {
-        const row = el('label', { class: 'lh-conn lh-search-item', 'data-lh-field': def.field })
-        const name = el('span', { class: 'lh-conn-label' })
-        name.textContent = def.label
+        const row = el('div', { class: 'lh-conn lh-search-item', 'data-lh-field': def.field })
         const select = el('select', { class: 'lh-input' }) as HTMLSelectElement
-        const hint = el('div', { class: 'lh-conn-hint' })
-        hint.textContent = def.hint
-        row.append(name, select, hint)
+        const { line, note } = labelLine(def.label, select, def.hint)
+        // The visible line under the control is the row's status alone (96): why a list could not be read. Empty, it is hidden.
+        const status = el('div', { class: 'lh-conn-hint', role: 'status' })
+        status.hidden = true
+        row.append(line, note, select, status)
         select.addEventListener('change', () => {
             chosen[def.key] = select.value
             host.savePrefs({ [def.key]: select.value }).catch(host.fail)
         })
-        selects.set(def.key, { select, hint, def })
+        selects.set(def.key, { select, status, def })
         root.append(row)
     }
 
     // Apply to all (Multihog's): one text connection for every pass.
     const allRow = el('div', { class: 'lh-conn lh-search-item', 'data-lh-field': 'connection-all' })
-    const allLabel = el('span', { class: 'lh-conn-label' })
-    allLabel.textContent = 'Apply one text connection to all'
     const allSelect = el('select', { class: 'lh-input' }) as HTMLSelectElement
     const allButton = el('button', { type: 'button', class: 'lh-button' }) as HTMLButtonElement
     allButton.textContent = 'Apply to all'
-    allButton.title = 'Sets the tracker, the agent, the creator, Map Evolution and the portrait prompts to this connection. The two image connections are not touched.'
-    const allHint = el('div', { class: 'lh-conn-hint' })
-    allHint.textContent = 'Every text connection above to one choice; blank puts each back to its own fallback.'
-    allRow.append(allLabel, allSelect, allButton, allHint)
+    const allHead = labelLine('Apply to all text connections', allSelect, `Sets all ${TEXT_ROW_WORD} text connections above to the chosen connection. The two image connections do not change. Choose the blank option to return every row to its own fallback.`)
+    allRow.append(allHead.line, allHead.note, allSelect, allButton)
     allButton.addEventListener('click', () => {
         const patch: Record<string, unknown> = {}
         for (const def of CONNECTION_ROWS) if (def.kind === 'text') patch[def.key] = allSelect.value
@@ -116,13 +134,10 @@ export function createConnectionsCategory(host: ConnectionsCategoryHost): Connec
 
     // The output length for AdventureTime's own calls (89): a preset's numbers never reach a quiet
     // call, so this is the one number the passes get; blank leaves each provider's own default.
-    const tokensRow = el('label', { class: 'lh-conn lh-search-item', 'data-lh-field': MAX_TOKENS_FIELD })
-    const tokensLabel = el('span', { class: 'lh-conn-label' })
-    tokensLabel.textContent = 'Output length for AdventureTime’s calls'
-    const tokensInput = el('input', { type: 'number', class: 'lh-input', min: '0', step: '1', placeholder: 'blank: each provider’s own default' }) as HTMLInputElement
-    const tokensHint = el('div', { class: 'lh-conn-hint' })
-    tokensHint.textContent = 'Sent as max_tokens on every pass AdventureTime makes — the tracker, the agent, the maps, the creator, the prompts — on whichever connection it runs. Blank leaves each provider’s own default (Anthropic’s through Lumiverse is 4,096). Set it when a pass’s JSON reply ends mid-object; some providers refuse a number above the model’s limit, so keep it at or under the model’s.'
-    tokensRow.append(tokensLabel, tokensInput, tokensHint)
+    const tokensRow = el('div', { class: 'lh-conn lh-search-item', 'data-lh-field': MAX_TOKENS_FIELD })
+    const tokensInput = el('input', { type: 'number', class: 'lh-input', min: '0', step: '1', placeholder: 'Provider default' }) as HTMLInputElement
+    const tokensHead = labelLine('Pass output length', tokensInput, 'The maximum reply length, in tokens, for every pass AdventureTime makes. Leave blank to use each provider’s default (4,096 for Anthropic through Lumiverse). Raise it if a pass’s JSON reply is cut off, and keep it at or below the model’s limit.')
+    tokensRow.append(tokensHead.line, tokensHead.note, tokensInput)
     let maxTokens = 0
     tokensInput.addEventListener('change', () => {
         const n = Math.floor(Number(tokensInput.value))
@@ -133,8 +148,8 @@ export function createConnectionsCategory(host: ConnectionsCategoryHost): Connec
     })
     root.append(tokensRow)
 
-    function drawOne(entry: { select: HTMLSelectElement; hint: HTMLElement; def: ConnectionRowDef }): void {
-        const { select, hint, def } = entry
+    function drawOne(entry: { select: HTMLSelectElement; status: HTMLElement; def: ConnectionRowDef }): void {
+        const { select, status, def } = entry
         const current = chosen[def.key] ?? ''
         select.replaceChildren()
         const none = el('option', { value: '' }) as HTMLOptionElement
@@ -150,19 +165,20 @@ export function createConnectionsCategory(host: ConnectionsCategoryHost): Connec
         }
         if (current && !choices.some((c) => c.id === current)) {
             const missing = el('option', { value: current }) as HTMLOptionElement
-            missing.textContent = 'The connection you chose is no longer listed'
+            missing.textContent = 'Missing connection (no longer in Lumiverse)'
             select.append(missing)
         }
         select.value = current
         const unavailable = def.kind === 'text' ? textsUnavailable : images?.unavailable ?? ''
-        hint.textContent = unavailable || def.hint
+        status.textContent = unavailable ? `Connections could not be listed: ${unavailable}` : ''
+        status.hidden = !unavailable
     }
 
     function draw(): void {
         for (const entry of selects.values()) drawOne(entry)
         allSelect.replaceChildren()
         const none = el('option', { value: '' }) as HTMLOptionElement
-        none.textContent = 'Each pass’s own fallback'
+        none.textContent = 'Use each row’s fallback'
         allSelect.append(none)
         for (const c of texts) {
             const option = el('option', { value: c.id }) as HTMLOptionElement

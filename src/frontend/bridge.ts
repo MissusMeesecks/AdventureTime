@@ -72,6 +72,9 @@ export const OP_TIMEOUT_MS: Partial<Record<RequestOp, number>> = {
     'wizard.revise': 180_000,
     // One model call, a JSON object of fifteen values (74b, the AI Theme Wizard).
     'theme.generate': 180_000,
+    // The Adventure Companion (100a): one model call with the whole guide in its prompt, and since 100c up to six, with a tracker, an agent or a map pass between them (100c).
+    'companion.send': 600_000,
+    'companion.confirm': 60_000,
     // One model call rewriting a whole entry or the Player Card (78c, Edit with AI).
     'records.aiEdit': 180_000,
     // Two model calls at most -- a consolidation and the report -- each the

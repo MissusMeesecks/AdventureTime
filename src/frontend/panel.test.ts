@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 import { MOBILE_MEDIA } from './mobile.js'
 import { PANEL_CSS, mountPanel as mountPanelRaw, type PanelHost } from './panel.js'
+import { NARRATOR_CARD_EVENT } from './start-area.js'
 
 // Every mount is destroyed after its test (lesson 50, the second time): a panel kept its bridge
 // subscriptions, its timers and so its DOM for the whole file, and at 95 tests the file outgrew the
@@ -227,7 +228,7 @@ describe('the dice line', () => {
 
     it('says why there is no tool, quietly for a mode that asks for none', async () => {
         const { root } = await mountWith(STATUS({ registered: [], absent: 'mode', calls: 0 }))
-        expect(dice(root).textContent).toContain('RNG mode is not "Pre-seeded + tool calls"')
+        expect(dice(root).textContent).toContain('Dice (RNG) is not "Pre-seeded queue + tool calls"')
         expect(dice(root).classList.contains('lh-dice-line--warn')).toBe(false)
     })
 
@@ -255,6 +256,27 @@ describe('the dice line', () => {
         await settle()
         expect(requests.filter((r) => r.op === 'status.get').length).toBe(before + 1)
         expect(root.querySelector('.lh-dice-line')).not.toBeNull()
+    })
+
+    // 98: one status read, named for the open chat, feeds the Lumiverse checklist and the starting area's checks alike.
+    it('names the open chat on the status read, hands the answer to the starting area, and reads again for the chat the tracker names', async () => {
+        const told = { ...STATUS(undefined), passes: { id: 'conn-1', name: 'Hearth', provider: 'openrouter', model: 'lantern-2', why: 'seen', listed: 1, maxTokens: 0 }, narrator: { name: 'Game Master', exists: true, chat: 'narrator', chatCardName: 'Game Master' } }
+        const { root, requests } = await mountWith(told)
+        document.body.append(root)
+        const reads = () => requests.filter((r) => r.op === 'status.get')
+        expect(reads().every((r) => (r.params as { chatId?: string }).chatId === 'chat-1')).toBe(true)
+        // The same answer in both places: the checklist's narrator item and the starting area's row, and the Ready fold.
+        const row = root.querySelector('[data-lh-field="start-check-narrator"]') as HTMLElement
+        expect(row.getAttribute('data-lh-state')).toBe('ok')
+        expect(row.querySelector('.lh-start-check-evidence')!.textContent).toBe(root.querySelector('[data-lh-field="checklist-narrator"] .lh-checklist-evidence')!.textContent)
+        expect((root.querySelector('[data-lh-field="start-ready"]') as HTMLElement).hidden).toBe(false)
+        // The tracker's chat changed, or a card was made: read again, for the chat the event names.
+        const before = reads().length
+        document.dispatchEvent(new CustomEvent(NARRATOR_CARD_EVENT, { detail: { chatId: 'chat-7' } }))
+        await settle()
+        expect(reads()).toHaveLength(before + 1)
+        expect(reads().at(-1)!.params).toEqual({ chatId: 'chat-7' })
+        root.remove()
     })
 })
 
@@ -309,7 +331,7 @@ describe('panel', () => {
 
         // `settings.patch` has no canned answer, so any commit is refused.
         const add = Array.from(root.querySelectorAll('button'))
-            .find((b) => b.textContent === 'Add a field') as HTMLButtonElement
+            .find((b) => b.textContent === 'Add field') as HTMLButtonElement
         expect(add).toBeDefined()
 
         add.click()
@@ -354,7 +376,7 @@ describe('panel', () => {
         await settle()
         expect(fieldToggle(root)).toBeNull()
 
-        button(root, 'Import cartridge…').click()
+        button(root, 'Import cartridge').click()
         await settle()
         // The fields editor follows the cartridge, and so does the panel's own copy of the settings.
         const box = fieldToggle(root)
@@ -366,6 +388,50 @@ describe('panel', () => {
         const sent = (patch!.params as { patch: Record<string, unknown> }).patch
         expect(Object.keys(sent).sort()).toEqual(['customFields', 'gameSystems'])
         expect((sent.gameSystems as Array<{ id: string; enabled: boolean }>).find((system) => system.id === 's1')!.enabled).toBe(true)
+    })
+
+    it('asks before a card’s Reset to factory under the card’s own name, at the card’s foot (96)', async () => {
+        const root = document.createElement('div')
+        const { bridge, requests } = makeBridge({ 'settings.get': { settings: createDefaultSettings() }, 'settings.reset': { settings: createDefaultSettings() } })
+        const made = makeHost(true)
+        mountPanel(root, bridge, made.host)
+        await settle()
+        const card = Array.from(root.querySelectorAll<HTMLElement>('.lh-section')).find((c) => c.querySelector('.lh-section-title')!.textContent === 'CYOA mode')!
+        ;(card.querySelector('.lh-card-foot .lh-reset') as HTMLButtonElement).click()
+        await settle()
+        // The name is the pane's, not the cartridge group's label ("CYOA Mode").
+        expect(made.showConfirm).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Reset to factory', confirmLabel: 'Reset', message: 'Reset "CYOA mode" to factory values? This replaces your current settings in this card.' }))
+        expect(requests.filter((r) => r.op === 'settings.reset')).toHaveLength(1)
+        expect(root.querySelector('.lh-status')!.textContent).toBe('Reset CYOA mode to factory values.')
+    })
+
+    it('says what the Map prompts card’s reset replaces, the Report prompt card’s in the shared words (96, stage 2f)', async () => {
+        const root = document.createElement('div')
+        const { bridge, requests } = makeBridge({ 'settings.get': { settings: createDefaultSettings() }, 'settings.reset': { settings: createDefaultSettings() } })
+        const made = makeHost(true)
+        mountPanel(root, bridge, made.host)
+        await settle()
+        const card = (title: string) => Array.from(root.querySelectorAll<HTMLElement>('.lh-section')).find((c) => c.querySelector('.lh-section-title')!.textContent === title)!
+        const maps = card('Map prompts')
+        // The card's help is behind its [?], hidden; the old description named a phase.
+        expect(maps.querySelector('summary .lh-help-tip')).not.toBeNull()
+        const help = maps.querySelector<HTMLElement>('.lh-help-note')!
+        expect(help.textContent).toBe('The system prompts of the map passes: Map Architect’s contents pass, Map Updater, Map Evolution and Map Evolution’s history compression. They are saved in the cartridge. Reset to factory restores the stock text.')
+        expect(help.hidden).toBe(true)
+        expect(maps.textContent).not.toContain('Phase 2')
+        expect(Array.from(maps.querySelectorAll('.lh-row')).map((r) => r.querySelector('.lh-label, label')!.textContent!.replace(/\?$/, '').trim())).toEqual(['Map Architect prompt', 'Map Updater prompt', 'Map Evolution prompt', 'Map Evolution compression prompt'])
+        ;(maps.querySelector('.lh-card-foot .lh-reset') as HTMLButtonElement).click()
+        await settle()
+        expect(made.showConfirm).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Reset to factory', confirmLabel: 'Reset', message: 'This replaces the four map prompts with the factory text.' }))
+        expect(requests.filter((r) => r.op === 'settings.reset').at(-1)!.params).toEqual({ groupIds: ['mapArchitect'] })
+        expect(root.querySelector('.lh-status')!.textContent).toBe('Map prompts reset to factory values.')
+        const world = card('Report prompt')
+        expect(world.querySelector<HTMLElement>('.lh-help-note')!.textContent).toBe('The system prompt for the model that writes World Progression reports.')
+        expect(Array.from(world.querySelectorAll('.lh-row')).map((r) => r.querySelector('.lh-label, label')!.textContent!.replace(/\?$/, '').trim())).toEqual(['World Progression prompt'])
+        ;(world.querySelector('.lh-card-foot .lh-reset') as HTMLButtonElement).click()
+        await settle()
+        expect(made.showConfirm).toHaveBeenLastCalledWith(expect.objectContaining({ message: 'Reset "Report prompt" to factory values? This replaces your current settings in this card.' }))
+        expect(root.querySelector('.lh-status')!.textContent).toBe('Reset Report prompt to factory values.')
     })
 
     it('carries a custom field switch across to the game system it is half of', async () => {
@@ -418,6 +484,22 @@ describe('panel', () => {
 
     // The other half of the live report. The badge above said the opposite of
     // the checkbox below until the page was reloaded.
+    // 96, stage 2c: a custom field's Delete asks through the host first, named for its action.
+    it('asks before a custom field is deleted, and sends nothing when the answer is no', async () => {
+        const root = document.createElement('div')
+        const { bridge, requests } = makeBridge({ 'settings.get': { settings: withPairedData() }, 'settings.patch': { settings: withPairedData() } })
+        const { host, showConfirm } = makeHost(false)
+        mountPanel(root, bridge, host)
+        await settle()
+
+        ;(root.querySelector('.lh-field-delete') as HTMLButtonElement).click()
+        await settle()
+
+        expect(showConfirm).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Delete field', message: 'Delete the field "Trail"? This cannot be undone.', confirmLabel: 'Delete' }))
+        expect(requests.filter((r) => r.op === 'settings.patch')).toEqual([])
+        expect(root.querySelectorAll('.lh-field')).toHaveLength(1)
+    })
+
     it('redraws the game systems reading after a commit', async () => {
         const root = document.createElement('div')
         const before = withPairedData()
@@ -436,14 +518,14 @@ describe('panel', () => {
         mountPanel(root, bridge, makeHost().host)
         await settle()
 
-        expect(root.querySelector('.lh-gs-badge')!.textContent).toBe('off')
+        expect(root.querySelector('.lh-gs-badge')!.textContent).toBe('Off')
 
         const box = fieldToggle(root)
         box.checked = true
         box.dispatchEvent(new Event('change'))
         await settle()
 
-        expect(root.querySelector('.lh-gs-badge')!.textContent).toBe('tracked')
+        expect(root.querySelector('.lh-gs-badge')!.textContent).toBe('Tracked')
     })
 
     // The wizard's save (Phase 32): one patch of the three keys, and the game
@@ -474,9 +556,9 @@ describe('panel', () => {
         const description = root.querySelector('[data-lh-field="wizard-description"]') as HTMLTextAreaElement
         description.value = 'Irradiated zones.'
         description.dispatchEvent(new Event('input'))
-        button(root, 'Draft it').click()
+        button(root, 'Draft system').click()
         await settle()
-        button(root, 'Save and switch on').click()
+        button(root, 'Save and turn on').click()
         await settle()
 
         const patch = requests.filter((r) => r.op === 'settings.patch').at(-1)
@@ -510,9 +592,9 @@ describe('panel', () => {
         const description = root.querySelector('[data-lh-field="wizard-description"]') as HTMLTextAreaElement
         description.value = 'Irradiated zones.'
         description.dispatchEvent(new Event('input'))
-        button(root, 'Draft it').click()
+        button(root, 'Draft system').click()
         await settle()
-        button(root, 'Save switched off').click()
+        button(root, 'Save, leave off').click()
         await settle()
         expect(requests.some((r) => r.op === 'settings.patch')).toBe(true)
         expect(requests.some((r) => r.op === 'tracker.instruct')).toBe(false)
@@ -537,13 +619,13 @@ describe('panel', () => {
         const description = root.querySelector('[data-lh-field="wizard-description"]') as HTMLTextAreaElement
         description.value = 'Irradiated zones.'
         description.dispatchEvent(new Event('input'))
-        button(root, 'Draft it').click()
+        button(root, 'Draft system').click()
         await settle()
-        button(root, 'Save and switch on').click()
+        button(root, 'Save and turn on').click()
         await settle()
         await settle()
         const problem = root.querySelector('.lh-problem')!
-        expect(problem.textContent).toContain('The system is saved, but the tracker pass to add its block failed')
+        expect(problem.textContent).toContain('The system is saved, but the tracker pass that adds its block failed')
         expect(problem.textContent).not.toContain('Could not save')
     })
 
@@ -829,7 +911,7 @@ describe('panel', () => {
 
         const problem = root.querySelector('.lh-problem') as HTMLElement
         expect(problem.hidden).toBe(false)
-        expect(problem.textContent).toContain('Could not save The rulebook')
+        expect(problem.textContent).toContain('Could not save Stock sections')
     })
 
     it('reports a backend that will not answer', async () => {
@@ -937,7 +1019,7 @@ describe('panel', () => {
         const customBox = () => root.querySelector('[data-lh-field="cyoa-useCustomPrompt"]') as HTMLInputElement
         expect(customBox().checked).toBe(false)
 
-        button(root, 'Import cartridge…').click()
+        button(root, 'Import cartridge').click()
         await settle()
 
         expect(showConfirm).toHaveBeenCalled()
@@ -954,7 +1036,7 @@ describe('panel', () => {
         mountPanel(root, bridge, makeHost(false).host)
         await settle()
 
-        button(root, 'Import cartridge…').click()
+        button(root, 'Import cartridge').click()
         await settle()
 
         expect(requests.some((r) => r.op === 'cartridge.import')).toBe(false)
@@ -986,7 +1068,7 @@ describe('the cartridge buttons (47a)', () => {
         expect(card.querySelector('.lh-card-title')!.textContent).toBe('Cartridges')
         expect(card.querySelector('.lh-chevron')).not.toBeNull()
         expect(card.open).toBe(false)
-        expect(box.contains(button(root, 'Import cartridge…'))).toBe(true)
+        expect(box.contains(button(root, 'Import cartridge'))).toBe(true)
         expect(box.contains(button(root, 'Export cartridge'))).toBe(true)
         // Nothing above the version line but the status — and the phone row (91), hidden here with no widgets.
         expect(root.firstElementChild!.classList.contains('lh-phone-widgets')).toBe(true)
@@ -1056,14 +1138,16 @@ describe('the two tabs and the layout select (47b)', () => {
         await settle()
 
         expect(root.querySelector('.lh-layout select[data-lh-field="layout"]')).toBeNull()
-        expect(root.querySelector('.lh-layout')!.textContent).toContain('Two floating widgets: the Tracker widget, and the Lore widget')
+        // What the widgets do is behind the card's [?] (96), not a paragraph in the box.
+        expect(root.querySelector('[data-lh-card="layout"] > .lh-help-note')!.textContent).toContain('two floating widgets: the Tracker widget and the Lore widget')
+        expect(root.querySelector('.lh-layout > .lh-section-help')).toBeNull()
         // The search heads the settings (63), the layout card the first category, after the version twin and Core & Branching (81).
         expect(root.querySelector('.lh-body .lh-settings')!.firstElementChild!.classList.contains('lh-search')).toBe(true)
-        const card = root.querySelector('[data-lh-category="general"] .lh-category-body')!.children[2] as HTMLDetailsElement
+        const card = root.querySelector('[data-lh-category="general"] .lh-category-body')!.children[1] as HTMLDetailsElement
         expect(card.getAttribute('data-lh-card')).toBe('layout')
-        // Multihog's name since 84: UI Appearance, with its palette.
-        expect(card.querySelector('.lh-card-title')!.textContent).toBe('UI Appearance')
-        expect(card.querySelector('.lh-card-icon')!.textContent).toBe('🎨')
+        // Appearance since 96 (UI Appearance from 84), with its palette.
+        expect(card.querySelector('.lh-card-title')!.textContent).toBe('Appearance')
+        expect(card.querySelector('.lh-card-icon svg')).not.toBeNull()
         expect(card.contains(root.querySelector('.lh-layout'))).toBe(true)
         expect(card.open).toBe(false)
         // Nothing writes the layout preference any more.
@@ -1102,14 +1186,18 @@ describe('the widgets\' slots and buttons (47c)', () => {
         expect(buttons.hidden).toBe(false)
         // The buttons head the card with short names, the long words on the hover (92c).
         expect(buttons.parentElement!.firstElementChild).toBe(buttons)
-        expect(Array.from(buttons.querySelectorAll('button')).map((b) => b.textContent)).toEqual(['Toggle Tracker', 'Toggle Lore', 'Reset Widgets'])
-        expect(button(rest, 'Toggle Lore').title).toContain('Hide the Lore widget')
+        expect(Array.from(buttons.querySelectorAll('button.lh-button')).map((b) => b.textContent)).toEqual(['Toggle Tracker', 'Toggle Lore', 'Reset widgets'])
+        // Siblings share one size (96, finding 8), and what they do is behind the row's [?], not a hover text.
+        expect(button(rest, 'Reset widgets').classList.contains('lh-button--quiet')).toBe(false)
+        expect(button(rest, 'Toggle Lore').title).toBe('')
+        expect(buttons.querySelector('.lh-help-note')!.textContent).toContain('Hides the widget, or shows it again in the same place')
+        expect(buttons.querySelector('.lh-help-note')!.textContent).toContain('at their starting sizes and unfolded')
         // The buttons toggle (67), and a third puts both boxes back.
         button(rest, 'Toggle Tracker').click()
         button(rest, 'Toggle Lore').click()
         expect(toggled).toEqual(['tracker', 'scene'])
         expect(shown).toEqual([])
-        button(rest, 'Reset Widgets').click()
+        button(rest, 'Reset widgets').click()
         expect(resets).toBe(1)
 
         panel.destroy()
@@ -1176,7 +1264,7 @@ describe('the widgets\' slots and buttons (47c)', () => {
         box.dispatchEvent(new Event('change'))
         await settle()
         expect(requests.find((r) => r.op === 'prefs.patch')?.params).toEqual({ patch: { messageCards: true } })
-        expect(root.querySelector('.lh-status')?.textContent).toBe('Cards will show under each message.')
+        expect(root.querySelector('.lh-status')?.textContent).toBe('Cards under messages are on.')
 
         emit('prefs.changed', { prefs: { messageCards: false } })
         expect(box.checked).toBe(false)
@@ -1281,7 +1369,7 @@ describe('the settings in Multihog’s categories (63)', () => {
         'settings.get': { settings: createDefaultSettings() },
         'prefs.get': { prefs: PREFS },
         'prefs.patch': { prefs: PREFS },
-        'status.get': { version: '1.0.0-beta.24', host: '1.2.0', checked: true, granted: ['a'], missing: [], dice: { registered: false, mode: 'off' } },
+        'status.get': { version: '1.0.0-beta.54', host: '1.2.0', checked: true, granted: ['a'], missing: [], dice: { registered: false, mode: 'off' } },
         'connections.list': { connections: [{ id: 'conn-1', name: 'Main', model: 'deepseek', isDefault: true }] },
         'scene.connections': { connections: [{ id: 'img-1', name: 'Swarm', provider: 'swarmui', model: 'anima', isDefault: true }] },
     })
@@ -1295,20 +1383,21 @@ describe('the settings in Multihog’s categories (63)', () => {
         await settle()
         await settle()
         expect(Array.from(root.querySelectorAll('.lh-category')).map((c) => c.getAttribute('data-lh-category'))).toEqual(['general', 'connections', 'systems', 'tracker', 'agent', 'maps', 'world'])
-        expect(titles(category(root, 'general'))).toEqual(['CYOA Mode', 'Portraits and location images'])
+        expect(titles(category(root, 'general'))).toEqual(['CYOA mode', 'Portraits & location images'])
         expect(titles(category(root, 'tracker'))).toEqual(['State Tracker'])
-        expect(titles(category(root, 'agent'))).toEqual(['Character Sheets', 'Lorebook Agent'])
+        expect(titles(category(root, 'agent'))).toEqual(['Character sheets', 'Agent prompts'])
         // Multihog's Game Systems tab (70): the narrator's block first, the systems, then the control room's rulebook.
-        expect(titles(category(root, 'systems'))).toEqual(['Narrator configuration', 'Game Systems & Custom Fields', 'The narrator’s rulebook'])
-        expect(titles(category(root, 'maps'))).toEqual(['Map Architect'])
-        expect(titles(category(root, 'world'))).toEqual(['World Progression'])
+        expect(titles(category(root, 'systems'))).toEqual(['Narrator', 'Game systems & custom fields', 'Narrator rulebook'])
+        expect(titles(category(root, 'maps'))).toEqual(['Map prompts'])
+        expect(titles(category(root, 'world'))).toEqual(['Report prompt'])
         const general = category(root, 'general').querySelector('.lh-category-body')!
-        expect(general.children[0]!.classList.contains('lh-version-twin')).toBe(true)
-        expect(general.children[0]!.textContent).toContain('AdventureTime 1.0.0-beta.24')
+        // One version line, at the top of the tab (96, finding 1): the twin under General is gone.
+        expect(root.querySelector('.lh-version-twin')).toBeNull()
+        expect(root.querySelector('.lh-diagnostics')!.textContent).toContain('AdventureTime 1.0.0-beta.54')
         // Core & Branching (81), Multihog's first drawer, is the first card; the Layout and Cartridges cards (82) follow.
-        expect(general.children[1]!.getAttribute('data-lh-card')).toBe('core-branching')
-        expect(general.children[2]!.getAttribute('data-lh-card')).toBe('layout')
-        expect(general.children[3]!.getAttribute('data-lh-card')).toBe('cartridges')
+        expect(general.children[0]!.getAttribute('data-lh-card')).toBe('core-branching')
+        expect(general.children[1]!.getAttribute('data-lh-card')).toBe('layout')
+        expect(general.children[2]!.getAttribute('data-lh-card')).toBe('cartridges')
         // Nothing of the settings sits outside a category.
         expect(root.querySelectorAll('.lh-settings > .lh-section')).toHaveLength(0)
     })
@@ -1319,11 +1408,27 @@ describe('the settings in Multihog’s categories (63)', () => {
         canned['settings.sections'] = { settings: { ...createDefaultSettings(), npcCoreSections: [{ id: 'sec_species', name: 'Lineage', description: '', icon: '', color: '#0ea5e9' }] }, rebuilt: ['npc', 'loc', 'fac'], kept: [] }
         canned['settings.factory'] = { stockPrompts: {}, routerModules: {} }
         const { bridge, requests } = makeBridge(canned)
-        mountPanel(root, bridge, makeHost().host)
+        const made = makeHost()
+        mountPanel(root, bridge, made.host)
         await settle()
         await settle()
         const sheets = category(root, 'agent')
         expect(sheets.querySelector('[data-lh-field="sections-editor-npc"]')).not.toBeNull()
+        // 96: the card's, the switch's and each editor's help behind a [?], hidden until pressed; nothing of it in the open.
+        const sheetsCard = Array.from(sheets.querySelectorAll('.lh-section')).find((c) => c.querySelector('.lh-section-title')?.textContent === 'Character sheets') as HTMLElement
+        const notes = Array.from(sheetsCard.querySelectorAll<HTMLElement>('.lh-help-note'))
+        expect(notes.every((n) => n.hidden)).toBe(true)
+        const helps = notes.map((n) => n.textContent ?? '')
+        expect(helps).toContain('The sections of NPC and Player Card sheets, their saved presets, and the relationship system switch.')
+        expect(helps).toContain('Tracks each NPC’s friendship and affection toward your character. When on, the narrator sees every NPC’s standing, and the tracker or the narrator changes the values. Default: on.')
+        const npcHelp = helps.find((t) => t.startsWith('The [CORE] identity sections every NPC is recorded under, in this order.'))!
+        for (const line of ['Overwrite preset: ', 'Save as new preset: ', 'Reset to stock: ', 'Revert changes: discards unsaved edits and restores the list saved in the cartridge.', 'Hidden until set: ']) expect(npcHelp).toContain(`\n${line}`)
+        expect(helps.some((t) => t.startsWith('The sections of the Player Card, in this order. They are used when a character is generated or a character card is imported.'))).toBe(true)
+        expect(sheetsCard.querySelector('.lh-section-help')).toBeNull()
+        // A confirm of the editor reaches the host titled with its action, its button the verb (finding 25).
+        ;(sheetsCard.querySelector('[data-lh-field="sections-editor-pc"] button[aria-label="Reset to stock sections"]') as HTMLButtonElement).click()
+        await settle()
+        expect(made.showConfirm).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Reset to stock sections', message: 'Reset the list to the stock sections? Your edits in the list are replaced.', confirmLabel: 'Reset' }))
         expect(sheets.querySelector('[data-lh-field="sections-editor-pc"]')).not.toBeNull()
         expect(Array.from(sheets.querySelectorAll('.lh-managed')).map((n) => n.textContent).filter((t) => t?.includes('not built yet'))).toEqual([])
         // The preset rows are hidden: the editors carry the presets.
@@ -1333,13 +1438,13 @@ describe('the settings in Multihog’s categories (63)', () => {
         name.value = 'Lineage'
         name.dispatchEvent(new Event('input', { bubbles: true }))
         requests.length = 0
-        ;(npc.querySelector('button[aria-label="Save the sections"]') as HTMLButtonElement).click()
+        ;(npc.querySelector('button[aria-label="Save sections"]') as HTMLButtonElement).click()
         await settle()
         await settle()
         expect(requests.map((r) => r.op)).toEqual(['settings.sections', 'settings.factory'])
         expect(requests[0]!.params).toMatchObject({ kind: 'npc' })
         expect(((requests[0]!.params as { sections: Array<{ name: string }> }).sections)[0]!.name).toBe('Lineage')
-        expect(npc.querySelector('[data-lh-field="sections-note"]')!.textContent).toContain('npc, loc, fac instructions rebuilt')
+        expect(npc.querySelector('[data-lh-field="sections-note"]')!.textContent).toContain('The agent’s npc, loc, fac instructions were rebuilt.')
     })
 
     it('reads the connections into their category on load and when a preference changes elsewhere; the lists are asked when it is opened', async () => {
@@ -1380,32 +1485,39 @@ describe('the settings in Multihog’s categories (63)', () => {
         mountPanel(root, bridge, makeHost().host)
         await settle()
         await settle()
-        const section = Array.from(category(root, 'general').querySelectorAll('.lh-section')).find((s) => s.querySelector('.lh-section-title')!.textContent === 'Portraits and location images') as HTMLElement
+        const section = Array.from(category(root, 'general').querySelectorAll('.lh-section')).find((s) => s.querySelector('.lh-section-title')!.textContent === 'Portraits & location images') as HTMLElement
         const rowOf = (label: string) => Array.from(section.querySelectorAll('.lh-row')).find((r) => r.querySelector('.lh-label-text')?.textContent === label) as HTMLElement
-        expect(rowOf('Active art style').hidden).toBe(true)
+        // The active style's id has no row of its own (96, finding 22): the styles editor marks the loaded one.
+        expect(rowOf('Active art style')).toBeUndefined()
         expect(section.querySelectorAll('[data-lh-field="portrait-styles-factory"] .lh-style')).toHaveLength(7)
-        // The head (83, Multihog's order): the portraits switch, the prompt editor, the lookback, Auto-generate for,
-        // the location block with Show location images, the Real-Time box, the connections' note — the two mirrors'
-        // rows laid flat, no fold left, without the connections; the purge at the foot; the prompts under their own card.
+        // The head (83, Multihog's order; 96's words): the portraits switch, the prompt editor, the lookback, Draw
+        // automatically for, the location block with Show location images, the Real-time box — the two mirrors'
+        // rows laid flat, no fold left, without the connections, whose note is the card's [?]; no purge (finding 26);
+        // the prompts under their own card.
         const foot = section.querySelector('[data-lh-field="portraits-head"]') as HTMLElement
         expect(foot.parentElement).toBe(section)
-        expect(foot.previousElementSibling!.classList.contains('lh-section-help')).toBe(true)
+        expect(foot.previousElementSibling!.classList.contains('lh-help-note')).toBe(true)
+        expect(foot.previousElementSibling!.textContent).toBe('Sets who gets a portrait and when, how location images are shown and drawn, and the prompts the pictures are written from. The image and prompt connections for portraits and location images are set under Connections & models.')
         expect(section.querySelector('.lh-portraits-drawing')).toBeNull()
         expect(section.querySelector('[data-lh-field="mirror-portrait-settings"]')).toBeNull()
         expect(section.querySelector('[data-lh-field="mirror-scene-picture-settings"]')).toBeNull()
         const fields = Array.from(foot.querySelectorAll('[data-lh-field]')).map((n) => n.getAttribute('data-lh-field'))
-        expect(fields).toEqual(['portraits-enabled', 'mirror-portrait-skip-prompt', 'mirror-image-prompt-prefix', 'mirror-portrait-lookback', 'mirror-portrait-lookback-count', 'mirror-portrait-auto-player', 'mirror-portrait-auto-party', 'mirror-portrait-auto-enemies', 'mirror-portrait-auto-npcs', 'portraits-location-images', 'mirror-scene-picture-background', 'mirror-scene-picture-npcs', 'portraits-realtime', 'mirror-scene-picture-auto', 'mirror-scene-picture-trigger', 'mirror-scene-picture-every', 'portraits-connections'])
-        expect(foot.querySelector('.lh-portraits-realtime-title')!.textContent).toBe('Real-Time Visualization Mode')
+        expect(fields).toEqual(['portraits-enabled', 'mirror-portrait-skip-prompt', 'mirror-image-prompt-prefix', 'mirror-portrait-lookback', 'mirror-portrait-lookback-count', 'mirror-portrait-auto-player', 'mirror-portrait-auto-party', 'mirror-portrait-auto-enemies', 'mirror-portrait-auto-npcs', 'portraits-location-images', 'mirror-scene-picture-background', 'mirror-scene-picture-npcs', 'portraits-realtime', 'mirror-scene-picture-auto', 'mirror-scene-picture-trigger', 'mirror-scene-picture-every'])
+        expect(foot.querySelector('.lh-portraits-realtime-title')!.textContent).toBe('Real-time location images')
         expect((foot.querySelector('[data-lh-field="portraits-enabled"]') as HTMLInputElement).checked).toBe(true)
-        expect(section.lastElementChild!.getAttribute('data-lh-field')).toBe('portraits-foot')
-        expect(section.querySelector('[data-lh-field="portraits-purge"]')!.textContent).toBe('🗑 Emergency: purge all portraits')
+        // The card's own Reset to factory is its last line since 96; the purge is the Debug & factory reset card's alone.
+        expect(section.lastElementChild!.className).toBe('lh-card-foot')
+        expect(section.querySelector('[data-lh-field="portraits-purge"], [data-lh-field="portraits-foot"]')).toBeNull()
         const promptsFold = section.querySelector('[data-lh-fold="Portrait prompt templates"]') as HTMLDetailsElement
         expect(promptsFold.open).toBe(false)
         expect(promptsFold.querySelector('.lh-card-title')!.textContent).toBe('Portrait prompt templates')
-        expect(Array.from(promptsFold.querySelectorAll('.lh-row .lh-label-text')).map((n) => n.textContent)).toEqual(['NPC portrait prompt', 'Character portrait prompt', 'Location portrait prompt', 'Portrait prompt word target'])
+        expect(Array.from(promptsFold.querySelectorAll('.lh-row .lh-label-text')).map((n) => n.textContent)).toEqual(['NPC portrait prompt', 'Character portrait prompt', 'Location image prompt', 'Prompt word target'])
         // The styles row stands before the prompts' card, the card last among the rows.
-        expect(promptsFold.previousElementSibling).toBe(rowOf('Portrait and location image styles'))
-        expect(promptsFold.nextElementSibling!.getAttribute('data-lh-field')).toBe('portraits-foot')
+        expect(promptsFold.previousElementSibling).toBe(rowOf('Art styles'))
+        expect(promptsFold.nextElementSibling).toBe(section.lastElementChild)
+        // The styles' help is behind the row's [?] alone: the editor has no lead of its own.
+        expect(Array.from(rowOf('Art styles').children).find((n) => n.classList.contains('lh-help-note'))!.textContent).toBe('Loading a style replaces the three prompt templates and the word target below. You can save your own prompts as a named setup. The style loaded last is marked "loaded" until you edit a prompt.')
+        expect(rowOf('Art styles').querySelector('.lh-section-help')).toBeNull()
         expect(foot.querySelector('[data-lh-field="mirror-portrait-connection"]')).toBeNull()
         expect((foot.querySelector('[data-lh-field="mirror-portrait-auto-party"]') as HTMLInputElement).checked).toBe(true)
         expect((foot.querySelector('[data-lh-field="mirror-scene-picture-auto"]') as HTMLInputElement).checked).toBe(true)
@@ -1414,7 +1526,7 @@ describe('the settings in Multihog’s categories (63)', () => {
         // A style loads through the backend, and the answer re-seeds the prompt box and marks the row.
         const npcPrompt = rowOf('NPC portrait prompt').querySelector('textarea') as HTMLTextAreaElement
         expect(npcPrompt.value).toContain('high-quality fantasy portrait')
-        ;(section.querySelector('button[aria-label="Load Anime"]') as HTMLButtonElement).click()
+        ;(section.querySelector('button[aria-label="Load anime"]') as HTMLButtonElement).click()
         await settle()
         await settle()
         expect(requests.filter((r) => r.op === 'portraits.presets.load').map((r) => r.params)).toEqual([{ id: 'anime' }])
@@ -1445,7 +1557,7 @@ describe('the settings in Multihog’s categories (63)', () => {
         expect((foot.querySelector('[data-lh-field="mirror-scene-picture-npcs"]') as HTMLInputElement).checked).toBe(false)
         expect(portraitsTick.checked).toBe(false)
         expect(locations.checked).toBe(true)
-        expect((rowOf('Location portrait prompt').querySelector('textarea') as HTMLTextAreaElement).value).toBe('Swapped.')
+        expect((rowOf('Location image prompt').querySelector('textarea') as HTMLTextAreaElement).value).toBe('Swapped.')
     })
 
     it('puts a box of mirrored dials in each category that has them (63c): after the sections, bound to the folds’ keys, following the event', async () => {
@@ -1459,7 +1571,7 @@ describe('the settings in Multihog’s categories (63)', () => {
         await settle()
         // The categories' boxes; the Lorebook Agent tab's Quick Settings draw two more outside them (78a).
         const boxes = Array.from(root.querySelectorAll<HTMLElement>('.lh-category .lh-dials'))
-        expect(boxes.map((b) => [b.getAttribute('data-lh-dials'), b.closest('.lh-category')!.getAttribute('data-lh-category')])).toEqual([['general', 'general'], ['creator', 'connections'], ['wizard', 'systems'], ['tracker', 'tracker'], ['agent', 'agent'], ['maps', 'maps'], ['world', 'world']])
+        expect(boxes.map((b) => [b.getAttribute('data-lh-dials'), b.closest('.lh-category')!.getAttribute('data-lh-category')])).toEqual([['general', 'general'], ['creator', 'systems'], ['tracker', 'tracker'], ['agent', 'agent'], ['maps', 'maps'], ['world', 'world']])
         // After the sections: the tracker's box follows them, with the rendering tags library (72b) and the Display Groups (75) after it.
         const trackerBody = category(root, 'tracker').querySelector('.lh-category-body')!
         expect(trackerBody.lastElementChild!.getAttribute('data-lh-card')).toBe('display-groups')
@@ -1470,7 +1582,22 @@ describe('the settings in Multihog’s categories (63)', () => {
         expect(dial('trackerRunEvery').value).toBe('3')
         expect(dial('agentMaxTurns').value).toBe('7')
         expect(dial('worldProgressionExclusionList').value).toBe('Morrowfen')
-        expect(dial('wizardLookback').value).toBe('25')
+        // The wizard's six preferences have no mirrored card since 96 (audit D6): the wizard's own controls are their one place.
+        expect(root.querySelector('[data-lh-dials="wizard"]')).toBeNull()
+        expect(root.querySelector('[data-lh-field^="dial-wizard"]')).toBeNull()
+        expect(Array.from(root.querySelectorAll('.lh-card-title')).map((t) => t.textContent)).not.toContain('Wizard advanced options')
+        // Nothing in the tab points at the removed card, and a managed editor's help stands under its heading, before the editor.
+        expect(category(root, 'systems').textContent).not.toMatch(/Advanced wizard|Wizard advanced/)
+        // The tracker's guide names the dials card by its decided name, and no fold that is gone (96, 2d).
+        expect(category(root, 'tracker').textContent).toContain('“Advanced tracker” sets how much it reads')
+        // The agent's guide names its cards and the Lore widget's controls by their decided names (96, 2e).
+        expect(category(root, 'agent').textContent).toContain('Use Agent passes to set how often the agent runs')
+        expect(category(root, 'agent').textContent).toContain('Keep “Attach new lorebooks automatically” on')
+        expect(category(root, 'agent').textContent).not.toMatch(/sub-fold|Lorebook agent fold|Character Sheets|the host/)
+        expect(category(root, 'tracker').textContent).not.toMatch(/Advanced options|Section order|Extractor|the host/)
+        const systemsRow = Array.from(root.querySelectorAll<HTMLElement>('.lh-row-editor')).find((r) => r.querySelector('.lh-label-text')?.textContent === 'Game systems')!
+        expect(Array.from(systemsRow.children).map((c) => c.classList.contains('lh-help-note'))).toEqual([false, true, false])
+        expect((root.querySelector('[data-lh-field="wizard-lookback"]') as HTMLInputElement).value).toBe('25')
         expect(dial('creatorLevel').value).toBe('4')
         expect((root.querySelector('[data-lh-field="dial-mapEvolutionCount"]') as HTMLElement).hidden).toBe(false)
         // A change saves the one key.
@@ -1478,11 +1605,10 @@ describe('the settings in Multihog’s categories (63)', () => {
         dial('agentRunEvery').dispatchEvent(new Event('change'))
         await settle()
         expect(requests.filter((r) => r.op === 'prefs.patch').map((r) => r.params)).toContainEqual({ patch: { agentRunEvery: 4 } })
-        // The event moves the boxes, and the wizard's own rows under the game systems.
+        // The event moves the boxes, and the wizard's own controls under the game systems.
         emit('prefs.changed', { prefs: { ...PREFS, trackerRunEvery: 9, mapEvolutionScope: 'all', wizardLookback: 40 } })
         expect(dial('trackerRunEvery').value).toBe('9')
         expect((root.querySelector('[data-lh-field="dial-mapEvolutionCount"]') as HTMLElement).hidden).toBe(true)
-        expect(dial('wizardLookback').value).toBe('40')
         expect((root.querySelector('[data-lh-field="wizard-lookback"]') as HTMLInputElement).value).toBe('40')
     })
 
@@ -1493,19 +1619,54 @@ describe('the settings in Multihog’s categories (63)', () => {
         mountPanel(root, bridge, makeHost().host)
         await settle()
         await settle()
-        const card = Array.from(category(root, 'systems').querySelectorAll<HTMLDetailsElement>('.lh-section')).find((s) => s.querySelector('.lh-section-title')!.textContent === 'Narrator configuration')!
+        const card = Array.from(category(root, 'systems').querySelectorAll<HTMLDetailsElement>('.lh-section')).find((s) => s.querySelector('.lh-section-title')!.textContent === 'Narrator')!
+        // The card's own [?] (96): the decided text, first in the body, and no lead paragraph inside the block.
+        expect(Array.from(card.children).find((c) => c.classList.contains('lh-help-note'))!.textContent).toBe('Sets pacing, dice, quests and optional components for the narrator. Changes take effect on the next reply. The same controls also appear under Starting the adventure.')
+        expect(card.querySelector('.lh-nc-lead')).toBeNull()
         expect(card.querySelector('.lh-reset')).toBeNull()
         expect(card.querySelector('.lh-section-editor.lh-nc')).not.toBeNull()
         expect(card.querySelectorAll('.lh-row')).toHaveLength(0)
         // The State Tracker card keeps its reset, and says it covers the narrator's keys; it has no dice rows of its own now.
         const tracker = category(root, 'tracker').querySelector('.lh-section')!
         expect(tracker.querySelector('.lh-reset')).not.toBeNull()
-        expect(tracker.querySelector('.lh-section-help')!.textContent).toContain('narrator’s configuration')
+        // 96: the header's [?] says what the card holds; what its reset takes with it stands in the open at the foot.
+        expect(tracker.querySelector('.lh-help-note')!.textContent).toBe('The tracker’s system prompt, the time formats, the modules and the order of the cards.')
+        const foot = tracker.querySelector('.lh-card-foot')!
+        expect(foot.querySelector('.lh-card-foot-warning')!.textContent).toBe('Reset to factory also resets the Narrator card and the Narrator rulebook.')
+        expect(foot.querySelector('.lh-card-foot-warning')!.closest('.lh-help-note')).toBeNull()
+        // Styled by the sheet's rule, not inline (96, stage 2g).
+        expect(foot.querySelector('.lh-card-foot-warning')!.hasAttribute('style')).toBe(false)
+        expect(PANEL_CSS).toContain('.adventuretime-panel .lh-card-foot-warning { flex: 1 1 auto; min-width: 0; font-size: 0.8em; line-height: 1.4; }')
+        expect(foot.lastElementChild!.classList.contains('lh-reset')).toBe(true)
+        // Its rows: the prompt, the two time formats and the modules; the stock texts have no row (edited under Edit text).
+        expect(Array.from(tracker.querySelectorAll('.lh-row > .lh-label .lh-label-text, .lh-row > .lh-check .lh-label-text')).map((n) => n.textContent)).toEqual(['Tracker system prompt', 'Use 24-hour time', 'Use DD/MM/YYYY dates', 'Tracker modules'])
+        expect(tracker.textContent).not.toContain('Stock prompts')
+        expect(tracker.textContent).not.toContain('written by the editor that owns it')
+        const modulesRow = Array.from(tracker.querySelectorAll('.lh-row')).find((r) => r.querySelector('.lh-label-text')!.textContent === 'Tracker modules')!
+        const modulesNote = Array.from(modulesRow.children).find((c) => c.classList.contains('lh-help-note')) as HTMLElement
+        expect(modulesNote.hidden).toBe(true)
+        expect(modulesNote.textContent).toContain('These are the tracker’s built-in blocks.')
+        expect(modulesNote.textContent).toContain('The arrows set the order of the cards, in the Tracker widget and under each message.')
+        expect(modulesNote.textContent).toContain('Display group: its arrows move all its member modules together.')
+        expect(modulesRow.querySelector('.lh-tm-lead')).toBeNull()
         expect(Array.from(tracker.querySelectorAll('.lh-label-text')).map((n) => n.textContent)).not.toContain('RNG mode')
         // The rulebook is the third card of the category, split off the same group.
-        const rulebook = Array.from(category(root, 'systems').querySelectorAll<HTMLDetailsElement>('.lh-section')).find((s) => s.querySelector('.lh-section-title')!.textContent === 'The narrator’s rulebook')!
+        const rulebook = Array.from(category(root, 'systems').querySelectorAll<HTMLDetailsElement>('.lh-section')).find((s) => s.querySelector('.lh-section-title')!.textContent === 'Narrator rulebook')!
         expect(rulebook.querySelector('.lh-reset')).toBeNull()
         expect(rulebook.querySelector('.lh-rb-list')).not.toBeNull()
+        // 96: two rows, Stock sections and World rules; the saved order has no row, and all help is behind a [?].
+        expect(Array.from(rulebook.querySelectorAll('.lh-row > .lh-label .lh-label-text')).map((n) => n.textContent)).toEqual(['Stock sections', 'World rules'])
+        expect(rulebook.textContent).not.toContain('Sysprompt section order')
+        expect(rulebook.textContent).not.toContain('written by the editor that owns it')
+        const rulebookNotes = Array.from(rulebook.querySelectorAll<HTMLElement>('.lh-help-note'))
+        expect(rulebookNotes.map((n) => n.textContent)).toEqual([
+            'Chooses which rulebook sections are sent to the narrator. Your own sections are sent among them.',
+            'The rules the narrator plays by: combat, resting, loot, levelling and more. Sections are listed in the order they are sent.\n\nYour own sections are shown in the list at the place they are sent.',
+            'Your own instructions to the narrator. Every section that is on is sent with every reply.',
+        ])
+        expect(rulebookNotes.every((n) => n.hidden)).toBe(true)
+        expect(rulebook.querySelector('.lh-rb-lead')).toBeNull()
+        expect(rulebook.querySelector('.lh-wr-lead')!.textContent).toBe('No custom sections yet.')
         // A pick commits through settings.patch, and the answer re-seeds the block.
         const input = (field: string) => card.querySelector(`[data-lh-field="${field}"] input`) as HTMLInputElement
         input('nc-pacing-shorter_outputs').checked = true
@@ -1557,11 +1718,14 @@ describe('the settings in Multihog’s categories (63)', () => {
         const general = category(root, 'general').querySelector('.lh-category-body')!
         // Core & Branching (81) is the first card after the version line's twin, and holds the narrator rows under Help.
         const core = general.querySelector('[data-lh-card="core-branching"]') as HTMLElement
-        expect(core.previousElementSibling!.classList.contains('lh-version-twin')).toBe(true)
+        expect(core.previousElementSibling).toBeNull()
         expect(core.querySelector('[data-lh-field="narrator-rows"]')).not.toBeNull()
-        expect(core.querySelector('[data-lh-field="remove-all-chats"]')).not.toBeNull()
-        expect(core.querySelector('[data-lh-field="clean-orphans"]')).not.toBeNull()
-        expect(root.querySelector('[data-lh-field="developer-card"] [data-lh-field="clean-orphans"]')).toBeNull()
+        expect(core.querySelector('.lh-card-title')!.textContent).toBe('Setup & help')
+        // The two chat-data buttons are in Debug & factory reset, beside the other destructive actions (96).
+        expect(core.querySelector('[data-lh-field="remove-all-chats"]')).toBeNull()
+        expect(core.querySelector('[data-lh-field="clean-orphans"]')).toBeNull()
+        expect(root.querySelector('[data-lh-field="developer-card"] [data-lh-field="clean-orphans"]')).not.toBeNull()
+        expect(root.querySelector('[data-lh-field="developer-card"] [data-lh-field="remove-all-chats"]')).not.toBeNull()
         expect(general.lastElementChild!.getAttribute('data-lh-field')).toBe('developer-card')
         const name = root.querySelector('[data-lh-field="narrator-name"]') as HTMLInputElement
         expect(name.value).toBe('Aurelius')
@@ -1589,7 +1753,7 @@ describe('the settings in Multihog’s categories (63)', () => {
         expect(tracker.lastElementChild!.previousElementSibling!.textContent).toContain('CHARGE')
         // The Display Groups manager after it (75), reading the preferences and the cartridge's custom fields.
         expect(tracker.lastElementChild!.getAttribute('data-lh-card')).toBe('display-groups')
-        expect(tracker.lastElementChild!.textContent).toContain('No Display Groups configured.')
+        expect(tracker.lastElementChild!.textContent).toContain('No display groups yet.')
     })
 
     it('offers Multihog’s Panel layout toggle under the layout select (76): Stacked by default, Tab Mode kept as a preference and followed from the event', async () => {
@@ -1599,7 +1763,7 @@ describe('the settings in Multihog’s categories (63)', () => {
         await settle()
         const seg = root.querySelector('.lh-layout [data-lh-field="panelLayoutMode"]')!
         const buttons = Array.from(seg.querySelectorAll('button'))
-        expect(buttons.map((b) => b.textContent)).toEqual(['📚 Stacked', '🗂️ Tab Mode (Compact)'])
+        expect(buttons.map((b) => b.textContent)).toEqual(['📚 Stacked', '🗂️ Tab Mode'])
         expect(buttons.map((b) => b.classList.contains('active'))).toEqual([false, true])
         buttons[0]!.click()
         expect(buttons.map((b) => b.getAttribute('aria-pressed'))).toEqual(['true', 'false'])
@@ -1634,7 +1798,7 @@ describe('the settings in Multihog’s categories (63)', () => {
         expect((card.querySelector('[data-lh-field="displayGroupsEnabled"]') as HTMLInputElement).checked).toBe(false)
         emit('prefs.changed', { prefs: { displayGroups: [] } })
         expect(groupRow()).toBeNull()
-        expect(card.textContent).toContain('No Display Groups configured.')
+        expect(card.textContent).toContain('No display groups yet.')
     })
 
     it('exports and imports a game system as a file (72b): the system with its field and section, re-minted on the way in', async () => {
@@ -1656,7 +1820,7 @@ describe('the settings in Multihog’s categories (63)', () => {
         }
         expect(clicked).toHaveLength(1)
         expect(clicked[0]!.download).toBe('adventuretime-system-the-trail.json')
-        expect(root.querySelector('.lh-status')!.textContent).toContain('Exported the system “The Trail”')
+        expect(root.querySelector('.lh-status')!.textContent).toBe('Exported “The Trail”. Check your browser’s downloads.')
         // An import reads the picked file, mints new ids and a free tag, and commits all three lists.
         const file = { adventuretimeGameSystem: { system: { id: 's1', name: 'The Trail', customFieldTag: 'TRAIL', enabled: true, syspromptLibraryId: 'sec-1' }, field: { tag: 'TRAIL', label: 'Trail', icon: '', prompt: 'Track it.', enabled: true }, section: { id: 'sec-1', title: 'The Trail rules', content: 'Walk.', enabled: true } } }
         pickFile.mockResolvedValueOnce([{ name: 'road.json', bytes: new TextEncoder().encode(JSON.stringify(file)) }])
@@ -1673,7 +1837,27 @@ describe('the settings in Multihog’s categories (63)', () => {
         expect(imported.id).not.toBe('s1')
         expect(imported.customFieldTag).toBe('TRAIL_2')
         expect((sent.customFields as Array<Record<string, unknown>>).map((f) => f.tag)).toEqual(['TRAIL', 'TRAIL_2'])
-        expect(root.querySelector('.lh-status')!.textContent).toContain('Imported the system “The Trail” with its field [TRAIL_2]')
+        expect(root.querySelector('.lh-status')!.textContent).toBe('Imported “The Trail” with its field [TRAIL_2]. It is off. Turn it on in Custom fields.')
+    })
+
+    it('copies a system as Multihog’s text and pastes it into the wizard’s preview (departure 174), inline on a host without a modal', async () => {
+        const root = document.createElement('div')
+        const settings = { ...createDefaultSettings(), gameSystems: [{ id: 's1', name: 'Lantern Oil', icon: '🏮', customFieldTag: 'OIL', enabled: true, driverTime: true }], customFields: [{ tag: 'OIL', label: 'Oil', icon: '🏮', prompt: '[OIL]\n- Oil: 6/10\n[/OIL]', enabled: true }] } as Record<string, unknown>
+        const { bridge } = makeBridge({ ...answers(), 'settings.get': { settings }, 'settings.patch': { settings } })
+        const { host } = makeHost()
+        mountPanel(root, bridge, host)
+        await settle()
+        ;(root.querySelector('.lh-gs-copy-text') as HTMLButtonElement).click()
+        const copied = (root.querySelector('.lh-gs-inline [data-lh-field="gs-copy-text"]') as HTMLTextAreaElement).value
+        expect(copied).toBe('<meta name="Lantern Oil" icon="🏮" needs_tracker="true" driver_time="true" driver_gm_annotation="false" driver_stated_fact="false" effect_owner="tracker"/>\n<tracker_module tag="OIL" label="Oil" icon="🏮">\n[OIL]\n- Oil: 6/10\n[/OIL]\n</tracker_module>')
+        ;(root.querySelector('[data-lh-field="gs-copy-close"]') as HTMLButtonElement).click()
+        ;(root.querySelector('[data-lh-field="gs-paste"]') as HTMLButtonElement).click()
+        ;(root.querySelector('.lh-gs-inline [data-lh-field="gs-paste-text"]') as HTMLTextAreaElement).value = copied.replace('Lantern Oil', 'Lamp Oil')
+        ;(root.querySelector('[data-lh-field="gs-paste-preview"]') as HTMLButtonElement).click()
+        expect(root.querySelector('[data-lh-field="gs-paste-box"]')).toBeNull()
+        expect((root.querySelector('[data-lh-field="wizard-name"]') as HTMLInputElement).value).toBe('Lamp Oil')
+        expect((root.querySelector('.lh-wizard-fold') as HTMLDetailsElement).open).toBe(true)
+        expect(root.querySelector('.lh-status')!.textContent).toBe('“Lamp Oil” is in the wizard’s preview. Read it, then press Save there.')
     })
 
     it('exports, imports and clears the custom fields as files (72b), the clear asking first', async () => {
@@ -1724,7 +1908,8 @@ describe('the settings in Multihog’s categories (63)', () => {
         expect(category(root, 'world').hidden).toBe(true)
         expect(category(root, 'general').hidden).toBe(true)
         const rows = Array.from(category(root, 'systems').querySelectorAll<HTMLElement>('.lh-section .lh-search-item'))
-        expect(rows.filter((r) => !r.hidden).map((r) => r.getAttribute('data-lh-field'))).toEqual(['nc-diceD100Mode', 'nc-rngToolD100', 'nc-rngQueueD100'])
+        // A row with help is its wrap (96): the tick's label inside it carries the field's name.
+        expect(rows.filter((r) => !r.hidden).map((r) => (r.getAttribute('data-lh-field') ?? r.querySelector('[data-lh-field]')?.getAttribute('data-lh-field')))).toEqual(['nc-diceD100Mode', 'nc-rngToolD100', 'nc-rngQueueD100'])
         // Inside the advanced fold, which the search opens for them.
         expect((category(root, 'systems').querySelector('[data-lh-field="nc-rng-advanced"]') as HTMLDetailsElement).open).toBe(true)
         input.value = 'cartridge'
@@ -1739,17 +1924,17 @@ describe('the settings in Multihog’s categories (63)', () => {
     })
 })
 
-describe('the narrator fold keeps its arrow (72b-bis; a drawer’s chevron since 83)', () => {
-    it('draws its own chevron where a flex summary would lose the disclosure marker: the drawer’s rule hides the marker and turns the chevron as the drawer opens', () => {
-        // 72b-bis kept the browser's marker by keeping the summary off flex; 83 makes the fold Multihog's drawer,
+describe('the narrator fold keeps its arrow (72b-bis; an option card’s chevron since 98)', () => {
+    it('draws its own chevron where a flex summary would lose the disclosure marker: the option’s rule hides the marker and turns the chevron as the card opens', () => {
+        // 72b-bis kept the browser's marker by keeping the summary off flex; since 98 the fold is an option card,
         // whose summary is flex on purpose and carries a chevron of its own, so the marker is hidden by rule.
         expect(PANEL_CSS).not.toMatch(/\.lh-narrator > summary \{/)
-        const rule = PANEL_CSS.match(/\.lh-start-drawer > summary \{([^}]*)\}/)
+        const rule = PANEL_CSS.match(/\.lh-start-option > summary \{([^}]*)\}/)
         expect(rule).not.toBeNull()
         expect(rule![1]).toContain('list-style: none')
         expect(rule![1]).toContain('display: flex')
-        expect(PANEL_CSS).toMatch(/\.lh-start-drawer\[open\] > summary \.lh-start-drawer-chevron \{[^}]*rotate/)
-        expect(PANEL_CSS).toMatch(/\.lh-narrator-sub \{[^}]*font-size/)
+        expect(PANEL_CSS).toMatch(/\.lh-start-option\[open\] > summary \.lh-chevron \{[^}]*rotate/)
+        expect(PANEL_CSS).toMatch(/\.lh-start-option-sub \{[^}]*font-size/)
     })
 })
 
@@ -1811,20 +1996,21 @@ describe('the theme layer (74a)', () => {
         const select = root.querySelector('.lh-layout select[data-lh-field="trackerTheme"]') as HTMLSelectElement
         expect(select.value).toBe('fantasy')
         expect(Array.from(select.options).map((o) => o.value)).toEqual(['native', 'hacker', 'fantasy', 'hologram', 'pacific', 'cherry', 'custom'])
-        expect(Array.from(select.options).map((o) => o.textContent)).toEqual(['Match Lumiverse', 'Hacker', 'Fantasy', 'Hologram', 'Pacific Cove', 'Cherry Blossom', '✨ Custom (AI Wizard)'])
+        expect(Array.from(select.options).map((o) => o.textContent)).toEqual(['Match Lumiverse', 'Hacker', 'Fantasy', 'Hologram', 'Pacific Cove', 'Cherry Blossom', '✨ Custom (AI wizard)'])
         // Custom is the wizard's (74b), and offered.
         expect(select.options[6]!.disabled).toBe(false)
         // The widget buttons head the card (92c), then the hint, the Panel layout row, the two tick rows and their
         // hint (92d), and the select after those.
         const box = root.querySelector('.lh-layout')!
         expect(box.children[0]!.classList.contains('lh-widget-buttons')).toBe(true)
-        expect(box.children[1]!.classList.contains('lh-section-help')).toBe(true)
-        expect(box.children[2]!.classList.contains('lh-panel-layout-row')).toBe(true)
-        expect(box.children[3]).toBe(box.querySelector('input[data-lh-field="message-cards"]')!.closest('.lh-tracker-pref'))
-        expect(box.children[4]).toBe(box.querySelector('input[data-lh-field="one-window"]')!.closest('.lh-tracker-pref'))
-        expect(box.children[5]!.textContent).toContain('Off, the two widgets. On, one box with four tabs')
-        expect(box.children[6]).toBe(select.closest('.lh-theme-row'))
-        expect(box.children[7]!.classList.contains('lh-section-help')).toBe(true)
+        expect(box.children[1]!.firstElementChild!.classList.contains('lh-panel-layout-row')).toBe(true)
+        expect(box.children[2]).toBe(box.querySelector('input[data-lh-field="message-cards"]')!.closest('.lh-tracker-pref'))
+        expect(box.children[3]).toBe(box.querySelector('input[data-lh-field="one-window"]')!.closest('.lh-helped'))
+        expect(box.children[4]).toBe(select.closest('.lh-helped'))
+        // The theme's help is behind the [?] after its label (96), and the select is named for a screen reader.
+        expect(Array.from(select.parentElement!.children).map((c) => c.className || c.tagName)).toEqual(['SPAN', 'lh-help-tip', 'lh-select'])
+        expect(select.getAttribute('aria-label')).toBe('Visual theme')
+        expect(box.children[4]!.querySelector('.lh-help-note')!.textContent).toContain('Match Lumiverse uses Lumiverse’s own colours')
         // The theme is a class on the body, where every root sees it.
         expect(document.body.classList.contains('lh-theme-fantasy')).toBe(true)
 
@@ -1864,7 +2050,7 @@ describe('the theme layer (74a)', () => {
         const box = root.querySelector('[data-lh-field="themeWizard"]') as HTMLElement
         // Custom chosen: the box shows under the select, the stored theme is on the body as tokens, the library lists Night.
         expect(box.hidden).toBe(false)
-        expect(root.querySelector('.lh-layout')!.children[10]).toBe(box)
+        expect(root.querySelector('.lh-layout')!.children[6]).toBe(box)
         expect(document.body.classList.contains('lh-theme-custom')).toBe(true)
         expect(document.body.style.getPropertyValue('--lh-custom-accent')).toBe('#112233')
         expect(document.body.style.getPropertyValue('--lh-custom-accent-contrast')).toBe('#f4f4f4')
@@ -1875,42 +2061,42 @@ describe('the theme layer (74a)', () => {
 
         // New with nothing typed asks for a description in the legacy's words, and sends nothing.
         click('themeWizardNew')
-        expect(status.textContent).toBe('⚠ Please describe a theme first.')
+        expect(status.textContent).toBe('Describe a theme first.')
         expect(status.classList.contains('lh-theme-wizard-status--error')).toBe(true)
         expect(requests.find((r) => r.op === 'theme.generate')).toBeUndefined()
         // New with a description: one call, the theme on the body, the select on Custom, the old theme on the undo stack.
         prompt.value = ' neon noir '
         click('themeWizardNew')
-        expect(status.textContent).toBe('⚡ Generating theme.')
+        expect(status.textContent).toBe('Generating the theme…')
         await settle()
         expect(requests.find((r) => r.op === 'theme.generate')?.params).toEqual({ description: 'neon noir', iterate: false })
         expect(document.body.style.getPropertyValue('--lh-custom-accent')).toBe('#ff00aa')
         // A dark magenta accent takes light text on it.
         expect(document.body.style.getPropertyValue('--lh-custom-accent-contrast')).toBe('#f4f4f4')
-        expect(status.textContent).toBe('✅ Theme generated! The model left out 1 of the fifteen values; those fall to the host’s.')
+        expect(status.textContent).toBe('Theme generated. The model left out 1 of the 15 values. Those use Lumiverse’s colours.')
         // Iterate sends the flag; the legacy's refining words while it runs.
         click('themeWizardIterate')
-        expect(status.textContent).toBe('⚡ Refining theme.')
+        expect(status.textContent).toBe('Refining the theme…')
         await settle()
         expect(requests.filter((r) => r.op === 'theme.generate').at(-1)?.params).toEqual({ description: 'neon noir', iterate: true })
         // Undo twice puts Night back (two steps were pushed), the third says there is nothing left.
         click('themeWizardUndo')
         await settle()
-        expect(status.textContent).toBe('Undone last change. (1 steps remaining)')
+        expect(status.textContent).toBe('Undid the last change. 1 steps left.')
         click('themeWizardUndo')
         await settle()
-        expect(status.textContent).toBe('Undone last change. (0 steps remaining)')
+        expect(status.textContent).toBe('Undid the last change. 0 steps left.')
         expect(document.body.style.getPropertyValue('--lh-custom-accent')).toBe('#112233')
         expect(requests.filter((r) => r.op === 'prefs.patch').at(-1)?.params).toEqual({ patch: { customTheme: night, trackerTheme: 'custom' } })
         click('themeWizardUndo')
-        expect(status.textContent).toBe('No steps to undo.')
+        expect(status.textContent).toBe('Nothing to undo.')
 
         // Save to Library under a name; a kept name asks first.
         ;(root.querySelector('[data-lh-field="themeWizardName"]') as HTMLInputElement).value = 'Dusk'
         click('themeWizardSave')
         await settle()
         expect(requests.filter((r) => r.op === 'prefs.patch').at(-1)?.params).toEqual({ patch: { savedThemes: { Night: night, Dusk: night } } })
-        expect(status.textContent).toBe('Saved "Dusk" to library.')
+        expect(status.textContent).toBe('Saved “Dusk” to the library.')
         expect(Array.from(root.querySelectorAll('[data-lh-theme-load]')).map((b) => b.textContent)).toEqual(['Night', 'Dusk'])
         ;(root.querySelector('[data-lh-field="themeWizardName"]') as HTMLInputElement).value = 'Night'
         click('themeWizardSave')
@@ -1919,7 +2105,7 @@ describe('the theme layer (74a)', () => {
         // A click on a saved name loads it; the bin asks, then takes it off.
         ;(root.querySelector('[data-lh-theme-load="Dusk"]') as HTMLButtonElement).click()
         await settle()
-        expect(status.textContent).toBe('⚡ Loaded library theme: Dusk')
+        expect(status.textContent).toBe('Loaded the saved theme “Dusk”.')
         ;(root.querySelector('[data-lh-theme-delete="Night"]') as HTMLButtonElement).click()
         await settle()
         expect(showConfirm).toHaveBeenCalledTimes(2)
@@ -1958,8 +2144,12 @@ describe('the theme layer (74a)', () => {
         const tick = root.querySelector('.lh-layout input[data-lh-field="dayNightCycle"]') as HTMLInputElement
         expect(tick.checked).toBe(true)
         const box = root.querySelector('.lh-layout')!
-        expect(box.children[11]).toBe(tick.closest('.lh-daynight-row'))
-        expect(box.children[12]!.textContent).toContain('Seven phases: late night, dawn, morning, midday, afternoon, sunset and night')
+        expect(box.children[7]).toBe(tick.closest('.lh-helped'))
+        // The help is behind the row's [?] (96): beside the label, never inside it, the text hidden under the row.
+        expect(tick.closest('label')!.querySelector('.lh-help-tip')).toBeNull()
+        const dayNightNote = box.children[7]!.querySelector('.lh-help-note') as HTMLElement
+        expect(dayNightNote.hidden).toBe(true)
+        expect(dayNightNote.textContent).toContain('shift colour through seven phases of the day')
         // The switch is a class on the body, where the tracker panel's phase class meets it.
         expect(document.body.classList.contains('lh-daynight')).toBe(true)
         // The stylesheet the host is handed carries the cycle's rules.
@@ -1989,10 +2179,11 @@ describe('the theme layer (74a)', () => {
 
         const select = root.querySelector('.lh-layout select[data-lh-field="choicesBacking"]') as HTMLSelectElement
         const box = root.querySelector('.lh-layout')!
-        expect(box.children[8]).toBe(select.closest('.lh-choices-backing-row'))
-        expect(box.children[8]!.textContent).toContain('Choice buttons')
-        expect(Array.from(select.options).map((option) => [option.value, option.textContent])).toEqual([['tinted', 'Tinted, as the theme draws them'], ['solid', 'On a solid backing'], ['hover', 'Solid while hovered']])
-        expect(box.children[9]!.textContent).toContain('Nothing here touches the chat’s own background.')
+        expect(box.children[5]).toBe(select.closest('.lh-helped'))
+        expect(box.children[5]!.textContent).toContain('Choice buttons')
+        expect(Array.from(select.options).map((option) => [option.value, option.textContent])).toEqual([['tinted', 'Tinted'], ['solid', 'Solid backing'], ['hover', 'Solid on hover']])
+        expect(select.title).toBe('')
+        expect(box.children[5]!.querySelector('.lh-help-note')!.textContent).toContain('Solid on hover does that only while the pointer is over the list')
         expect(select.value).toBe('solid')
         // Live under any theme and with the cycle off: the rules need no other class.
         expect(select.disabled).toBe(false)
@@ -2019,6 +2210,26 @@ describe('the theme layer (74a)', () => {
         expect(select.disabled).toBe(false)
     })
 
+    it('draws a line icon on every settings card, none repeated inside a category (96, stage 2g)', async () => {
+        const { bridge } = makeBridge({ 'settings.get': { settings: createDefaultSettings() }, 'prefs.get': { prefs: { messageCards: true, bars: {}, layout: 'tabs' } } })
+        const root = document.createElement('div')
+        mountPanel(root, bridge, makeHost().host)
+        await settle()
+        const categories = Array.from(root.querySelectorAll<HTMLElement>('.lh-category'))
+        expect(categories).toHaveLength(7)
+        for (const category of categories) {
+            const icons = Array.from(category.querySelectorAll<HTMLElement>('.lh-card-icon'))
+            // Connections & models holds two cards since the creation card moved to Game systems & rulebook (100c).
+            expect(icons.length).toBeGreaterThanOrEqual(2)
+            // No emoji left: every icon is an inline SVG in the text's colour.
+            const bare = icons.filter((icon) => !icon.querySelector('svg')).map((icon) => icon.parentElement!.textContent)
+            expect(bare, category.getAttribute('data-lh-category')!).toEqual([])
+            expect(icons.every((icon) => icon.querySelector('svg')!.getAttribute('stroke') === 'currentColor')).toBe(true)
+            const shapes = icons.map((icon) => icon.innerHTML)
+            expect(new Set(shapes).size, category.getAttribute('data-lh-category')!).toBe(shapes.length)
+        }
+    })
+
     it('puts the Map Themes card second under Persistent maps, paints the theme on the body from the preferences and follows prefs.changed (74g)', async () => {
         const { bridge, requests, emit } = makeBridge({ 'settings.get': { settings: createDefaultSettings() }, 'prefs.get': { prefs: { messageCards: true, bars: {}, layout: 'tabs', mapTheme: { accent: '#123456', backgroundImage: 'https://host/t.png' }, savedMapThemePresets: { Night: { background: '#010203' } }, activeMapThemePresetId: 'user:Night' } }, 'prefs.patch': { prefs: { mapTheme: { accent: '#abcdef' }, activeMapThemePresetId: '' } } })
         const root = document.createElement('div')
@@ -2030,7 +2241,9 @@ describe('the theme layer (74a)', () => {
         const cards = Array.from(maps.children).filter((node) => node.classList.contains('lh-card'))
         expect(cards[0]!.classList.contains('lh-quickstart')).toBe(true)
         expect(cards[1]!.classList.contains('lh-map-themes')).toBe(true)
-        expect(cards[2]!.classList.contains('lh-maps-guide')).toBe(true)
+        // The maps guide is part of the category's one guide card (96): the themes card stands right before the body.
+        expect(maps.querySelector('.lh-maps-guide')).toBeNull()
+        expect(cards[1]!.nextElementSibling!.classList.contains('lh-category-body')).toBe(true)
         const card = cards[1]!
         expect((card.querySelector('[data-lh-field="mapThemePreset"]') as HTMLSelectElement).value).toBe('user:Night')
         expect((card.querySelector('[data-lh-map-color="accent"]') as HTMLInputElement).value).toBe('#123456')
@@ -2061,8 +2274,9 @@ describe('the theme layer (74a)', () => {
         const tick = root.querySelector('.lh-layout input[data-lh-field="xpBarAtBottom"]') as HTMLInputElement
         expect(tick.checked).toBe(true)
         const box = root.querySelector('.lh-layout')!
-        expect(box.children[13]).toBe(tick.closest('.lh-xpbar-row'))
-        expect(box.children[14]!.textContent).toContain('like an MMO experience bar')
+        expect(box.children[8]).toBe(tick.closest('.lh-helped'))
+        expect(box.children[8]!.querySelector('.lh-xpbar-row')!.textContent).toBe('XP bar at the bottom of the Tracker widget')
+        expect(box.children[8]!.querySelector('.lh-help-note')!.textContent).toContain('pinned as a bar at the foot of the Tracker widget')
         expect(PANEL_CSS).toContain('.lh-bottom-xp {')
 
         tick.checked = false
@@ -2086,9 +2300,9 @@ describe('the theme layer (74a)', () => {
         const tick = root.querySelector('.lh-layout input[data-lh-field="animateAllCustomBarChanges"]') as HTMLInputElement
         expect(tick.checked).toBe(true)
         const box = root.querySelector('.lh-layout')!
-        expect(box.children[15]).toBe(tick.closest('.lh-animate-bars-row'))
-        expect(box.children[15]!.textContent).toContain('Animate changes on every custom bar')
-        expect(box.children[16]!.textContent).toContain('A green gain or a red loss')
+        expect(box.children[9]).toBe(tick.closest('.lh-helped'))
+        expect(box.children[9]!.querySelector('.lh-animate-bars-row')!.textContent).toBe('Animate custom bar changes')
+        expect(box.children[9]!.querySelector('.lh-help-note')!.textContent).toContain('floats over it in green or red')
         expect(PANEL_CSS).toContain('.rt-bar-delta-gain {')
         expect(PANEL_CSS).toContain('.rt-xp-gain-floater {')
         expect(PANEL_CSS).toContain('.rt-barrel-color-control {')
@@ -2131,10 +2345,10 @@ describe('the theme layer (74a)', () => {
         expect(rest.classList.contains('lh-backdrop')).toBe(false)
         // The rows, in the settings tab: two boxes under the font sizes, the card's last child (92d).
         const box = rest.querySelector('.lh-layout')!
-        expect(box.children[19]!.classList.contains('lh-backdrops')).toBe(true)
-        expect(box.lastElementChild).toBe(box.children[19])
+        expect(box.children[11]!.classList.contains('lh-backdrops')).toBe(true)
+        expect(box.lastElementChild).toBe(box.children[11])
         const tracker = rest.querySelector('[data-lh-backdrop-box="tracker"]') as HTMLElement
-        expect(tracker.querySelector('.lh-backdrop-title')!.textContent).toBe('Backdrop behind the Tracker widget')
+        expect(tracker.querySelector('.lh-backdrop-title')!.textContent).toBe('Tracker widget backdrop')
         expect((tracker.querySelector('.lh-backdrop-preview') as HTMLElement).style.backgroundImage).toBe('url("/images/day.jpg")')
         const strength = tracker.querySelector('[data-lh-backdrop-strength="tracker"]') as HTMLInputElement
         expect(strength.value).toBe('40')
@@ -2152,7 +2366,7 @@ describe('the theme layer (74a)', () => {
         expect(upload?.params).toEqual({ box: 'tracker', slot: 'night', dataUrl: 'data:image/png;base64,iVBORw==', filename: 'night.png' })
         expect(pickFile).toHaveBeenLastCalledWith({ accept: ['image/png', 'image/jpeg', 'image/webp', 'image/gif'], maxSizeBytes: 8 * 1024 * 1024 })
         expect(root.style.getPropertyValue('--lh-backdrop-night')).toBe('url("/images/stored/night.png")')
-        expect(tracker.querySelector('.lh-backdrop-note')!.textContent).toBe('The Tracker widget’s night backdrop is set.')
+        expect(tracker.querySelector('.lh-backdrop-note')!.textContent).toBe('The Tracker widget night image is set.')
 
         // The strength moves the box as it is dragged and saves when let go.
         strength.value = '70'
@@ -2168,26 +2382,26 @@ describe('the theme layer (74a)', () => {
         url.value = 'ftp://host/a.jpg'
         url.dispatchEvent(new Event('change'))
         expect(requests.length).toBe(before)
-        expect(tracker.querySelector('.lh-backdrop-note')!.textContent).toBe('Use an https image URL or upload a file.')
+        expect(tracker.querySelector('.lh-backdrop-note')!.textContent).toBe('Enter an https image address, or upload a file.')
         expect(tracker.querySelector('.lh-backdrop-note')!.classList.contains('lh-backdrop-note--error')).toBe(true)
         url.value = 'https://host/a.jpg'
         url.dispatchEvent(new Event('change'))
         // An https address is fetched by the backend first (94b); with no fetch answered here, the address is kept as before and the note says what that means.
         expect(requests.at(-1)?.op).toBe('backdrop.fetch')
         expect(requests.at(-1)?.params).toEqual({ box: 'tracker', slot: 'day', url: 'https://host/a.jpg' })
-        expect(tracker.querySelector('.lh-backdrop-note')!.textContent).toBe('Fetching the picture…')
+        expect(tracker.querySelector('.lh-backdrop-note')!.textContent).toBe('Fetching the image…')
         await settle()
         // (The panel's copy followed the strength save's canned answer meanwhile, which gave the cleared day.)
         expect(requests.at(-1)?.params).toEqual({ patch: { trackerBackdrop: { day: 'https://host/a.jpg', night: '', strength: 40 } } })
         await settle()
-        expect(tracker.querySelector('.lh-backdrop-note')!.textContent).toBe('The Tracker widget’s backdrop is set. The picture could not be fetched (no canned answer for backdrop.fetch); the address is kept as it is and shows only if the browser can load it from there.')
+        expect(tracker.querySelector('.lh-backdrop-note')!.textContent).toBe('The Tracker widget backdrop is set. The image could not be fetched (no canned answer for backdrop.fetch). The address is kept, and the image shows only if your browser can load it directly.')
         // The night row takes an address too (74d-bis), under the same rule, and shows a stored one.
         const nightUrl = tracker.querySelector('[data-lh-backdrop-url="tracker:night"]') as HTMLInputElement
         const beforeNight = requests.length
         nightUrl.value = 'file:///n.jpg'
         nightUrl.dispatchEvent(new Event('change'))
         expect(requests.length).toBe(beforeNight)
-        expect(tracker.querySelector('.lh-backdrop-note')!.textContent).toBe('Use an https image URL or upload a file.')
+        expect(tracker.querySelector('.lh-backdrop-note')!.textContent).toBe('Enter an https image address, or upload a file.')
         nightUrl.value = 'https://host/n.jpg'
         nightUrl.dispatchEvent(new Event('change'))
         expect(requests.at(-1)?.params).toEqual({ box: 'tracker', slot: 'night', url: 'https://host/n.jpg' })
@@ -2197,7 +2411,7 @@ describe('the theme layer (74a)', () => {
         emit('prefs.changed', { prefs: { trackerBackdrop: { day: 'https://host/a.jpg', night: 'https://host/n.jpg', strength: 70 } } })
         expect(nightUrl.value).toBe('https://host/n.jpg')
         await settle()
-        expect(tracker.querySelector('.lh-backdrop-note')!.textContent).toContain('The Tracker widget’s night backdrop is set. The picture could not be fetched')
+        expect(tracker.querySelector('.lh-backdrop-note')!.textContent).toContain('The Tracker widget night image is set. The image could not be fetched')
 
         // Clear the day image: the answer takes the class off the root.
         ;(tracker.querySelector('[data-lh-backdrop-clear="tracker:day"]') as HTMLButtonElement).click()
@@ -2236,7 +2450,7 @@ describe('the theme layer (74a)', () => {
         // With a second tab the settings are drawn in it (47b), the layout box among them.
         const box = rest.querySelector('.lh-layout')!
         // After the day/night row and its hint (74c).
-        expect(box.children[17]!.classList.contains('lh-font-sizes')).toBe(true)
+        expect(box.children[10]!.classList.contains('lh-font-sizes')).toBe(true)
         const tracker = rest.querySelector('input[data-lh-field="trackerFontSize"]') as HTMLInputElement
         const agent = rest.querySelector('input[data-lh-field="agentFontSize"]') as HTMLInputElement
         const settings = rest.querySelector('input[data-lh-field="settingsFontSize"]') as HTMLInputElement
@@ -2248,7 +2462,7 @@ describe('the theme layer (74a)', () => {
         expect([tracker.type, tracker.min, tracker.max]).toEqual(['range', '8', '32'])
         expect(tracker.value).toBe('16')
         expect(tracker.closest('.lh-font-size-row')!.querySelector('.lh-font-size-value')!.textContent).toBe('16px')
-        expect(settings.closest('.lh-font-size-row')!.querySelector('.lh-font-size-value')!.textContent).toBe('the host’s')
+        expect(settings.closest('.lh-font-size-row')!.querySelector('.lh-font-size-value')!.textContent).toBe('Lumiverse default')
         expect((rest.querySelector('[data-lh-field="settingsFontSize-reset"]') as HTMLButtonElement).disabled).toBe(true)
         expect((rest.querySelector('[data-lh-field="trackerFontSize-reset"]') as HTMLButtonElement).disabled).toBe(false)
         // The size is a token on the body; the host's size is no token.
@@ -2274,7 +2488,7 @@ describe('the theme layer (74a)', () => {
         expect(document.body.style.getPropertyValue('--lh-size-settings')).toBe('11px')
         emit('prefs.changed', { prefs: { settingsFontSize: 0 } })
         expect(document.body.style.getPropertyValue('--lh-size-settings')).toBe('')
-        expect(settings.closest('.lh-font-size-row')!.querySelector('.lh-font-size-value')!.textContent).toBe('the host’s')
+        expect(settings.closest('.lh-font-size-row')!.querySelector('.lh-font-size-value')!.textContent).toBe('Lumiverse default')
         // The agent's row follows the event on its own key (90), and the settings' token does not move with it.
         emit('prefs.changed', { prefs: { agentFontSize: 10 } })
         expect(agent.value).toBe('10')
@@ -2283,7 +2497,7 @@ describe('the theme layer (74a)', () => {
     })
 
     it('greys a disabled box visibly, and the prompt dialog’s box is styled as the panel is (73g-bis)', () => {
-        // The wizard's count under *or all of them* is disabled; the host's own look only took the arrows away.
+        // The wizard's count under *Read every message* is disabled; the host's own look only took the arrows away.
         const greyed = PANEL_CSS.match(/\.adventuretime-panel input:disabled[^{]*\{([^}]*)\}/)
         expect(greyed).not.toBeNull()
         expect(greyed![1]).toMatch(/opacity:\s*0\.\d+/)
@@ -2346,6 +2560,38 @@ describe('the per-chat switch (94c)', () => {
         await settle()
         // No canned answer for chat.enable: the backend refused, and the tick is back on.
         expect(tick.checked).toBe(true)
+    })
+})
+
+describe('the per-chat switch and the widgets (the maintainer’s ask of 2026-11-20)', () => {
+    it('tells the layout to hide the boxes while the open chat is off and to bring them back when it is on, and holds on the home screen', async () => {
+        const { bridge, emit } = makeBridge({ 'settings.get': { settings: createDefaultSettings() }, 'prefs.get': { prefs: { bars: {}, disabledChats: { 'chat-1': true } } }, 'chat.enable': { prefs: { bars: {}, disabledChats: {} } } })
+        const root = document.createElement('div')
+        const rest = document.createElement('div')
+        const told: boolean[] = []
+        const { host } = makeHost()
+        let chatId: string | null = 'chat-1'
+        host.getActiveChat = () => ({ chatId, characterId: 'char-1' }) as ReturnType<typeof host.getActiveChat>
+        const panel = mountPanel(root, bridge, host, { rest, scene: document.createElement('div'), widgets: { show: () => undefined, toggle: () => undefined, reset: () => undefined, suppress: (off) => { told.push(off) } } })
+        await settle()
+        // The mount says on before the file is read, then off once it says chat-1 is off.
+        expect(told).toEqual([false, true])
+        const tick = rest.querySelector('input[data-lh-field="chat-enabled"]') as HTMLInputElement
+        tick.checked = true
+        tick.dispatchEvent(new Event('change'))
+        await settle()
+        expect(told.at(-1)).toBe(false)
+        emit('prefs.changed', { prefs: { disabledChats: { 'chat-1': true } } })
+        expect(told.at(-1)).toBe(true)
+        // The host's home screen has no chat: what stands is held.
+        chatId = null
+        const before = told.length
+        panel.refreshTracker()
+        expect(told.length).toBe(before)
+        // Another chat, on: the boxes come back.
+        chatId = 'chat-2'
+        panel.refreshTracker()
+        expect(told.at(-1)).toBe(false)
     })
 })
 
@@ -2580,12 +2826,18 @@ describe('the UI Appearance card after the try of beta.17 (92d)', () => {
             expect(summary.querySelector('.lh-card-icon')).not.toBeNull()
             expect(summary.querySelector('.lh-chevron')).not.toBeNull()
             // The rows are in the body under the summary, not beside it.
-            expect(card.children.length).toBe(2)
-            expect(card.children[1]!.classList.contains('lh-second-body')).toBe(true)
-            expect(card.children[1]!.querySelector('.lh-backdrop-row')).not.toBeNull()
-            expect(card.children[1]!.querySelector('.lh-backdrop-strength')).not.toBeNull()
+            // The card's help is behind its header's [?] (96), the first line of the card and hidden.
+            expect(card.children.length).toBe(3)
+            expect(card.children[1]!.classList.contains('lh-help-note')).toBe(true)
+            expect((card.children[1] as HTMLElement).hidden).toBe(true)
+            expect(card.children[2]!.classList.contains('lh-second-body')).toBe(true)
+            expect(card.children[2]!.querySelector('.lh-backdrop-row')).not.toBeNull()
+            expect(card.children[2]!.querySelector('.lh-backdrop-strength')).not.toBeNull()
+            // Both images are named in words, not by a hover text.
+            expect(Array.from(card.querySelectorAll('.lh-backdrop-slot')).map((n) => n.textContent)).toEqual(['Day image (default)', 'Night image (optional)'])
+            expect(card.querySelector('.lh-backdrop-preview')!.getAttribute('title')).toBeNull()
         }
-        expect(cards.map((c) => c.querySelector('.lh-backdrop-title')!.textContent)).toEqual(['Backdrop behind the Tracker widget', 'Backdrop behind the Lore widget'])
+        expect(cards.map((c) => c.querySelector('.lh-backdrop-title')!.textContent)).toEqual(['Tracker widget backdrop', 'Lore widget & settings backdrop'])
         // The card's own frame rule is gone: the cards' shared rules draw it.
         expect(PANEL_CSS).not.toContain('.adventuretime-panel .lh-backdrop-box {')
     })
@@ -2599,9 +2851,12 @@ describe('the UI Appearance card after the try of beta.17 (92d)', () => {
 
         const names = Array.from(rest.querySelectorAll('.lh-font-size-row > span:first-child')).map((s) => s.textContent)
         expect(names).toEqual(['Tracker widget font size', 'Lore widget font size', 'Settings font size'])
-        expect(rest.querySelector('.lh-layout > .lh-section-help')!.textContent).toContain('the Tracker widget, and the Lore widget')
-        expect(rest.querySelector('input[data-lh-field="one-window"]')!.parentElement!.textContent).toBe('One window: the Tracker and Lore widgets as tabs of one box')
-        expect(button(rest, 'Toggle Tracker').title).toContain('Hide the Tracker widget')
+        expect(rest.querySelector('[data-lh-card="layout"] > .lh-help-note')!.textContent).toContain('the Tracker widget and the Lore widget')
+        expect(rest.querySelector('input[data-lh-field="one-window"]')!.parentElement!.textContent).toBe('One window')
+        expect(rest.querySelector('input[data-lh-field="one-window"]')!.closest('.lh-helped')!.querySelector('.lh-help-note')!.textContent).toContain('become one box with four tabs')
+        // No always-visible help paragraph is left in the card, and no slider's help is a hover text.
+        expect(rest.querySelector('.lh-layout .lh-section-help')).toBeNull()
+        expect(rest.querySelector('.lh-font-size-row[title]')).toBeNull()
         expect(rest.textContent).not.toContain('second box')
         expect(rest.textContent).not.toContain('Lorebook Agent & maps')
     })
@@ -2641,8 +2896,8 @@ describe('the one window in the panel (92)', () => {
         expect(phoneButtons.map((b) => [b.textContent, b.getAttribute('data-lh-phone-widget')])).toEqual([['Show AdventureTime', 'one']])
         expect(row.querySelector('input[data-lh-field="mobile-widget"]')).not.toBeNull()
         phoneButtons[0]!.click()
-        const toggles = Array.from(rest.querySelectorAll('[data-lh-card="layout"] .lh-widget-buttons button'))
-        expect(toggles.map((b) => [b.textContent, b.getAttribute('data-lh-widget')])).toEqual([['Toggle AdventureTime', 'one'], ['Reset Widget', 'reset']])
+        const toggles = Array.from(rest.querySelectorAll('[data-lh-card="layout"] .lh-widget-buttons button.lh-button'))
+        expect(toggles.map((b) => [b.textContent, b.getAttribute('data-lh-widget')])).toEqual([['Toggle AdventureTime', 'one'], ['Reset widget', 'reset']])
         ;(toggles[0] as HTMLButtonElement).click()
         ;(toggles[1] as HTMLButtonElement).click()
         expect(toggled).toEqual(['one', 'one'])
@@ -2719,6 +2974,7 @@ describe('the one window in the panel (92)', () => {
             ['Lorebook Agent', '📖', 'Agent', 'Lorebook Agent'],
             ['Campaign Records', '👥', 'Records', 'Campaign Records'],
             ['Visuals/Map', '🗺️', 'Map', 'Visuals/Map'],
+            ['Companion', '💬', 'Companion', 'Companion'],
         ])
         for (const tab of tabs) expect((tab.firstElementChild as HTMLElement).className).toBe('lh-widget-tab-text')
     })
@@ -2743,7 +2999,7 @@ describe('a backdrop from an address (94b)', () => {
         await settle()
         expect(requests.filter((r) => r.op === 'prefs.patch')).toEqual([])
         expect(url.value).toBe('')
-        expect(tracker.querySelector('.lh-backdrop-note')!.textContent).toBe('The Tracker widget’s backdrop is set. The picture is fetched from the address and stored with the host.')
+        expect(tracker.querySelector('.lh-backdrop-note')!.textContent).toBe('The Tracker widget backdrop is set. The image was fetched and stored with Lumiverse.')
         expect((tracker.querySelector('.lh-backdrop-preview') as HTMLElement).style.backgroundImage).toContain('backdrop-tracker-day.jpg')
         expect(root.classList.contains('lh-backdrop')).toBe(true)
     })
