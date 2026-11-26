@@ -217,7 +217,7 @@ part in twenty-two short chapters. Start with
 On a chat with no character sheet yet, **Starting the adventure** is open at
 the top of the settings tab, and walks through the rest in order:
 
-1. **Before you start:** three checks. A *narrator card*, an empty character
+1. **Before you start:** four checks. A *narrator card*, an empty character
    card, since the rulebook carries the whole prompt (**Create narrator
    card** makes one; AdventureTime, like Multihog, writes the story like a
    book rather than as a one-on-one chat); a *connection* for the background

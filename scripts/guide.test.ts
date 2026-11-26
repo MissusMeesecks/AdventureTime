@@ -217,7 +217,7 @@ describe('the guide’s lists of the stock modules', () => {
         const tags = Object.entries(FACTORY_CARTRIDGE_DEFAULTS.routerModules).map(([key, module]) => moduleTag(key, module as never))
         const start = guide.indexOf('There are six\nstock categories, and this is the whole list:')
         expect(start).toBeGreaterThan(0)
-        const passage = guide.slice(start, guide.indexOf('*WORLD* is World', start))
+        const passage = guide.slice(start, guide.indexOf('*WORLD* is not', start))
         expect(italics(passage)).toEqual(tags)
         expect(tags).toHaveLength(6)
     })

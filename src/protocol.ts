@@ -121,6 +121,7 @@ export type RequestOp =
     | 'portraits.presets.save'
     | 'portraits.presets.delete'
     | 'lore.activated'
+    | 'lore.load'
     | 'agent.run'
     | 'agent.instruct'
     | 'cyoa.choices'
@@ -284,6 +285,7 @@ export interface EventMessage {
         | 'relationships.changed'
         /** Awards placed by the tracker's block or the narrator's inline line (78c): the float feedback. */
         | 'relationships.awarded'
+        | 'lore.load'
         | 'agent.started'
         | 'agent.finished'
         | 'agent.undone'
@@ -563,6 +565,9 @@ export interface ActivatedLoreResult {
     /** Absent when the host cannot answer — a missing grant, or an older build. */
     unavailable?: string
 }
+
+/** The lore size warning (1.1.0): what Lumiverse sent with the last reply, against the user's number. */
+export type { LoreLoadEntry, LoreLoadRecord, LoreLoadResult } from './backend/lore-load.js'
 
 /**
  * Payload of the three `portraits.*` ops.

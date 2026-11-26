@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest'
 
 import manifest from '../../spindle.json'
 import type { StatusResult } from '../protocol.js'
-import { checklistItems } from './core-card.js'
+import { SUMMARISER_CHECK, checklistItems } from './core-card.js'
 import { GUIDE_FILE, GUIDE_URL, MAKE_CHARACTER_HELP, MULTIHOG_WALKTHROUGH_URL, START_AREA_CSS, START_CHECKS, START_MARKS, SUMMARYCEPTION_URL, createStartArea, startReady, type StartAreaHost } from './start-area.js'
 
 const el = (tag: string, attrs?: Record<string, string>) => { const n = document.createElement(tag); for (const [k, v] of Object.entries(attrs ?? {})) n.setAttribute(k, v); return n }
@@ -73,14 +73,14 @@ describe('Starting the adventure, in setup order (98)', () => {
         expect((q('start-learn') as HTMLDetailsElement).open).toBe(false)
     })
 
-    it('shows three of the checklist’s items through the checklist’s own function: the mark, the evidence, and a [?] each', () => {
+    it('shows three of the checklist’s items through the checklist’s own function, and the summariser’s check as a fourth: the mark, the evidence, and a [?] each', () => {
         const { area, q } = harness()
-        expect(START_CHECKS.map((c) => [c.id, c.title, c.counts])).toEqual([['narrator', 'Narrator card', true], ['passes', 'Passes have a connection', true], ['tools', 'Function calling (optional)', false]])
+        expect(START_CHECKS.map((c) => [c.id, c.title, c.counts])).toEqual([['narrator', 'Narrator card', true], ['passes', 'Passes have a connection', true], ['tools', 'Function calling (optional)', false], ['summariser', 'Summariser for long chats (recommended)', false]])
         // Nothing read yet: every row ❔ with the checklist's own words.
         for (const check of START_CHECKS) {
             const row = q(`start-check-${check.id}`)
             expect(row.querySelector('.lh-start-check-mark')!.textContent).toBe('❔')
-            expect(row.querySelector('.lh-start-check-evidence')!.textContent).toBe(checklistItems(null).find((i) => i.id === check.id)!.evidence)
+            expect(row.querySelector('.lh-start-check-evidence')!.textContent).toBe([...checklistItems(null), SUMMARISER_CHECK].find((i) => i.id === check.id)!.evidence)
             const tip = row.querySelector('.lh-help-tip')!
             expect(noteOf(tip).textContent).toBe(check.help)
             expect(noteOf(tip).hidden).toBe(true)
@@ -89,7 +89,7 @@ describe('Starting the adventure, in setup order (98)', () => {
         const told = status({ why: 'first' }, { exists: false })
         area.applyStatus(told)
         for (const check of START_CHECKS) {
-            const item = checklistItems(told).find((i) => i.id === check.id)!
+            const item = [...checklistItems(told), SUMMARISER_CHECK].find((i) => i.id === check.id)!
             const row = q(`start-check-${check.id}`)
             expect(row.querySelector('.lh-start-check-mark')!.textContent).toBe(START_MARKS[item.state])
             expect(row.querySelector('.lh-start-check-evidence')!.textContent).toBe(item.evidence)
@@ -103,6 +103,14 @@ describe('Starting the adventure, in setup order (98)', () => {
         // No button on the optional row; the other checks stay in the checklist.
         expect(q('start-check-tools').querySelector('button.lh-button')).toBeNull()
         expect(q('start-open-checklist').textContent).toBe('Open Lumiverse checklist')
+        // The summariser row (1.1.2): last, under function calling, always ❔, its link opening in a new tab.
+        expect(Array.from(q('start-before').querySelectorAll('.lh-start-check')).map((r) => r.getAttribute('data-lh-field'))).toEqual(['start-check-narrator', 'start-check-passes', 'start-check-tools', 'start-check-summariser'])
+        const sum = q('start-check-summariser')
+        expect(sum.querySelector('.lh-start-check-head span')!.textContent).toBe('Summariser for long chats (recommended)')
+        expect(sum.querySelector('.lh-start-check-mark')!.textContent).toBe('❔')
+        expect(sum.querySelector('.lh-start-check-evidence')!.textContent).toBe(SUMMARISER_CHECK.evidence)
+        const anchors = Array.from(sum.querySelectorAll('a')) as HTMLAnchorElement[]
+        expect(anchors.map((a) => [a.textContent, a.getAttribute('href'), a.target, a.rel])).toEqual([['Open Lumi-Summaryception', 'https://github.com/Ryah/Lumi-Summaryception', '_blank', 'noopener noreferrer']])
     })
 
     it('folds to Ready to play when the narrator card and the connection are ✅, whatever function calling says, and opens again when one drops', () => {

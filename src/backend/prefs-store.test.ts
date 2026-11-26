@@ -159,7 +159,7 @@ describe('the preference store', () => {
         expect(await store.patch({})).toEqual({
             messageCards: false, debugLogging: false, autoUpdatePrompts: true, bars: {}, campaignBooks: {}, campaignNames: {}, agentLookback: 0,
             frameworkEnabled: true, agentEnabled: true, trackerSwipeRollback: true, trackerFullReviewMode: false, trackerInjectLorebooks: false, trackerLorebookFilter: [], agentSwipeRollback: true, agentLookbackMode: 'since_last_run', trackerHistoryStates: 1, npcMajorWords: 225, npcMinorWords: 135, legacyDiceNaming: false, portraitsEnabled: true, npcRelationshipToast: true, locationImages: false, inventoryShowTotal: false, inventoryWorthMode: 'hover', mapArchitectConnectionId: '', mapUpdaterConnectionId: '', narratorCardName: 'Game Master',
-            terminalDrafts: { state_tracker: '', lorebook_agent: '', map_updater: '', map_evolution: '', map_architect: '' }, mapUpdaterDirectLookback: 10, mapEvolutionDirectLookback: 10, mapArchitectDirectLookback: 10, agentTerminalTab: 'lorebook_agent', trackerUserPromptSuffix: '', agentPaused: false, agentCleanupUseThreshold: true, agentCleanupThreshold: 300, agentCleanupEvery: 0, agentAuditTokens: 32000,
+            terminalDrafts: { state_tracker: '', lorebook_agent: '', map_updater: '', map_evolution: '', map_architect: '' }, mapUpdaterDirectLookback: 10, mapEvolutionDirectLookback: 10, mapArchitectDirectLookback: 10, agentTerminalTab: 'lorebook_agent', trackerUserPromptSuffix: '', agentPaused: false, agentCleanupUseThreshold: true, agentCleanupThreshold: 300, agentCleanupEvery: 0, agentAuditTokens: 32000, loreWarnTokens: 10000,
             agentMaxTurns: DEFAULT_MAX_TURNS, agentRunEvery: DEFAULT_RUN_EVERY,
             agentWatermarks: {},
             trackerConnectionId: '', agentConnectionId: '',
@@ -1201,6 +1201,11 @@ describe('the terminal’s preferences (71b)', () => {
         // The User Prompt Suffix (72c): a string kept as typed; anything else ignored.
         expect(readPrefsPatch({ trackerUserPromptSuffix: '## MINE:' })).toEqual({ trackerUserPromptSuffix: '## MINE:' })
         // The agent's tools (71c): the pause reads true only when true; the dials are bounded as the legacy bounds them.
+        // The lore size warning (1.1.0): 0 is off and is kept; a negative reads as off, rubbish as the default.
+        expect(readPrefsPatch({ loreWarnTokens: 0 })).toEqual({ loreWarnTokens: 0 })
+        expect(readPrefsPatch({ loreWarnTokens: -5 })).toEqual({ loreWarnTokens: 0 })
+        expect(readPrefsPatch({ loreWarnTokens: 'x' })).toEqual({ loreWarnTokens: 10000 })
+        expect(readPrefsPatch({ loreWarnTokens: 25000.7 })).toEqual({ loreWarnTokens: 25000 })
         expect(readPrefsPatch({ agentPaused: 'yes', agentCleanupUseThreshold: 0, agentCleanupThreshold: 7, agentCleanupEvery: 500, agentAuditTokens: 'x' }))
             .toEqual({ agentPaused: false, agentCleanupUseThreshold: true, agentCleanupThreshold: 50, agentCleanupEvery: 100, agentAuditTokens: 32000 })
         expect(readPrefsPatch({ agentPaused: true, agentCleanupUseThreshold: false, agentCleanupThreshold: 9000, agentCleanupEvery: 3, agentAuditTokens: 8000 }))

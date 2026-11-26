@@ -3,7 +3,7 @@
 import { describe, it, expect } from 'vitest'
 
 import type { StatusResult } from '../protocol.js'
-import { checklistItems, CHECKLIST_BUTTON_HELP, CHECKLIST_HELP, CORE_CARD_CSS, CORE_CARD_HELP, createCoreCard } from './core-card.js'
+import { checklistItems, SUMMARISER_CHECK, CHECKLIST_BUTTON_HELP, CHECKLIST_HELP, CORE_CARD_CSS, CORE_CARD_HELP, createCoreCard } from './core-card.js'
 import { createNarratorRows, NARRATOR_CARD_HELP } from './second-pass-cards.js'
 
 const el = (tag: string, attrs?: Record<string, string>) => { const n = document.createElement(tag); for (const [k, v] of Object.entries(attrs ?? {})) n.setAttribute(k, v); return n }
@@ -158,6 +158,21 @@ describe('the Lumiverse checklist (81): what to check on a connection, in Lumive
         expect(none[2]!.state).toBe('unknown')
     })
 
+    it('keeps the summariser out of the list (1.1.2): the check is the starting area’s, always ❔, with why size matters and its link', () => {
+        const { field } = mount()
+        for (const status of [null, STATUS({ registered: ['RollTheDice'], absent: null, calls: 1, turn: [CALL] }, PASSES({ maxTokens: 4000 }))]) {
+            expect(checklistItems(status).map((i) => i.id)).toEqual(['tools', 'passes', 'output', 'context', 'narrator'])
+        }
+        expect(field('lumiverse-checklist-box').querySelectorAll('a')).toHaveLength(0)
+        expect(field('lumiverse-checklist-box').querySelector('[data-lh-field="checklist-summariser"]')).toBeNull()
+        expect(SUMMARISER_CHECK.id).toBe('summariser')
+        expect(SUMMARISER_CHECK.title).toBe('Summariser for long chats (recommended)')
+        expect(SUMMARISER_CHECK.state).toBe('unknown')
+        expect(SUMMARISER_CHECK.evidence).toBe('AdventureTime cannot see other extensions, so check this in Lumiverse’s extension list. Recommended: Lumi-Summaryception, the Lumiverse port of the summariser Multihog’s author recommends.')
+        expect(SUMMARISER_CHECK.why).toContain('a long campaign grows until it no longer fits the model')
+        expect(SUMMARISER_CHECK.link).toEqual({ label: 'Open Lumi-Summaryception', url: 'https://github.com/Ryah/Lumi-Summaryception' })
+    })
+
     it('opens in the host’s modal with the items and the count, follows the status while open, closes on a second press, and unfolds inline without a modal', () => {
         const { card, modals, button } = mount()
         button('lumiverse-checklist').click()
@@ -166,7 +181,7 @@ describe('the Lumiverse checklist (81): what to check on a connection, in Lumive
         const box = modals[0]!.nodes[0]!
         expect(box.hidden).toBe(false)
         expect(Array.from(box.querySelectorAll('.lh-checklist-item')).map((i) => i.getAttribute('data-lh-field'))).toEqual(['checklist-tools', 'checklist-passes', 'checklist-output', 'checklist-context', 'checklist-narrator'])
-        expect(box.querySelector('[data-lh-field="checklist-status"]')!.textContent).toBe('0 of 5 confirmed here. Check the rest in Lumiverse’s connection settings.')
+        expect(box.querySelector('[data-lh-field="checklist-status"]')!.textContent).toBe('0 of 5 confirmed here. Check the rest in Lumiverse.')
         card.applyStatus(STATUS({ registered: ['RollTheDice'], absent: null, calls: 1, turn: [CALL] }, PASSES({ maxTokens: 4000 })))
         expect(box.querySelector('[data-lh-field="checklist-tools"]')!.classList.contains('lh-checklist-item--ok')).toBe(true)
         expect(box.querySelector('[data-lh-field="checklist-passes"]')!.classList.contains('lh-checklist-item--ok')).toBe(true)

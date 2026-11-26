@@ -72,6 +72,15 @@ export function describeKeys(keys: readonly string[], limit = 6): string {
     return keys.length > limit ? `${shown} and ${keys.length - limit} more` : shown
 }
 
+/** The last check's result in a sentence or two; empty when it changed nothing. */
+export function describeStockRefresh(refreshed: readonly string[], kept: readonly string[]): string {
+    const texts = (n: number): string => `${n} stock ${n === 1 ? 'text' : 'texts'}`
+    const parts: string[] = []
+    if (refreshed.length) parts.push(`refreshed ${texts(refreshed.length)} (${describeKeys(refreshed)}).`)
+    if (kept.length) parts.push(refreshed.length ? `Kept ${kept.length} you had edited (${describeKeys(kept)}).` : `kept ${texts(kept.length)} you had edited (${describeKeys(kept)}).`)
+    return parts.length ? `After the last update: ${parts.join(' ')}` : ''
+}
+
 export function createDeveloperCard(host: DeveloperCardHost): DeveloperCard {
     const el = host.el
     const root = el('details', { class: 'lh-card lh-developer', 'data-lh-field': 'developer-card' }) as HTMLDetailsElement
@@ -158,8 +167,13 @@ export function createDeveloperCard(host: DeveloperCardHost): DeveloperCard {
         (on) => { host.savePrefs({ debugLogging: on }).catch((error) => { debug.checked = !on; host.fail(error) }) })
 
     const auto = switchRow('auto-update-prompts', 'Refresh stock texts after updates',
-        'When on, an update that changes a stock prompt or module text replaces your copy if you never edited it. Texts you edited are kept and named in the Server Logs. When off, changed texts wait until you press "Update changed prompts". Default: on.',
+        'When on, an update that changes a stock prompt or module text replaces your copy if you never edited it. Texts you edited are kept and named under this switch and in the Server Logs. When off, changed texts wait until you press "Update changed prompts". Default: on.',
         (on) => { host.savePrefs({ autoUpdatePrompts: on }).catch((error) => { auto.checked = !on; host.fail(error) }) })
+    // What the last check after an update did, under the switch that asked for it (the defaults
+    // audit): it was in the Server Logs and on the update button's row alone. Empty, and so not
+    // drawn, before the first check and when the check changed nothing.
+    const autoResult = el('div', { class: 'lh-developer-note', 'data-lh-field': 'stock-refresh-result' })
+    auto.closest('.lh-developer-row')?.append(autoResult)
 
     const upgrade = actionRow('upgrade-stock', 'Update changed prompts', { help: 'Puts in the stock texts that an update changed. Texts you edited are kept.' })
     upgrade.node.hidden = true
@@ -276,14 +290,10 @@ export function createDeveloperCard(host: DeveloperCardHost): DeveloperCard {
             const report = status.stockUpgrade
             if (!report) return
             const pending = report.pending.length
-            upgrade.node.hidden = !pending && !report.refreshed.length && !report.kept.length
-            if (pending) {
-                tell(upgrade.note, `An update changed ${pending} stock texts that were not refreshed: ${describeKeys(report.pending)}.`)
-            } else if (report.refreshed.length || report.kept.length) {
-                const refreshed = report.refreshed.length ? `Refreshed ${report.refreshed.length} texts after the last update: ${describeKeys(report.refreshed)}.` : ''
-                const kept = report.kept.length ? ` Kept ${report.kept.length} edited texts: ${describeKeys(report.kept)}.` : ''
-                tell(upgrade.note, (refreshed + kept).trim())
-            }
+            // The button's row is for texts still waiting; a check that is done is the switch's line.
+            upgrade.node.hidden = !pending
+            if (pending) tell(upgrade.note, `An update changed ${pending} stock texts that were not refreshed: ${describeKeys(report.pending)}.`)
+            tell(autoResult, describeStockRefresh(report.refreshed, report.kept))
         },
     }
 }

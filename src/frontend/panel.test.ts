@@ -1068,6 +1068,12 @@ describe('the cartridge buttons (47a)', () => {
         expect(card.querySelector('.lh-card-title')!.textContent).toBe('Cartridges')
         expect(card.querySelector('.lh-chevron')).not.toBeNull()
         expect(card.open).toBe(false)
+        // What a cartridge holds is behind the card's own [?] (the defaults audit): the card had no help at all.
+        const cartridgeTip = card.querySelector('summary .lh-help-tip') as HTMLButtonElement
+        expect(cartridgeTip.getAttribute('aria-label')).toBe('Help: Cartridges')
+        const cartridgeNote = card.querySelector('.lh-help-note')!
+        expect(cartridgeNote.textContent).toBe('A cartridge holds your prompts, modules, rulebook and game systems. It does not hold your layout, connections or theme. Export one before changing a lot.')
+        expect((cartridgeNote as HTMLElement).hidden).toBe(true)
         expect(box.contains(button(root, 'Import cartridge'))).toBe(true)
         expect(box.contains(button(root, 'Export cartridge'))).toBe(true)
         // Nothing above the version line but the status — and the phone row (91), hidden here with no widgets.
@@ -1369,7 +1375,7 @@ describe('the settings in Multihog’s categories (63)', () => {
         'settings.get': { settings: createDefaultSettings() },
         'prefs.get': { prefs: PREFS },
         'prefs.patch': { prefs: PREFS },
-        'status.get': { version: '1.0.0', host: '1.2.0', checked: true, granted: ['a'], missing: [], dice: { registered: false, mode: 'off' } },
+        'status.get': { version: '1.1.2', host: '1.2.0', checked: true, granted: ['a'], missing: [], dice: { registered: false, mode: 'off' } },
         'connections.list': { connections: [{ id: 'conn-1', name: 'Main', model: 'deepseek', isDefault: true }] },
         'scene.connections': { connections: [{ id: 'img-1', name: 'Swarm', provider: 'swarmui', model: 'anima', isDefault: true }] },
     })
@@ -1393,7 +1399,7 @@ describe('the settings in Multihog’s categories (63)', () => {
         const general = category(root, 'general').querySelector('.lh-category-body')!
         // One version line, at the top of the tab (96, finding 1): the twin under General is gone.
         expect(root.querySelector('.lh-version-twin')).toBeNull()
-        expect(root.querySelector('.lh-diagnostics')!.textContent).toContain('AdventureTime 1.0.0')
+        expect(root.querySelector('.lh-diagnostics')!.textContent).toContain('AdventureTime 1.1.2')
         // Core & Branching (81), Multihog's first drawer, is the first card; the Layout and Cartridges cards (82) follow.
         expect(general.children[0]!.getAttribute('data-lh-card')).toBe('core-branching')
         expect(general.children[1]!.getAttribute('data-lh-card')).toBe('layout')
@@ -1916,6 +1922,8 @@ describe('the settings in Multihog’s categories (63)', () => {
         input.dispatchEvent(new Event('input'))
         expect(category(root, 'general').hidden).toBe(false)
         expect((root.querySelector('[data-lh-card="cartridges"]') as HTMLElement).hidden).toBe(false)
+        // The search opens the help that matched, so the card found by "cartridge" says what one is.
+        expect((root.querySelector('[data-lh-card="cartridges"] .lh-help-note') as HTMLElement).hidden).toBe(false)
         expect((root.querySelector('[data-lh-card="layout"]') as HTMLElement).hidden).toBe(true)
         input.value = ''
         input.dispatchEvent(new Event('input'))

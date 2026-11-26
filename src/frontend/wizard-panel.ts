@@ -108,6 +108,7 @@ const DRIVERS_HELP = [
     'When the narrator annotates a change: the narrator writes a note such as *(Category: Event. +N Metric)* in its reply. The tracker applies it.',
     'From a number in the story: the tracker reads a plain number from the story text.',
 ].join('\n')
+const OWNER_HELP = 'A threshold effect is what happens when a value crosses a line, such as collapsing at 0 stamina. The tracker handles it more reliably, but the narrator only reacts on the next reply. Choose the narrator when the effect has to land in the same reply, such as instant death.'
 const REVISE_HELP = 'Say what to change. The model revises the draft and keeps the rest.'
 const previewHelp = (tag: string): string =>
     `The preview draws the last complete [${tag}] … [/${tag}] sample block in the module text, the way the Tracker widget draws cards. Edit that block to change the preview.`
@@ -170,7 +171,7 @@ export function mountGameSystemWizard(root: HTMLElement, host: WizardHost, deps:
         owner.append(option)
     }
     ownerLabel.append(ownerText, owner)
-    optionRow.append(ownerLabel)
+    optionRow.append(withHelp(plainEl, ownerLabel, 'Threshold effects narrated by', OWNER_HELP))
     const contextRow = el('div', { class: 'lh-wizard-row' })
     const lookbackLabel = el('label', { class: 'lh-wizard-option' })
     const lookbackText = el('span')
@@ -383,14 +384,14 @@ export function mountGameSystemWizard(root: HTMLElement, host: WizardHost, deps:
     const ownerRowText = el('span')
     ownerRowText.textContent = 'Threshold effects narrated by'
     const ownerSelect = el('select', { class: 'lh-select', 'data-lh-field': 'wizard-owner-preview' })
-    for (const [value, label] of [['tracker', 'The tracker, one turn later'], ['gm', 'The narrator, same turn']]) {
+    for (const [value, label] of [['tracker', 'The tracker, one turn later (recommended)'], ['gm', 'The narrator, same turn']]) {
         const option = el('option', { value: value! })
         option.textContent = label!
         ownerSelect.append(option)
     }
     ownerRow.append(ownerRowText, ownerSelect)
     ownerSelect.addEventListener('change', () => { if (draft) draft.effectOwner = ownerSelect.value === 'gm' ? 'gm' : 'tracker' })
-    drivers.append(ownerRow)
+    drivers.append(withHelp(plainEl, ownerRow, 'Threshold effects narrated by', OWNER_HELP))
 
     const feedback = el('textarea', { class: 'lh-wizard-feedback', rows: '2', 'data-lh-field': 'wizard-feedback', placeholder: 'Example: drain twice as fast at night, and add a Frostbitten tier at 0.' })
     const reviseRow = el('div', { class: 'lh-wizard-row' })

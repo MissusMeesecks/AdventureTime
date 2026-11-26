@@ -54,6 +54,7 @@ import { createCompanionPane, type CompanionPlace } from './companion-pane.js'
 import { createPrefDials, dialCopy, dialRows } from './pref-dials.js'
 import type { DialGroup } from './pref-dials.js'
 import { openDetailsModal } from './details-modal.js'
+import { createLoreChip } from './lore-chip.js'
 import type { DetailsModal } from './details-modal.js'
 import { lookupPortrait, normalizeEntityName, portraitFor, portraitProblem } from '../tracker/portraits.js'
 import { locationImageKey } from '../tracker/scene.js'
@@ -80,7 +81,7 @@ import { createRecolorBinding } from './recolor.js'
 import { readDisplayGroups, type DisplayGroup } from '../tracker/display-groups.js'
 import { ENTITY_TAGS } from '../tracker/entities.js'
 import { resolveCampaignPrefix } from '../agent/campaign.js'
-import type { StatusResult, ActivatedLoreResult, AgentAuditResult, AgentRedoResult, AgentRunResult, AgentUndoResult, CampaignBooksResult, CampaignCloneResult, CampaignNameResult, CampaignRecordsResult, CardAiEditResult, CardChoice, CompanionState, CardResult, ConnectionChoice, ConnectionsResult, CreatorResult, ImportResult, InstantResult, LibraryActionResult, LibraryPhotoPromptResult, LibraryPhotoResult, LibraryRecordView, LibrarySources, MapArchitectResult, MapCreateResult, MapEvolutionIntervalResult, MapEvolutionResult, MapEvolutionStatus, MapRawResult, MapRawSaveResult, MapSandboxOutcome, MapSandboxResult, MapStatusResult, MapUpdaterResult, MapViewResult, NarratorCardResult, NpcAddResult, NpcDraftResult, PersonaResult, PlayerCardView, PortraitAutoStatus, PortraitDrawReport, PortraitDrawResult, PortraitPromptResult, PortraitsResult, PrefsResult, RecordEntryResult, RecordRemoveMapResult, RelationshipAward, RelationshipsView, ReportsHistoryResult, SceneConnectionsResult, SceneDrawResult, ScenePictureReport, ScenePromptResult, SceneResult, TerminalResult, TerminalStep, TrackerHistoryResult, TrackerPassReportDTO, TrackerPassStartedDTO, TrackerResult, WaysResult, WorldBooksResult, WorldConsolidateResult, WorldPurgeResult, WorldRunResult, WorldSkeletonResult, WorldSourceResult, WorldStatusResult } from '../protocol.js'
+import type { StatusResult, ActivatedLoreResult, LoreLoadResult, AgentAuditResult, AgentRedoResult, AgentRunResult, AgentUndoResult, CampaignBooksResult, CampaignCloneResult, CampaignNameResult, CampaignRecordsResult, CardAiEditResult, CardChoice, CompanionState, CardResult, ConnectionChoice, ConnectionsResult, CreatorResult, ImportResult, InstantResult, LibraryActionResult, LibraryPhotoPromptResult, LibraryPhotoResult, LibraryRecordView, LibrarySources, MapArchitectResult, MapCreateResult, MapEvolutionIntervalResult, MapEvolutionResult, MapEvolutionStatus, MapRawResult, MapRawSaveResult, MapSandboxOutcome, MapSandboxResult, MapStatusResult, MapUpdaterResult, MapViewResult, NarratorCardResult, NpcAddResult, NpcDraftResult, PersonaResult, PlayerCardView, PortraitAutoStatus, PortraitDrawReport, PortraitDrawResult, PortraitPromptResult, PortraitsResult, PrefsResult, RecordEntryResult, RecordRemoveMapResult, RelationshipAward, RelationshipsView, ReportsHistoryResult, SceneConnectionsResult, SceneDrawResult, ScenePictureReport, ScenePromptResult, SceneResult, TerminalResult, TerminalStep, TrackerHistoryResult, TrackerPassReportDTO, TrackerPassStartedDTO, TrackerResult, WaysResult, WorldBooksResult, WorldConsolidateResult, WorldPurgeResult, WorldRunResult, WorldSkeletonResult, WorldSourceResult, WorldStatusResult } from '../protocol.js'
 
 export interface TrackerPanelHost {
     dom: {
@@ -368,13 +369,39 @@ export function mountTrackerPanel(
     // long enough to be useful — "the tracker is updating after the last
     // reply" — competes with the buttons for a panel about 340px wide and wins,
     // wrapping "Run tracker now" into a three-line block.
-    lightsRow.append(starfield, lights, skySlot)
+    // The lore size warning (1.1.0): a chip after the lights, shown only while the last reply's lore is over
+    // the user's number. Not a light: a light means a pass is running.
+    const loreInline = el('div', { class: 'lh-lore-inline' })
+    const loreChip = createLoreChip({
+        el,
+        ui: host.ui,
+        inline: loreInline,
+        clean: async (target) => {
+            const result = await bridge.request<AgentRunResult>('agent.cleanup', { chatId, target, instructions: '' })
+            agentReport = result
+            drawAgent()
+            noteAgentReport(result)
+            if (result.unavailable) throw new Error(result.unavailable)
+        },
+    })
+    let loreFor: string | null = null
+    const loadLore = async (): Promise<void> => {
+        const asked = chatId
+        // Another chat's chip never stands over this one while the answer is on its way.
+        if (asked !== loreFor) loreChip.set(null)
+        loreFor = asked
+        if (!asked) return
+        const result = await bridge.request<LoreLoadResult>('lore.load', { chatId: asked })
+        if (destroyed || chatId !== asked) return
+        loreChip.set(result)
+    }
+    lightsRow.append(starfield, lights, skySlot, loreChip.node)
     actionsRow.append(runButton, refreshButton, headTime)
     // The lights row goes to the slot that stays in view whatever pane shows (the one window's title
     // row, 92e) when the layout gives one; else it heads the header, over the actions.
     if (slots.lights) slots.lights.append(lightsRow)
     else header.append(lightsRow)
-    header.append(actionsRow)
+    header.append(actionsRow, loreInline)
 
     // The fold of 47a — the tracker's settings, instruction and report under the head — is gone since 78d
     // (the maintainer's ask): the instruction bar is behind the footer's 💬, the report is under the
@@ -3988,6 +4015,7 @@ export function mountTrackerPanel(
         // the tracker view back.
         loadWorld().catch(() => undefined)
         loadMaps().catch(() => undefined)
+        loadLore().catch(() => undefined)
         clearArmed = false
         restoreArmed = false
         // Back to live on every refresh. A stepper left pointing into the past
@@ -4945,6 +4973,14 @@ export function mountTrackerPanel(
          * a place. The map arrives whole, so the cards redraw at once rather
          * than after a reload (43-bis).
          */
+        // The lore Lumiverse sent with a reply, sized (1.1.0): the chip follows.
+        if (event.name === 'lore.load') {
+            const sized = event.data as (LoreLoadResult & { chatId?: string }) | undefined
+            if (!chatId || !sized || sized.chatId !== chatId) return
+            loreChip.set(sized)
+            return
+        }
+
         // A relationship value moved, from whichever hand (44): the fold re-reads.
         if (event.name === 'relationships.changed') {
             const changed = event.data as { chatId?: string } | undefined
@@ -4969,6 +5005,7 @@ export function mountTrackerPanel(
         if (event.name === 'prefs.changed') {
             const prefs = (event.data as PrefsResult | undefined)?.prefs
             if (!prefs) return
+            if ((prefs as Record<string, unknown>).loreWarnTokens !== undefined) loadLore().catch(() => undefined)
             if ((prefs as Record<string, unknown>).npcRelationshipToast !== undefined) relationshipFloatOn = (prefs as Record<string, unknown>).npcRelationshipToast !== false
             if ((prefs as Record<string, unknown>).locationImages !== undefined && locationImages !== ((prefs as Record<string, unknown>).locationImages === true)) {
                 locationImages = (prefs as Record<string, unknown>).locationImages === true

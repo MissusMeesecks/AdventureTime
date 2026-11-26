@@ -29,6 +29,7 @@ import type {
     ConnectionsResult,
     CartridgeExportResult,
     ActivatedLoreResult,
+    LoreLoadResult,
     AgentRunResult,
     CyoaChoicesResult,
     CyoaChooseResult,
@@ -245,6 +246,8 @@ export interface RequestDeps {
     cancelPass?: (kind: 'tracker' | 'agent', chatId: string) => boolean
     /** The user's connection profiles, for the two model-choice dropdowns. */
     connections?: (userId: string | undefined) => Promise<ConnectionsResult>
+    /** The lore size warning (1.1.0): the last activation the host announced for the chat. */
+    loreLoad?(chatId: string, userId: string | undefined): Promise<LoreLoadResult>
     /**
      * The host's world-book reads, for the activation diagnostic only.
      *
@@ -2363,6 +2366,8 @@ export async function handleRequest(
             return cancelPass(deps, 'tracker', request.params)
         case 'agent.cancel':
             return cancelPass(deps, 'agent', request.params)
+        case 'lore.load':
+            return deps.loreLoad ? deps.loreLoad(requireChatId(request.params, 'lore.load'), userId) : { load: null, threshold: 0, over: false }
         case 'lore.activated':
             return getActivatedLore(deps, userId, request.params)
         case 'portraits.get':

@@ -20,6 +20,7 @@
  * are not part of the cartridge surface."* This is the first of them.
  */
 
+import { DEFAULT_LORE_WARN_TOKENS, MAX_LORE_WARN_TOKENS } from './lore-load.js'
 import { DEFAULT_AUDIT_TOKENS, DEFAULT_CLEANUP_EVERY, DEFAULT_CLEANUP_THRESHOLD, MAX_AUDIT_TOKENS, MAX_CLEANUP_EVERY, MAX_CLEANUP_THRESHOLD, MIN_AUDIT_TOKENS, MIN_CLEANUP_THRESHOLD } from '../agent/cleanup.js'
 import { DEFAULT_THEME, readFontSize, readThemeId, readBackdrop, DEFAULT_BACKDROP_STRENGTH, type Backdrop, type TerminalSource, type ThemeId } from '../protocol.js'
 import { readCustomTheme, readSavedThemes, type CustomTheme } from '../tracker/theme-wizard.js'
@@ -415,6 +416,8 @@ export interface UiPrefs {
     agentCleanupThreshold: number
     agentCleanupEvery: number
     agentAuditTokens: number
+    /** Warn when the lore Lumiverse sent with a reply is over this many tokens (1.1.0, departure 175); 0 is off. */
+    loreWarnTokens: number
     /**
      * Chat length when a pass last ran, per chat.
      *
@@ -876,6 +879,7 @@ export const DEFAULT_PREFS: UiPrefs = {
     agentCleanupThreshold: DEFAULT_CLEANUP_THRESHOLD,
     agentCleanupEvery: DEFAULT_CLEANUP_EVERY,
     agentAuditTokens: DEFAULT_AUDIT_TOKENS,
+    loreWarnTokens: DEFAULT_LORE_WARN_TOKENS,
     trackerDirectLookback: DEFAULT_TRACKER_DIRECT_LOOKBACK,
     sceneLookback: DEFAULT_SCENE_LOOKBACK,
     scenePictureAuto: false,
@@ -1104,6 +1108,7 @@ function readSecondPassPrefs(source: Record<string, unknown>, target: Partial<Ui
     if (source.agentCleanupUseThreshold !== undefined) target.agentCleanupUseThreshold = source.agentCleanupUseThreshold !== false
     if (source.agentCleanupThreshold !== undefined) target.agentCleanupThreshold = readBounded(source.agentCleanupThreshold, DEFAULT_CLEANUP_THRESHOLD, MIN_CLEANUP_THRESHOLD, MAX_CLEANUP_THRESHOLD)
     if (source.agentCleanupEvery !== undefined) target.agentCleanupEvery = readBounded(source.agentCleanupEvery, DEFAULT_CLEANUP_EVERY, 0, MAX_CLEANUP_EVERY)
+    if (source.loreWarnTokens !== undefined) target.loreWarnTokens = readBounded(source.loreWarnTokens, DEFAULT_LORE_WARN_TOKENS, 0, MAX_LORE_WARN_TOKENS)
     if (source.agentAuditTokens !== undefined) target.agentAuditTokens = readBounded(source.agentAuditTokens, DEFAULT_AUDIT_TOKENS, MIN_AUDIT_TOKENS, MAX_AUDIT_TOKENS)
 }
 

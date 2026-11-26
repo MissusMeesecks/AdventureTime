@@ -18,7 +18,7 @@
  */
 import manifest from '../../spindle.json'
 import type { NarratorCardResult, StatusResult } from '../protocol.js'
-import { checklistItems, type ChecklistItem } from './core-card.js'
+import { SUMMARISER_CHECK, SUMMARYCEPTION_URL, checklistItems, type ChecklistItem } from './core-card.js'
 import { createHelpTip } from './help-tip.js'
 
 export interface StartAreaHost {
@@ -47,7 +47,7 @@ export interface StartArea {
 /** Multihog's walkthrough, as its onboarding carries it at the pin. */
 export const MULTIHOG_WALKTHROUGH_URL = 'https://www.youtube.com/watch?v=82Lt9pRYFS0'
 /** The Lumiverse port of Summaryception (84, the maintainer's ask): the links go there, not to the SillyTavern original. */
-export const SUMMARYCEPTION_URL = 'https://github.com/Ryah/Lumi-Summaryception'
+export { SUMMARYCEPTION_URL } from './core-card.js'
 /** The guide's path in the repository; the drift check in `scripts/guide.test.ts` reads the same file. */
 export const GUIDE_FILE = 'guide/AdventureTime-guide.md'
 /**
@@ -66,11 +66,12 @@ export const NARRATOR_CARD_EVENT = 'adventuretime:narrator-card'
 /** The checklist's marks (core-card.ts draws the same four). */
 export const START_MARKS: Record<ChecklistItem['state'], string> = { ok: '✅', warn: '⚠️', unknown: '❔', bad: '❌' }
 
-/** The three rows of *Before you start*: which checklist item, the row's name, its `[?]`, whether it counts toward Ready. */
+/** The four rows of *Before you start* (the summariser's since 1.1.2, moved out of the checklist): which checklist item, the row's name, its `[?]`, whether it counts toward Ready. */
 export const START_CHECKS: ReadonlyArray<{ id: ChecklistItem['id']; title: string; help: string; counts: boolean }> = [
     { id: 'narrator', title: 'Narrator card', counts: true, help: 'AdventureTime is narrator-led play, written like a book, so several characters can share a scene. The rulebook is the whole prompt, so the card can be empty.' },
     { id: 'passes', title: 'Passes have a connection', counts: true, help: 'Every pass needs a connection. A blank row uses the narrator’s connection. A light, fast model is enough for everything but the narrator.' },
     { id: 'tools', title: 'Function calling (optional)', counts: false, help: 'The dice tool and the Map Architect need function calling on the narrator’s connection. Without it, choose "Pre-seeded queue only" for Dice (RNG) and "Text block" for How the narrator asks for a map, both on the Narrator card.' },
+    { id: 'summariser', title: SUMMARISER_CHECK.title, counts: false, help: SUMMARISER_CHECK.why },
 ]
 
 export const MAKE_CHARACTER_HELP = 'Each way writes a character sheet into the Tracker widget. Instant Action and the Character creator can also write a Player Card and a matching persona.'
@@ -107,6 +108,7 @@ export const START_AREA_CSS = `
 .adventuretime-panel .lh-start-check-mark { grid-column: 1; grid-row: 1; text-align: center; line-height: 1.5; }
 .adventuretime-panel .lh-start-check-head { display: flex; align-items: center; gap: 4px; font-size: 0.88em; font-weight: 600; }
 .adventuretime-panel .lh-start-check-evidence { font-size: 0.8em; line-height: 1.4; opacity: 0.8; }
+.adventuretime-panel .lh-start-check-link { font-size: 0.8em; }
 .adventuretime-panel .lh-start-check-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 2px; }
 .adventuretime-panel .lh-start-check-actions .lh-input { flex: 1 1 140px; min-width: 120px; }
 .adventuretime-panel .lh-start-more { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 0.8em; opacity: 0.9; }
@@ -225,6 +227,13 @@ export function createStartArea(host: StartAreaHost): StartArea {
     connActions.append(connButton)
     rows.get('passes')?.row.append(connActions)
 
+    // The summariser row's link: its own page, in a new tab.
+    if (SUMMARISER_CHECK.link) {
+        const anchor = el('a', { class: 'lh-start-check-link', href: SUMMARISER_CHECK.link.url, target: '_blank', rel: 'noopener noreferrer', 'data-lh-field': 'start-summariser-link' })
+        anchor.textContent = SUMMARISER_CHECK.link.label
+        rows.get('summariser')?.row.append(anchor)
+    }
+
     // The other checks stay in the checklist: its own button, pressed for the user.
     const more = el('div', { class: 'lh-start-more' })
     const moreButton = el('button', { type: 'button', class: 'lh-button lh-button--quiet', 'data-lh-field': 'start-open-checklist' }) as HTMLButtonElement
@@ -296,7 +305,7 @@ export function createStartArea(host: StartAreaHost): StartArea {
     /** Whether the last status read was ready: the fold moves only when this changes, so a hand's toggle stands. */
     let ready: boolean | null = null
     const applyStatus = (status: StatusResult | null): void => {
-        const items = checklistItems(status)
+        const items = [...checklistItems(status), SUMMARISER_CHECK]
         for (const item of items) {
             const drawn = rows.get(item.id)
             if (!drawn) continue

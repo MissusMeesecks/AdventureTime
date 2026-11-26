@@ -18,6 +18,9 @@
  */
 
 import { isWorldModuleTag } from '../agent/campaign.js'
+import { createHelpTip } from './help-tip.js'
+
+export const WORLD_MODULE_HELP = 'Not used in AdventureTime. In Multihog, this module let the Lorebook Agent write world reports. Here, World Progression writes them: Settings → World Progression → Write reports. The row is shown so Multihog users know nothing is missing.'
 
 export interface AgentModule {
     enabled?: boolean
@@ -117,7 +120,26 @@ export function mountAgentModulesEditor(
         return box
     }
 
+    /**
+     * The stock WORLD module (55-quater, departure 13; 1.1.1): the agent is
+     * never told about it and World Progression's own pass writes that book,
+     * so the row is a name and a `[?]`, with no switch and no editor to
+     * mislead. The stored module is not touched: `routerModules.world` rides
+     * every write whole, as the cartridge carries it.
+     */
+    function renderWorldRow(key: string, module: AgentModule): HTMLElement {
+        const item = el('div', { class: 'lh-tm-row lh-tm-row--off lh-tm-row--world', 'data-lh-field': `agent-module-row-${key}` })
+        const head = el('div', { class: 'lh-tm-head' })
+        const name = el('span', { class: 'lh-tm-name' })
+        name.textContent = moduleTag(key, module)
+        const tip = createHelpTip(el as never, name.textContent, WORLD_MODULE_HELP)
+        head.append(name, tip.button)
+        item.append(head, tip.note)
+        return item
+    }
+
     function renderRow(key: string, module: AgentModule): HTMLElement {
+        if (isWorldModuleTag(moduleTag(key, module))) return renderWorldRow(key, module)
         const enabled = module.enabled !== false
         const item = el('div', { class: `lh-tm-row lh-tm-row--${enabled ? 'on' : 'off'}` })
         const head = el('div', { class: 'lh-tm-head' })
@@ -138,15 +160,6 @@ export function mountAgentModulesEditor(
             const badge = el('span', { class: 'lh-tm-badge lh-tm-badge--edited' })
             badge.textContent = 'edited'
             badge.title = 'This module’s instruction differs from the factory’s.'
-            head.append(badge)
-        }
-
-        if (isWorldModuleTag(moduleTag(key, module))) {
-            // World Progression's book (55-quater): the switch is kept as the
-            // cartridge carries it, and the row says the category goes nowhere.
-            const badge = el('span', { class: 'lh-tm-badge lh-tm-badge--world' })
-            badge.textContent = 'World Progression’s'
-            badge.title = 'In AdventureTime the World book is written by World Progression’s own pass (the World progression fold). Switched on, this module is not sent to the agent, and a WORLD record is refused.'
             head.append(badge)
         }
 

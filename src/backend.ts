@@ -86,7 +86,9 @@ import { formatRecentStory } from './tracker/evolution.js'
 import { narratorSiteActivity } from './tracker/evolution.js'
 import { CREATE_AREA_MAP_TOOL_NAME } from './tracker/architect.js'
 import { isBaseSectionEnabled, MAPPING_SECTION_TAG } from './tracker/rulebook.js'
-import { campaignBookName, rememberCampaignBook, resolveCampaignPrefix } from './agent/campaign.js'
+import { bookStanding, campaignBookName, rememberCampaignBook, resolveCampaignPrefix } from './agent/campaign.js'
+import { createLoreLoad } from './backend/lore-load.js'
+import { isWorldProgressionBookName } from './tracker/world.js'
 import { isCyoaActive } from './tracker/rulebook.js'
 import { stripSupersededChoices } from './tracker/cyoa.js'
 import { createDiceLog } from './backend/dice-log.js'
@@ -1005,6 +1007,29 @@ const campaignFork = createCampaignFork({
         replace: (chatId, npcs, userId) => relationshipStore.replace(chatId, npcs as Parameters<typeof relationshipStore.replace>[1], userId),
     },
     log: spindle.log,
+})
+
+/**
+ * The lore size warning (1.1.0, departure 175): the host announces the lore it
+ * put into every real generation, after its own budget, with its own sizes.
+ * A free-tier event; the books are read for the cleanup address alone.
+ */
+const loreLoad = createLoreLoad({
+    books: (userId) => worldBookStore(userId),
+    cleanable: async (chatId, userId) => {
+        const settings = await prefs.load(userId)
+        const prefix = resolveCampaignPrefix({ chatId, override: settings.campaignNames?.[chatId], anchorChatId: chatId })
+        const owned = settings.campaignBooks?.[chatId] ?? []
+        return (name) => !isWorldProgressionBookName(name) && bookStanding(name, prefix, owned) === 'owned'
+    },
+    threshold: async (userId) => (await prefs.load(userId)).loreWarnTokens,
+    notify: (chatId, result, userId) => {
+        spindle.sendToFrontend({ channel: CHANNEL, kind: 'event', name: 'lore.load', data: { chatId, ...result } }, userId)
+    },
+    log: spindle.log,
+})
+const disposeLoreHook = spindle.on('WORLD_INFO_ACTIVATED', (payload, userId) => {
+    loreLoad.onActivated(payload, userId).catch((error) => spindle.log.warn(`lore: the size of the active lore could not be read: ${String(error)}`))
 })
 
 const disposeForkHook = spindle.on('CHAT_FORKED', (payload, userId) => {
@@ -2356,6 +2381,7 @@ spindle.onFrontendMessage(async (payload: unknown, userId: string) => {
                     else spindle.log.info(`campaign: cloned ${result.cloned.length} book${result.cloned.length === 1 ? '' : 's'} of "${prefix}" under "${result.newPrefix}"`)
                     return result
                 },
+                loreLoad: (chatId: string, forUser: string | undefined) => loreLoad.get(chatId, forUser),
                 // Gated by `world_books`, and read-only: the activation
                 // diagnostic asks the host what it already loaded. `userId`
                 // is forwarded for the reason rule 3f exists.
@@ -2448,4 +2474,4 @@ spindle.log.info(
     } permissions granted)`,
 )
 
-export { store, memos, questArchive, memoHistory, prefs, portraits, trackerPass, permissionAudit, diceTools, disposeInterceptor, disposeGenerationHook, disposeForkHook, disposeDeniedLog, disposeToolInvocation }
+export { store, memos, questArchive, memoHistory, prefs, portraits, trackerPass, permissionAudit, diceTools, disposeInterceptor, disposeGenerationHook, disposeForkHook, disposeLoreHook, disposeDeniedLog, disposeToolInvocation }

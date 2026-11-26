@@ -68,18 +68,23 @@ export interface CoreCard {
 
 /** One item of the checklist: a title, why (behind the item's `[?]`), and what AdventureTime can see of it. */
 export interface ChecklistItem {
-    id: 'tools' | 'passes' | 'output' | 'context' | 'narrator'
+    id: 'tools' | 'passes' | 'output' | 'context' | 'narrator' | 'summariser'
     title: string
     why: string
     /** `ok` seen right; `warn` not seen yet, or set a way that may be intended; `unknown` not readable here; `bad` seen wrong. */
     state: 'ok' | 'warn' | 'unknown' | 'bad'
     evidence: string
+    /** A link drawn after the evidence: the summariser's own page. */
+    link?: { label: string; url: string }
 }
+
+/** The Lumiverse port of Summaryception (84): the one address, here and in the starting area's Learn more. */
+export const SUMMARYCEPTION_URL = 'https://github.com/Ryah/Lumi-Summaryception'
 
 /** The card's own `[?]`: what the Branching caption said (96). */
 export const CORE_CARD_HELP = 'To branch a campaign, use Branch on a message in Lumiverse. AdventureTime copies the campaign into the new chat as it stood at that message. To copy only the lorebooks, use Clone the lorebooks in the Lore widget’s Lorebook Agent tab.\n\nDifferent from Multihog: there is no Branch campaign button, because Lumiverse does not let an extension create a chat.'
 export const CHECKLIST_BUTTON_HELP = 'Lists five things to check on your connection and its preset before you start a campaign. Each item shows what AdventureTime can confirm by itself.'
-export const CHECKLIST_HELP = 'Most setup problems come from connection and preset settings in Lumiverse. This list says what to check there. It also shows what AdventureTime can confirm by itself.'
+export const CHECKLIST_HELP = 'Most setup problems come from connection and preset settings in Lumiverse. This list says what to check there.'
 
 const NOT_READ = 'Not read yet. Open the Tracker widget once, then look again.'
 
@@ -136,6 +141,19 @@ export function checklistItems(status: StatusResult | null): ChecklistItem[] {
         { id: 'context', title: 'Narrator context and output length leave room', why: 'Lumiverse reserves the preset’s Max Tokens out of the context cap, and the chat history must fit in what is left. Lumiverse trims only the oldest chat history. AdventureTime’s messages are added after that. Set the context cap below the model’s maximum to leave room for AdventureTime’s messages. The "AdventureTime —" rows of Lumiverse’s Prompt Breakdown show how many tokens they use. The rulebook alone is about 6,700 tokens. A summary extension such as Summaryception keeps the chat itself small.\n\nDifferent from Multihog: set the narrator’s Max Tokens to the length of one reply plus any reasoning, not Multihog’s 100,000.', state: 'unknown', evidence: 'Cannot be read here. AdventureTime does not ask for the presets permission. Check the preset in Lumiverse’s connection settings.' },
         { id: 'narrator', title: 'Chat uses a narrator card', why: 'AdventureTime is narrator-led play, not a one-on-one character chat. The rulebook is the whole prompt, so the narrator card can be empty. Create one under Narrator card on the Setup & help card, then open a chat from it.', ...narrator },
     ]
+}
+
+/**
+ * The summariser's check (1.0.1), out of the checklist and onto the starting area's *Before you start* since 1.1.2
+ * (the maintainer's ask of 2026-11-26). Always ❔: an extension cannot see another.
+ */
+export const SUMMARISER_CHECK: ChecklistItem = {
+    id: 'summariser',
+    title: 'Summariser for long chats (recommended)',
+    why: 'Every reply sends the whole chat again, so a long campaign grows until it no longer fits the model, costs more each turn, and loses its oldest messages. A summariser hides older messages and keeps a short summary of them. The Lorebook Agent keeps the details in lorebooks, so little is lost. Install one before a campaign gets long.',
+    state: 'unknown',
+    evidence: 'AdventureTime cannot see other extensions, so check this in Lumiverse’s extension list. Recommended: Lumi-Summaryception, the Lumiverse port of the summariser Multihog’s author recommends.',
+    link: { label: 'Open Lumi-Summaryception', url: SUMMARYCEPTION_URL },
 }
 
 const STATE_MARK: Record<ChecklistItem['state'], string> = { ok: '✅', warn: '⚠️', unknown: '❔', bad: '❌' }
@@ -216,7 +234,7 @@ export function createCoreCard(host: CoreCardHost): CoreCard {
             part.evidence.textContent = item.evidence
         }
         const seen = items.filter((i) => i.state === 'ok').length
-        statusText.textContent = `${seen} of ${items.length} confirmed here. Check the rest in Lumiverse’s connection settings.`
+        statusText.textContent = `${seen} of ${items.length} confirmed here. Check the rest in Lumiverse.`
     }
     // Its `hidden` is held by a rule of its own, since the box's display: flex would beat the attribute
     // (lesson 60) — which is how 0.160.0 showed the list under the button.

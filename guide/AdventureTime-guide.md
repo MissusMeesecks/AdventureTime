@@ -234,7 +234,7 @@ through setup in order.
 
 ### Before you start
 
-Three checks, each with a mark: ✅ ready, ⚠️ needs attention, ❔ cannot be
+Four checks, each with a mark: ✅ ready, ⚠️ needs attention, ❔ cannot be
 read, ❌ not working.
 
 1. **Narrator card**. AdventureTime needs a character card to act as the
@@ -247,6 +247,10 @@ read, ❌ not working.
 3. **Function calling (optional)**. ✅ once the narrator has called the dice
    tool in a reply. It never blocks you: see *Function calling* in chapter 3
    for playing without it.
+
+4. **Summariser for long chats (recommended)**. Always ❔, because
+   AdventureTime cannot see other extensions. **Open Lumi-Summaryception**
+   goes to the one recommended (chapter 1).
 
 **Open Lumiverse checklist** shows two more checks, on output length and
 context size. When the first two rows are ✅, the section folds to **Ready to
@@ -818,9 +822,9 @@ need a page refresh before it shows a lorebook attached from here.
 **Modular Repertoire (Prompt Rules)** lists the categories the agent
 records, each with a switch and **Edit the instruction**. There are six
 stock categories, and this is the whole list: *NPC* (people), *LOC*
-(places), *FAC* (factions), *QUEST*, *EVENT* and *WORLD*. *WORLD* is World
-Progression's lorebook: the agent never writes to it, whatever its switch
-says. Under the list, **Add a tag** makes a category of your own, which
+(places), *FAC* (factions), *QUEST*, *EVENT* and *WORLD*. *WORLD* is not
+used here: its row is greyed, with no switch, and its help says why. World
+Progression writes the world reports instead (chapter 15). Under the list, **Add a tag** makes a category of your own, which
 gets its own lorebook.
 
 The sections every NPC is recorded under (species, body, worn equipment,
@@ -839,6 +843,16 @@ this is where to read why.
 
 - **🧹 Cleanup** asks the agent to shorten entries that have grown long.
   An NPC's core description and any map are kept whatever it writes.
+- *The lore size warning.* Lumiverse sends every active lorebook entry
+  with each reply, and two or three entries that keep growing can add tens
+  of thousands of tokens without any sign. When the lore sent with the last
+  reply is over **Warn when active lore exceeds N tokens** (*Settings →
+  Lorebook Agent → **Cleanup & full audit***; 10,000 as it ships, 0 turns it
+  off), a *⚠ Lore* chip appears beside the lights in the Tracker widget.
+  Press it for **Active lore by size**: the entries Lumiverse sent, largest
+  first, with **🧹 Clean** on each of this campaign's own. Nothing is
+  cleaned or switched off by itself. To cap the total, set the Max Token
+  Budget in Lumiverse's World Book panel.
 - **📕 Full audit** runs the whole chat through the agent in pieces, to
   build the lorebooks for a chat that was played without it. It makes many
   model calls, asks first, and can be stopped with **Stop the audit**. Do

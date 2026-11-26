@@ -220,7 +220,31 @@ describe('Debug & factory reset (72a; every destructive action since 96)', () =>
         expect(note('upgrade-stock')).toBe('Refreshed 2 texts: systemPromptTemplate, stockPrompts.party. Kept 1 edited texts: routerModules.npc.instruction.')
         // A status that refreshed on its own says so too.
         card.applyStatus({ version: '1', granted: [], missing: [], checked: true, stockUpgrade: { refreshed: ['a'], kept: ['b'], pending: [], at: 't' } })
-        expect(note('upgrade-stock')).toBe('Refreshed 1 texts after the last update: a. Kept 1 edited texts: b.')
+        expect(note('auto-update-prompts')).toBe('After the last update: refreshed 1 stock text (a). Kept 1 you had edited (b).')
+        // Nothing is waiting, so the button's row is gone.
+        expect(field('upgrade-stock').hidden).toBe(true)
         expect(describeKeys(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'])).toBe('a, b, c, d, e, f and 2 more')
+    })
+
+    it('shows the last stock-text check under its switch: nothing before a check or when it changed nothing, the counts and names otherwise', () => {
+        const { card, field, note } = mount()
+        const status = (stockUpgrade?: { refreshed: string[]; kept: string[]; pending: string[]; at: string }) => ({ version: '1', granted: [], missing: [], checked: true, ...(stockUpgrade ? { stockUpgrade } : {}) })
+        // The line stands in the switch's own row, and is empty until a check has something to say.
+        expect(field('auto-update-prompts').querySelector('[data-lh-field="stock-refresh-result"]')).not.toBeNull()
+        expect(note('auto-update-prompts')).toBe('')
+        card.applyStatus(status())
+        expect(note('auto-update-prompts')).toBe('')
+        card.applyStatus(status({ refreshed: [], kept: [], pending: [], at: 't' }))
+        expect(note('auto-update-prompts')).toBe('')
+        card.applyStatus(status({ refreshed: ['a', 'b', 'c'], kept: ['d'], pending: [], at: 't' }))
+        expect(note('auto-update-prompts')).toBe('After the last update: refreshed 3 stock texts (a, b, c). Kept 1 you had edited (d).')
+        card.applyStatus(status({ refreshed: [], kept: ['d', 'e'], pending: [], at: 't' }))
+        expect(note('auto-update-prompts')).toBe('After the last update: kept 2 stock texts you had edited (d, e).')
+        card.applyStatus(status({ refreshed: ['a'], kept: [], pending: [], at: 't' }))
+        expect(note('auto-update-prompts')).toBe('After the last update: refreshed 1 stock text (a).')
+        // A later check that changed nothing clears it; texts still waiting are the button's row alone.
+        card.applyStatus(status({ refreshed: [], kept: [], pending: ['p'], at: 't' }))
+        expect(note('auto-update-prompts')).toBe('')
+        expect(field('upgrade-stock').hidden).toBe(false)
     })
 })

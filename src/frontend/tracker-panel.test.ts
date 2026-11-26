@@ -115,6 +115,8 @@ function makeBridge(seed: Record<string, string> = {}) {
     const campaignNameCalls: unknown[] = []
     /** The campaign's lorebooks (55): what `lore.books` answers, and the attaches asked. */
     // Campaign Records (71a): one NPC book with one entry, unless a test sets more.
+    /** The lore size warning (1.1.0): what `lore.load` answers. */
+    let loreLoadAnswer: Record<string, unknown> = { load: null, threshold: 10000, over: false }
     let activatedAnswer: Record<string, unknown> = { entries: [{ id: 'k1', comment: 'Elara', keys: ['Elara', 'innkeeper'], source: 'keyword' }, { id: 'k2', comment: 'The Gilded Hare', source: 'vector', score: 0.82 }, { id: 'k3', comment: 'The world', source: 'keyword', constant: true }], eligibility: { vectorized: 2, total: 3 } }
     let recordsAnswer: Record<string, unknown> = { prefix: 'Vell', books: [{ id: 'b-npc', name: 'Vell_NPC', category: 'NPC', kind: 'npc', entries: [{ id: 'e1', uid: '1', title: 'Elara', keys: ['Elara'], content: '[CORE]\nRole: Innkeeper\n[/CORE]', tokens: 6, pinned: false, disabled: false, hasMap: false, root: true }], tokens: 6 }], mapping: false, mapped: [], allBooks: ['Vell_NPC'] }
     let booksAnswer: Record<string, unknown> = { prefix: 'Vell', card: { id: 'card-1', name: 'Vell Keeper' }, target: 'chat', chatScope: true, books: [
@@ -189,6 +191,8 @@ function makeBridge(seed: Record<string, string> = {}) {
             } else if (payload.op === 'records.list') {
                 bookOps.push(['records', payload.params])
                 data = recordsAnswer
+            } else if (payload.op === 'lore.load') {
+                data = loreLoadAnswer
             } else if (payload.op === 'lore.activated') {
                 bookOps.push(['activated', payload.params])
                 data = activatedAnswer
@@ -536,6 +540,7 @@ function makeBridge(seed: Record<string, string> = {}) {
         setBooks: (answer: Record<string, unknown>) => { booksAnswer = answer },
         setRecords: (answer: Record<string, unknown>) => { recordsAnswer = answer },
         setActivated: (answer: Record<string, unknown>) => { activatedAnswer = answer },
+        setLoreLoad: (answer: Record<string, unknown>) => { loreLoadAnswer = answer },
         setPrefs: (prefs: Record<string, unknown>) => { seededPrefs = prefs },
         bookOps,
         campaignNameCalls,
@@ -646,6 +651,40 @@ describe('mounting', () => {
         expect(requests[0]).toMatchObject({ op: 'tracker.get', params: { chatId: 'chat-1' } })
         expect(root.querySelectorAll('.rt-section')).toHaveLength(2)
         expect(root.querySelector('.rt-section-title')?.textContent).toBe('TIME')
+    })
+
+    it('shows the lore chip beside the lights while the last reply’s lore is over the warning (1.1.0)', async () => {
+        const { bridge, emit, requests, setLoreLoad } = makeBridge({ 'chat-1': MEMO })
+        const load = { chatId: 'chat-1', at: '2030-01-02T03:04:05.000Z', total: 61200, leftOut: 0, entries: [{ id: 'e-1', title: 'Harbourmaster Quill', book: 'Brine_NPC', tokens: 61200, constant: false, cleanTarget: 'Brine_NPC::harbourmaster' }] }
+        mountTrackerPanel(root, bridge, makeHost())
+        await settle()
+        const chip = root.querySelector('.lh-tracker-head [data-lh-field="lore-chip"]') as HTMLButtonElement
+        // In the lights' row, after the lights, and not one of them.
+        expect(chip.closest('.lh-lights')).toBeNull()
+        expect(chip.parentElement!.querySelector('.lh-lights')).not.toBeNull()
+        expect(requests.filter((r) => r.op === 'lore.load').map((r) => r.params)).toEqual([{ chatId: 'chat-1' }])
+        expect(chip.hidden).toBe(true)
+
+        // Another chat's reply is not this chat's.
+        emit({ name: 'lore.load', data: { chatId: 'chat-2', load: { ...load, chatId: 'chat-2' }, threshold: 10000, over: true } })
+        expect(chip.hidden).toBe(true)
+        emit({ name: 'lore.load', data: { chatId: 'chat-1', load, threshold: 10000, over: true } })
+        expect(chip.hidden).toBe(false)
+        expect(chip.textContent).toBe('⚠ Lore 61k')
+
+        // The warning raised in the settings: the panel asks again, and the chip goes.
+        setLoreLoad({ load, threshold: 100000, over: false })
+        emit({ name: 'prefs.changed', data: { prefs: { loreWarnTokens: 100000 } } })
+        await settle()
+        expect(requests.filter((r) => r.op === 'lore.load')).toHaveLength(2)
+        expect(chip.hidden).toBe(true)
+
+        // Clean from the window is the agent's targeted cleanup on that entry.
+        emit({ name: 'lore.load', data: { chatId: 'chat-1', load, threshold: 10000, over: true } })
+        chip.click()
+        ;(document.querySelector('[data-lh-field="lore-clean"]') as HTMLButtonElement).click()
+        await settle()
+        expect(requests.find((r) => r.op === 'agent.cleanup')?.params).toEqual({ chatId: 'chat-1', target: 'Brine_NPC::harbourmaster', instructions: '' })
     })
 
     it('puts the memo’s phase on the body and the sky badge in the head, and takes both off with the clock (74c)', async () => {
@@ -3897,7 +3936,7 @@ describe('the tracker head (47a)', () => {
         expect(time()).toBe('Last run: none yet')
         // Two rows since 92e: the lights row, then the buttons with the last-run time beside them.
         const header = root.querySelector('.lh-tracker-header')!
-        expect(Array.from(header.children).map((c) => c.className)).toEqual(['lh-tracker-head lh-tracker-lights', 'lh-tracker-actions'])
+        expect(Array.from(header.children).map((c) => c.className)).toEqual(['lh-tracker-head lh-tracker-lights', 'lh-tracker-actions', 'lh-lore-inline'])
         const actions = header.querySelector('.lh-tracker-actions')!
         expect(Array.from(actions.children).map((c) => c.textContent)).toEqual(['Run tracker now', 'Refresh', 'Last run: none yet'])
         expect(root.querySelector('.lh-tracker-head')!.contains(button(root, 'Run tracker now'))).toBe(false)
@@ -3915,7 +3954,7 @@ describe('the tracker head (47a)', () => {
         expect(lightsSlot.querySelector('.lh-sky-slot')).not.toBeNull()
         expect(lightsSlot.querySelector('.lh-head-starfield')).not.toBeNull()
         const header = root.querySelector('.lh-tracker-header')!
-        expect(Array.from(header.children).map((c) => c.className)).toEqual(['lh-tracker-actions'])
+        expect(Array.from(header.children).map((c) => c.className)).toEqual(['lh-tracker-actions', 'lh-lore-inline'])
         expect(header.contains(button(root, 'Run tracker now'))).toBe(true)
         expect(root.querySelector('.lh-tracker-head-time')!.textContent).toBe('Last run: none yet')
         // Leaves with the panel.

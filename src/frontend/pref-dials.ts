@@ -152,6 +152,7 @@ export const PREF_DIAL_GROUPS: readonly DialGroup[] = [
                 { key: 'agentCleanupThreshold', kind: 'number', label: 'Token threshold', hint: 'An entry at or over this many tokens counts as bloated. A token is about four characters, and an entry’s map is not counted. Range: 50 to 5000. Default: 300.', min: 50, max: 5000 },
                 { key: 'agentCleanupEvery', kind: 'number', label: 'Auto-cleanup every N passes', hint: 'A cleanup pass runs by itself after every Nth agent pass that finds a bloated entry. Set 0 to never run it automatically. The terminal reports bloated entries either way. Default: 0.', min: 0, max: 100 },
                 { key: 'agentAuditTokens', kind: 'number', label: 'Full audit context tokens', hint: 'A full audit cuts the chat into chunks of this many tokens minus 3000. Each chunk is one agent pass. Set it near the model’s context window. Default: 32000.', min: 4000, max: 1000000 },
+                { key: 'loreWarnTokens', kind: 'number', label: 'Warn when active lore exceeds N tokens', hint: 'Lumiverse sends every active lorebook entry with each reply. When their total is over this number, a "⚠ Lore" chip appears beside the lights in the Tracker widget. Click the chip to see the entries by size and clean the large ones. The count is Lumiverse’s own: about four characters to a token. Nothing is removed or cleaned automatically. Set 0 to turn the warning off. Default: 10000.', min: 0, max: 1000000 },
                 ],
             },
             {

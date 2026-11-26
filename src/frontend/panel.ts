@@ -1025,7 +1025,7 @@ export function mountPanel(root: HTMLElement, bridge: Bridge, host: PanelHost, s
     // Each in a folding card of its own (82, the maintainer's ask), as the cards around them.
     // Multihog's name for the drawer since 84 (the maintainer's ask): the theme, the sizes, the backdrops and the widgets live in it.
     const layoutCard = settingsCard('layout', '🎨', 'Appearance', layoutBox, 'AdventureTime shows two floating widgets: the Tracker widget and the Lore widget. Drag a widget by its head, resize it from its corner, or fold it to its head. Everything else is on this tab.')
-    const cartridgesCard = settingsCard('cartridges', '💾', 'Cartridges', cartridges)
+    const cartridgesCard = settingsCard('cartridges', '💾', 'Cartridges', cartridges, 'A cartridge holds your prompts, modules, rulebook and game systems. It does not hold your layout, connections or theme. Export one before changing a lot.')
     categories.bodies.general.append(coreCard.root, layoutCard, cartridgesCard)
     settingsRoot.append(search.root, categories.root)
     body.append(settingsRoot)
@@ -2005,6 +2005,22 @@ export const PANEL_CSS = `
 .lh-tracker-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; row-gap: 4px; }
 .lh-tracker-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; row-gap: 4px; }
 .lh-lights { display: inline-flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.lh-lore-chip { font: inherit; font-size: 0.8em; line-height: 1.2; padding: 2px 8px; border-radius: 999px; cursor: pointer; white-space: nowrap; color: var(--lumiverse-warning, #d0a24c); background: color-mix(in srgb, var(--lumiverse-warning, #d0a24c) 14%, transparent); border: 1px solid color-mix(in srgb, var(--lumiverse-warning, #d0a24c) 55%, transparent); }
+.lh-lore-chip:hover, .lh-lore-chip:focus-visible { background: color-mix(in srgb, var(--lumiverse-warning, #d0a24c) 26%, transparent); }
+.lh-lore-chip[hidden] { display: none; }
+.lh-lore-inline:empty { display: none; }
+.lh-lore-load { display: flex; flex-direction: column; gap: 8px; }
+.lh-lore-load-lead { font-weight: 600; }
+.lh-lore-load-budget, .lh-lore-load-hint { font-size: 0.9em; opacity: 0.8; }
+.lh-lore-rows { display: flex; flex-direction: column; }
+.lh-lore-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 6px 0; border-top: 1px solid var(--lh-accent-dim, var(--lumiverse-border, rgba(127,127,127,0.25))); }
+.lh-lore-row-name { flex: 1 1 180px; min-width: 0; display: flex; flex-direction: column; }
+.lh-lore-row-title { overflow-wrap: anywhere; }
+.lh-lore-row-book { font-size: 0.85em; opacity: 0.7; overflow-wrap: anywhere; }
+.lh-lore-row-tokens { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.lh-lore-row-note { flex: 1 1 100%; font-size: 0.85em; opacity: 0.8; }
+.lh-lore-row-note:empty { display: none; }
+.lh-lore-row-note--problem { color: var(--lumiverse-danger, #d9534f); opacity: 1; }
 .lh-light { display: inline-flex; align-items: center; gap: 4px; font-size: 0.8em; opacity: 0.85; cursor: default; }
 .lh-light-dot { width: 8px; height: 8px; border-radius: 50%; background: #555; flex-shrink: 0; }
 .lh-light--running .lh-light-dot { background: #ffaa00; animation: lh-light-pulse 1s infinite alternate; }
@@ -2760,7 +2776,7 @@ export const PANEL_CSS = `
    a bare word. Taken from the cartridge rather than written here. */
 .lh-tm-summary-line { margin-top: 4px; font-size: 0.8em; line-height: 1.4; opacity: 0.7; }
 .lh-tm-badge--edited { background: rgba(255, 200, 80, 0.25); border: 1px solid rgba(255, 200, 80, 0.6); }
-.lh-tm-badge--world { background: rgba(120, 180, 255, 0.2); border: 1px solid rgba(120, 180, 255, 0.5); }
+.lh-tm-row--world .lh-tm-name { cursor: default; }
 .lh-tm-edit { flex: 0 0 auto; font-size: 0.72em; padding: 1px 6px; }
 .lh-tm-editor { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
 .lh-tm-hint { font-size: 0.72em; opacity: 0.65; line-height: 1.4; }

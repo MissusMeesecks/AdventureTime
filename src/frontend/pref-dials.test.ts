@@ -32,13 +32,13 @@ describe('the mirrored dials (63c)', () => {
         // portraits switch at the head of the portraits section; 72 since 97 took the three map prompt boxes
         // out (the passes read the cartridge's prompts, edited in its own Map Architect card); 66 since 96 took
         // the wizard's six out (audit D6: the wizard's own controls are their one place on screen).
-        expect(keys).toHaveLength(66)
+        expect(keys).toHaveLength(67)
         expect(keys.filter((key) => key.startsWith('wizard'))).toEqual([])
         for (const key of ['mapArchitectSystemPrompt', 'mapUpdaterSystemPrompt', 'mapEvolutionSystemPrompt']) expect(keys, key).not.toContain(key)
         expect(keys.indexOf('trackerFullReviewMode')).toBe(keys.indexOf('frameworkEnabled') + 1)
         expect(keys.indexOf('trackerInjectLorebooks')).toBe(keys.indexOf('trackerHistoryStates') + 1)
         expect(dialRows().find((r) => r.key === 'trackerLorebookFilter')).toMatchObject({ kind: 'books' })
-        expect(dialRows().filter((r) => ['agentCleanupUseThreshold', 'agentCleanupThreshold', 'agentCleanupEvery', 'agentAuditTokens'].includes(r.key)).map((r) => r.kind)).toEqual(['switch', 'number', 'number', 'number'])
+        expect(dialRows().filter((r) => ['agentCleanupUseThreshold', 'agentCleanupThreshold', 'agentCleanupEvery', 'agentAuditTokens', 'loreWarnTokens'].includes(r.key)).map((r) => r.kind)).toEqual(['switch', 'number', 'number', 'number', 'number'])
         expect(dialRows().find((r) => r.key === 'trackerUserPromptSuffix')).toMatchObject({ kind: 'prompt', placeholder: '## OUTPUT ONLY CHANGED SECTIONS:' })
         expect(keys).toContain('worldProgressionExclusionList')
         expect(keys).toContain('mapRevealAll')
@@ -331,6 +331,7 @@ describe('the lorebooks into the tracker (73h)', () => {
             agentCleanupThreshold: 'Token threshold',
             agentCleanupEvery: 'Auto-cleanup every N passes',
             agentAuditTokens: 'Full audit context tokens',
+            loreWarnTokens: 'Warn when active lore exceeds N tokens',
             attachBooksToCard: 'Attach new lorebooks automatically',
             attachBooksTarget: 'Attach to',
         })
